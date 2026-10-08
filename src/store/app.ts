@@ -70,6 +70,8 @@ interface AppState {
   settings: Settings;
   watches: string[];
   run: RunnerSnapshot | null;
+  /** Se incrementa con cada ejecución nueva. */
+  runSeq: number;
   diagnostics: Diagnostic[];
   panel: PanelId;
   sidePanel: PanelId;
@@ -113,6 +115,7 @@ interface AppState {
 
 let runner: Runner | null = null;
 let nonce = 0;
+let runCounter = 0;
 let saveTimer: any = null;
 let realtimeTimer: any = null;
 let analyzeTimer: any = null;
@@ -170,6 +173,7 @@ export const useApp = create<AppState>((set, get) => {
       return false;
     }
     disposeRunner();
+    const seq = ++runCounter;
     runner = new Runner({
       code: f.code,
       profile,
@@ -181,7 +185,8 @@ export const useApp = create<AppState>((set, get) => {
       trackDesktop: true,
       onUpdate: (snap) => {
         if (snap.status === 'finished' || snap.status === 'error' || snap.status === 'stopped') lastInputs = snap.inputs;
-        set({ run: snap });
+        // runSeq cambia junto con la primera instantánea de cada ejecución
+        set({ run: snap, runSeq: seq });
       },
     });
     set({ notice: null });
@@ -197,6 +202,7 @@ export const useApp = create<AppState>((set, get) => {
     settings: DEFAULT_SETTINGS,
     watches: [],
     run: null,
+    runSeq: 0,
     diagnostics: [],
     panel: 'editor',
     sidePanel: 'console',

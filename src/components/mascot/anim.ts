@@ -56,3 +56,15 @@ export function orbit(rx: number, ry: number, steps = 16) {
   }
   return { input, xs, ys };
 }
+
+/**
+ * Inicia una animación de un solo disparo en el siguiente cuadro (cuando sus
+ * nodos ya están montados) y la detiene si el componente se desmonta antes.
+ */
+export function startNextFrame(anim: Animated.CompositeAnimation, done?: () => void) {
+  const id = requestAnimationFrame(() => anim.start(done ? () => done() : undefined));
+  return () => {
+    cancelAnimationFrame(id);
+    anim.stop();
+  };
+}

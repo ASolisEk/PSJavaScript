@@ -71,6 +71,8 @@ export interface RunnerSnapshot {
   notice: string | null;
   /** Variables (ámbito/nombre) del marco actual que cambiaron desde la instantánea anterior. */
   changed: string[];
+  /** Duración total en ms (solo al terminar). */
+  elapsedMs: number | null;
 }
 
 export interface RunnerOptions {
@@ -121,6 +123,8 @@ export class Runner {
   private lastWarnAt = 0;
   private generation = 0;
   private lastVars = new Map<string, string>();
+  private startedAt = 0;
+  private elapsed: number | null = null;
 
   breakpoints: Set<number>;
   watches: string[];
@@ -276,6 +280,8 @@ export class Runner {
     this.truncated = false;
     this.pending = undefined;
     this.lastWarnAt = 0;
+    this.startedAt = Date.now();
+    this.elapsed = null;
     this.randIdx = 0;
     try {
       this.interp = new Interpreter(this.opts.code, {
@@ -359,6 +365,7 @@ export class Runner {
     }
     if (r.done) {
       this.status = 'finished';
+      this.elapsed = Date.now() - this.startedAt;
       this.line = null;
       this.recordDesktop(true);
       this.write('system', '*** Ejecución finalizada ***');
@@ -503,6 +510,7 @@ export class Runner {
       output: this.output.slice(),
       frames,
       changed,
+      elapsedMs: this.elapsed,
       explanations: interp ? interp.explanations.slice(-500) : [],
       desktop: {
         columns: this.columns.slice(),

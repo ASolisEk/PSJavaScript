@@ -1,20 +1,30 @@
 /**
- * Mascota guía: un gatito que reacciona al estado del programa y a la persona.
- *  - reposo: respira, mueve la cola, parpadea; se duerme tras un rato sin actividad
- *  - error (sintaxis o ejecución): tiembla, mira nervioso, "???", sudor y una mosca
- *  - ejecutando: corre tecleando, con destellos y símbolos de código
- *  - mareado: ojos en espiral y estrellas cuando parece haber un ciclo infinito
- *  - acariciado (mantener presionado): ronronea, corazones y vibración suave
- * Además: celebra con confeti al corregir un error, se puede arrastrar a
- * cualquier lugar (recuerda la posición) y al tocarlo muestra un menú de atajos.
+ * Mascota guía: un gatito que reacciona al programa y a la persona.
+ *
+ * Estados (capas con transición cruzada):
+ *  - reposo · error de análisis · ejecutando · esperando un dato · error de
+ *    ejecución (cae sentado; con recursión infinita se "clona") · punto de
+ *    interrupción · mareado (ciclo infinito) · acariciado
+ *
+ * Reacciones puntuales:
+ *  - al escribir: rebota al ritmo de las teclas, se inclina hacia el editor,
+ *    mira hacia donde escribes, se emociona si tecleas rápido y reacciona a
+ *    palabras clave (while (true), console.log, class), pegados y formato
+ *  - en ejecución: asiente en cada paso, piensa en los if, "rebobina" al
+ *    retroceder, lanza burbujas por cada salida y celebra si fue rapidísimo
+ *  - errores: muchos errores = nube y más moscas; variable no definida = lupa
+ *  - interacción: tocar (menú), doble toque (voltereta), muchos toques (se
+ *    enoja), mantener (caricias), arrastrar y lanzar (rebota en los bordes),
+ *    minimizar (solo asoma la cola), se estira al despertar y caza moscas
  */
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
   Easing,
+  Image,
   LayoutChangeEvent,
   PanResponder,
   Platform,
@@ -26,18 +36,30 @@ import {
 } from 'react-native';
 import { useActiveFile, useApp } from '../store/app';
 import { useTheme } from '../ui/theme';
-import { easeOut, ND, to, useValue } from './mascot/anim';
-import { Confetti, DizzyLayer, PetLayer } from './mascot/extras';
+import { easeIn, easeOut, ND, to, useValue, wait } from './mascot/anim';
+import { AlertLayer, Confetti, CrashLayer, DizzyLayer, FxKind, OutputParticle, PetLayer, ReactionFx, WaitingLayer } from './mascot/extras';
 import { ErrorLayer, IdleLayer, RunningLayer } from './mascot/layers';
-import { BOX } from './mascot/sprites';
+import { BOX, IDLE } from './mascot/sprites';
 
-type Mood = 'idle' | 'error' | 'running' | 'dizzy' | 'pet';
-const MOODS: Mood[] = ['idle', 'error', 'running', 'dizzy', 'pet'];
+type Mood = 'idle' | 'error' | 'running' | 'dizzy' | 'pet' | 'waiting' | 'crash' | 'alert';
+const MOODS: Mood[] = ['idle', 'error', 'running', 'dizzy', 'pet', 'waiting', 'crash', 'alert'];
 
 const SLEEP_AFTER_MS = 45_000;
 /** Pasos a partir de los cuales una ejecución rápida "marea" a la mascota. */
 const DIZZY_STEPS = 150_000;
 const HAPTICS = Platform.OS !== 'web';
+const FX_MS: Record<FxKind, number> = {
+  notes: 2200,
+  hat: 2800,
+  alert: 3200,
+  suspicious: 2600,
+  sparkles: 2000,
+  think: 2600,
+  rewind: 1200,
+  fast: 2600,
+  angry: 2200,
+  yawn: 2200,
+};
 
 const TIPS = [
   '¡Hola! Soy Michi 🐾 Tócame para ver atajos, mantén presionado para acariciarme o arrástrame.',
@@ -47,13 +69,27 @@ const TIPS = [
   'La prueba de escritorio muestra cómo cambian tus variables.',
   'Puedes exportar tu código a PSeInt, Python y más.',
   'Usa === para comparar: no convierte los tipos.',
+  'Toca dos veces rápido y verás una voltereta 🤸',
 ];
 
 function useProgram() {
   const status = useApp((s) => s.run?.status ?? 'idle');
+  const mode = useApp((s) => s.run?.mode ?? 'run');
   const runError = useApp((s) => s.run?.error ?? null);
-  // solo cambia al terminar (evita re-render en cada paso)
+  const notice = useApp((s) => s.run?.notice ?? null);
+  const line = useApp((s) => s.run?.line ?? null);
+  const elapsedMs = useApp((s) => s.run?.elapsedMs ?? null);
+  // solo cambian en momentos puntuales (evita re-render en cada paso)
   const finishedAt = useApp((s) => (s.run?.status === 'finished' ? s.run.stepCount : -1));
+  const pausedStep = useApp((s) => (s.run?.status === 'paused' ? s.run.stepCount : -1));
+  const outCount = useApp((s) => s.run?.output.length ?? 0);
+  const runSeq = useApp((s) => s.runSeq);
+  // última línea escrita por el programa (ignora los avisos del sistema)
+  const lastOut = useApp((s) => {
+    const o = s.run?.output ?? [];
+    for (let i = o.length - 1; i >= Math.max(0, o.length - 4); i--) if (o[i].kind !== 'system') return o[i].text;
+    return '';
+  });
   const dizzy = useApp(
     (s) =>
       !!s.run &&
@@ -61,9 +97,25 @@ function useProgram() {
         (s.run.status === 'paused' && !!s.run.notice && /ciclo infinito/i.test(s.run.notice))),
   );
   const diagnostics = useApp((s) => s.diagnostics);
-  const staticError = diagnostics.find((d) => d.severity === 'error' && d.rule === 'syntax') ?? diagnostics.find((d) => d.severity === 'error');
-  return { status, runError, finishedAt, dizzy, staticError };
+  const errors = diagnostics.filter((d) => d.severity === 'error');
+  const staticError = errors.find((d) => d.rule === 'syntax') ?? errors[0];
+  return { status, mode, runError, notice, line, elapsedMs, finishedAt, pausedStep, outCount, runSeq, lastOut, dizzy, staticError, errorCount: errors.length };
 }
+
+/** Texto insertado y cantidad borrada entre dos versiones del código. */
+function diffText(a: string, b: string) {
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let q = 0;
+  while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+  return { at: p, inserted: b.slice(p, b.length - q), removed: a.length - p - q };
+}
+
+const lineAt = (code: string, pos: number) => {
+  const start = code.lastIndexOf('\n', pos - 1) + 1;
+  const end = code.indexOf('\n', pos);
+  return code.slice(start, end < 0 ? code.length : end);
+};
 
 function Card({ children, gap, side }: { children: React.ReactNode; gap: number; side: 'left' | 'right' }) {
   const t = useTheme();
@@ -143,6 +195,32 @@ function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; s
   );
 }
 
+/** Mascota minimizada: solo asoma la cola por el borde. */
+function PeekingTail({ onPress }: { onPress(): void }) {
+  const wag = useValue(0);
+  useEffect(() => {
+    const a = Animated.loop(Animated.sequence([to(wag, 1, 520), to(wag, -1, 1040), to(wag, 0, 520), wait(600)]));
+    a.start();
+    return () => a.stop();
+  }, [wag]);
+  const s = 0.42;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Mostrar a Michi" style={styles.peek}>
+      <Animated.View
+        style={{
+          width: 88 * s,
+          height: 170 * s,
+          overflow: 'hidden',
+          transformOrigin: 'center bottom',
+          transform: [{ rotate: wag.interpolate({ inputRange: [-1, 1], outputRange: ['-16deg', '12deg'] }) }],
+        }}
+      >
+        <Image source={IDLE.tail} style={{ width: IDLE.w * s, height: IDLE.h * s, marginTop: -40 * s }} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export default function Mascot() {
@@ -151,10 +229,14 @@ export default function Mascot() {
   const savedPos = useApp((s) => s.settings.mascotPos);
   const panel = useApp((s) => s.panel);
   const symbolBar = useApp((s) => s.settings.symbolBar);
+  const editorRequest = useApp((s) => s.editorRequest);
   const runActive = useApp((s) => !!s.run && s.run.status !== 'idle');
   const { width } = useWindowDimensions();
   const file = useActiveFile();
-  const { status, runError, finishedAt, dizzy, staticError } = useProgram();
+  const code = file?.code ?? '';
+  const fileId = file?.id ?? '';
+  const p = useProgram();
+  const { status, runError, staticError } = p;
 
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tip, setTip] = useState(0);
@@ -164,7 +246,17 @@ export default function Mascot() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [petting, setPetting] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const [area, setArea] = useState({ w: 0, h: 0 });
+  const [fx, setFx] = useState<{ kind: FxKind; msg?: string; n: number } | null>(null);
+  const [keyNonce, setKeyNonce] = useState(0);
+  const [nodNonce, setNodNonce] = useState(0);
+  const [slideNonce, setSlideNonce] = useState(0);
+  const [stretchKey, setStretchKey] = useState(0);
+  const [particles, setParticles] = useState<{ id: number; text: string }[]>([]);
+  const [particleId, setParticleId] = useState(0);
+
+  const react = (kind: FxKind, msg?: string) => setFx((f) => ({ kind, msg, n: (f?.n ?? 0) + 1 }));
 
   const wide = width >= 900;
   const size = wide ? 132 : 96;
@@ -173,7 +265,12 @@ export default function Mascot() {
   const defaultBottom = wide ? 10 : panel === 'editor' ? (symbolBar ? 84 : 40) + (runActive ? 96 : 0) : 10;
   const right = savedPos && area.w ? clamp(savedPos.right, 4, area.w - size - 4) : 14;
   const bottom = savedPos && area.h ? clamp(savedPos.bottom, 4, area.h - size - 4) : defaultBottom;
-  const side: 'left' | 'right' = area.w && area.w - right - size / 2 < area.w / 2 ? 'left' : 'right';
+  const centerX = area.w - right - size / 2;
+  const side: 'left' | 'right' = area.w && centerX < area.w / 2 ? 'left' : 'right';
+  // mira hacia el editor (a la izquierda salvo que lo hayas puesto a la izquierda del editor)
+  const editorX = wide ? area.w * 0.27 : area.w / 2;
+  const faceLeft = !area.w || !(wide || panel === 'editor') || editorX <= centerX;
+  const dir = faceLeft ? -1 : 1;
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
@@ -181,27 +278,132 @@ export default function Mascot() {
     return () => sub.remove();
   }, []);
 
-  // ── celebración al corregir un error (de análisis o de ejecución) ──
+  // ── detección de eventos (patrón "estado anterior" durante el render) ──
+  const isRuntimeError = status === 'error' && !!runError && !runError.syntax;
   const hasError = !!staticError || status === 'error';
-  const [prevHasError, setPrevHasError] = useState(hasError);
-  const [prevStatus, setPrevStatus] = useState(status);
-  const [hadRunError, setHadRunError] = useState(false);
+  const breakpoint = status === 'paused' && !!p.notice && p.notice.startsWith('Punto de interrupción');
+  const currentLineText = p.line ? (code.split('\n')[p.line - 1] ?? '') : '';
+  const thinking = status === 'paused' && !breakpoint && /^\s*(\}?\s*else\b|if\s*\(|switch\s*\(|case\b|while\s*\(|for\s*\()/.test(currentLineText);
+
+  const [prev, setPrev] = useState({
+    code,
+    fileId,
+    req: editorRequest?.nonce ?? 0,
+    skipNext: false,
+    hasError,
+    status,
+    hadRunError: false,
+    pausedStep: p.pausedStep,
+    finishedAt: p.finishedAt,
+    outCount: p.outCount,
+    runSeq: p.runSeq,
+    sleeping: false,
+  });
   const [fixCount, setFixCount] = useState(0);
   const [celebratedUpTo, setCelebratedUpTo] = useState(0);
-  if (hasError !== prevHasError) {
-    setPrevHasError(hasError);
-    // error del análisis corregido al editar (no cuenta si solo empezó otra ejecución)
-    if (prevHasError && !hasError && prevStatus === status) setFixCount((c) => c + 1);
-  }
-  if (status !== prevStatus) {
-    setPrevStatus(status);
-    if (status === 'error') setHadRunError(true);
-    else if (status === 'finished' && hadRunError) {
-      setHadRunError(false);
-      setFixCount((c) => c + 1);
-    }
-  }
+
+  const mood: Mood = petting
+    ? 'pet'
+    : p.dizzy
+      ? 'dizzy'
+      : isRuntimeError
+        ? 'crash'
+        : status === 'input'
+          ? 'waiting'
+          : status === 'running'
+            ? 'running'
+            : breakpoint
+              ? 'alert'
+              : hasError
+                ? 'error'
+                : 'idle';
+
+  const activity = `${code}|${status}|${wake}`;
   const celebrating = fixCount > celebratedUpTo;
+  const sleeping = mood === 'idle' && !celebrating && sleptOn === activity;
+
+  if (
+    prev.code !== code ||
+    prev.fileId !== fileId ||
+    prev.req !== (editorRequest?.nonce ?? 0) ||
+    prev.hasError !== hasError ||
+    prev.status !== status ||
+    prev.pausedStep !== p.pausedStep ||
+    prev.finishedAt !== p.finishedAt ||
+    prev.outCount !== p.outCount ||
+    prev.runSeq !== p.runSeq ||
+    prev.sleeping !== sleeping
+  ) {
+    const next = { ...prev, code, fileId, req: editorRequest?.nonce ?? 0, hasError, status, pausedStep: p.pausedStep, finishedAt: p.finishedAt, outCount: p.outCount, runSeq: p.runSeq, sleeping };
+    // formato / inserción desde el menú: no son "pegados sospechosos"
+    if (next.req !== prev.req && editorRequest) {
+      next.skipNext = true;
+      if (editorRequest.kind === 'replaceAll') react('sparkles', '¡Qué ordenado! ✨');
+    }
+    if (code !== prev.code && fileId === prev.fileId) {
+      if (next.skipNext) next.skipNext = false;
+      else {
+        const d = diffText(prev.code, code);
+        if (d.inserted.length > 40) react('suspicious', '¿De dónde salió todo ese código? 👀 Asegúrate de entenderlo.');
+        else if (d.inserted.length || d.removed) {
+          setKeyNonce((k) => k + 1);
+          const nowLine = lineAt(code, d.at);
+          const oldLine = lineAt(prev.code, Math.min(d.at, prev.code.length));
+          const added = (re: RegExp) => re.test(nowLine) && !re.test(oldLine);
+          if (added(/while\s*\(\s*true\s*\)/)) react('alert', '¡Cuidado! while (true) necesita un break para terminar 👀');
+          else if (added(/console\.log\s*\(/)) react('notes', '♪ ¡Vamos a mostrar algo en la consola!');
+          else if (added(/\bclass\s+[A-Za-z_$]/)) react('hat', '¡Una clase! 🎩 Qué elegante.');
+        }
+      }
+    }
+    // error corregido (al editar) o programa que ahora termina bien
+    if (prev.hasError && !hasError && prev.status === status) setFixCount((c) => c + 1);
+    if (status !== prev.status) {
+      if (status === 'error') next.hadRunError = true;
+      else if (status === 'finished' && prev.hadRunError) {
+        next.hadRunError = false;
+        setFixCount((c) => c + 1);
+      }
+    }
+    // paso a paso: asiente o "rebobina"
+    if (p.pausedStep >= 0 && p.pausedStep !== prev.pausedStep && !breakpoint) {
+      if (prev.pausedStep >= 0 && p.pausedStep < prev.pausedStep) {
+        react('rewind');
+        setSlideNonce((n) => n + 1);
+      } else setNodNonce((n) => n + 1);
+    }
+    // terminó rapidísimo
+    if (p.finishedAt > 0 && prev.finishedAt < 0 && p.mode === 'run' && p.elapsedMs !== null && p.elapsedMs < 1000 && !prev.hadRunError)
+      react('fast', `⚡ ¡Rapidísimo! Terminó en ${p.elapsedMs} ms.`);
+    // burbujas de salida (máx. 4 a la vez)
+    const newOutput = p.runSeq !== prev.runSeq ? p.outCount > 0 : p.outCount > prev.outCount;
+    if (newOutput && p.lastOut && particles.length < 4) {
+      setParticles((arr) => [...arr, { id: particleId + 1, text: p.lastOut.slice(0, 14) }]);
+      setParticleId((n) => n + 1);
+    }
+    // se estira al despertar
+    if (prev.sleeping && !sleeping) {
+      setStretchKey((k) => k + 1);
+      react('yawn', '¡Aaah! 🥱 ¡Ya desperté!');
+    }
+    setPrev(next);
+  }
+
+  // cada burbuja de salida vive ~1 s (respaldo por si su animación no termina)
+  useEffect(() => {
+    if (!particles.length) return;
+    const id = setTimeout(() => setParticles((arr) => arr.slice(1)), 1100);
+    return () => clearTimeout(id);
+  }, [particles]);
+
+  // limpiar la reacción actual
+  useEffect(() => {
+    if (!fx) return;
+    const id = setTimeout(() => setFx(null), FX_MS[fx.kind]);
+    return () => clearTimeout(id);
+  }, [fx]);
+
+  // celebración al corregir
   useEffect(() => {
     if (!fixCount) return;
     if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -209,19 +411,39 @@ export default function Mascot() {
     return () => clearTimeout(id);
   }, [fixCount]);
 
-  const mood: Mood = petting ? 'pet' : dizzy ? 'dizzy' : status === 'running' || status === 'input' ? 'running' : hasError ? 'error' : 'idle';
-
-  // ── dormir tras un rato sin actividad ──
-  const activity = `${file?.code ?? ''}|${status}|${wake}`;
-  const sleeping = mood === 'idle' && !celebrating && sleptOn === activity;
+  // dormir tras un rato sin actividad
   useEffect(() => {
     if (mood !== 'idle') return;
     const id = setTimeout(() => setSleptOn(activity), SLEEP_AFTER_MS);
     return () => clearTimeout(id);
   }, [activity, mood]);
 
-  // ── transición cruzada entre estados ──
-  const vis = { idle: useValue(1), error: useValue(0), running: useValue(0), dizzy: useValue(0), pet: useValue(0) };
+  // ── valores animados del contenedor ──
+  const vis = {
+    idle: useValue(1),
+    error: useValue(0),
+    running: useValue(0),
+    dizzy: useValue(0),
+    pet: useValue(0),
+    waiting: useValue(0),
+    crash: useValue(0),
+    alert: useValue(0),
+  };
+  const face = useValue(-1);
+  const jump = useValue(0);
+  const spin = useValue(0);
+  const lift = useValue(0);
+  const land = useValue(0);
+  const bob = useValue(0);
+  const lean = useValue(0);
+  const nod = useValue(0);
+  const slide = useValue(0);
+  const pan = useState(() => new Animated.ValueXY())[0];
+  const keyTimes = useRef<number[]>([]);
+  const lastExcited = useRef(0);
+  const taps = useRef<number[]>([]);
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     Animated.parallel(
       MOODS.map((k) =>
@@ -233,40 +455,75 @@ export default function Mascot() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mood]);
 
-  // ── truco (salto con giro), levantar al arrastrar y aterrizaje ──
-  const jump = useValue(0);
-  const spin = useValue(0);
-  const lift = useValue(0);
-  const land = useValue(0);
+  // girar hacia el editor (pasa por 0: parece que se da la vuelta)
+  useEffect(() => {
+    Animated.timing(face, { toValue: faceLeft ? -1 : 1, duration: 320, easing: Easing.inOut(Easing.cubic), useNativeDriver: ND }).start();
+  }, [faceLeft, face]);
+
+  const trick = useCallback(
+    (height = 1) => {
+      spin.setValue(0);
+      Animated.parallel([
+        Animated.sequence([to(jump, height, 260, easeOut), to(jump, 0, 600, Easing.bounce)]),
+        Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.cubic), useNativeDriver: ND }),
+      ]).start();
+    },
+    [jump, spin],
+  );
+
   useEffect(() => {
     if (!fixCount || reduceMotion) return;
-    spin.setValue(0);
-    Animated.parallel([
-      Animated.sequence([to(jump, 1, 260, easeOut), to(jump, 0, 600, Easing.bounce)]),
-      Animated.timing(spin, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.cubic), useNativeDriver: ND }),
-    ]).start();
-  }, [fixCount, reduceMotion, jump, spin]);
+    trick();
+  }, [fixCount, reduceMotion, trick]);
+
+  // al teclear: rebote, inclinación hacia el editor y emoción si tecleas rápido
+  useEffect(() => {
+    if (!keyNonce || reduceMotion) return;
+    Animated.sequence([to(bob, 1, 60, easeOut), to(bob, 0, 140, easeIn)]).start();
+    to(lean, 1, 160).start();
+    const id = setTimeout(() => to(lean, 0, 500).start(), 1200);
+    const now = Date.now();
+    keyTimes.current = [...keyTimes.current.filter((x) => now - x < 2000), now];
+    let excite: ReturnType<typeof setTimeout> | null = null;
+    if (keyTimes.current.length >= 14 && now - lastExcited.current > 6000) {
+      lastExcited.current = now;
+      Animated.sequence([to(jump, 0.35, 120, easeOut), to(jump, 0, 300, Easing.bounce)]).start();
+      excite = setTimeout(() => setFx((f) => ({ kind: 'sparkles', msg: '¡Uy, qué rápido escribes! ✨', n: (f?.n ?? 0) + 1 })), 0);
+    }
+    return () => {
+      clearTimeout(id);
+      if (excite) clearTimeout(excite);
+    };
+  }, [keyNonce, reduceMotion, bob, lean, jump]);
+
+  // asentir en cada paso
+  useEffect(() => {
+    if (!nodNonce || reduceMotion) return;
+    Animated.sequence([to(nod, 1, 130, easeOut), to(nod, 0, 240, easeIn)]).start();
+  }, [nodNonce, reduceMotion, nod]);
+
+  // "rebobinar" al retroceder un paso
+  useEffect(() => {
+    if (!slideNonce || reduceMotion) return;
+    slide.setValue(1);
+    Animated.spring(slide, { toValue: 0, friction: 5, tension: 90, useNativeDriver: ND }).start();
+  }, [slideNonce, reduceMotion, slide]);
 
   const landBounce = useCallback(() => {
     land.setValue(1);
     Animated.spring(land, { toValue: 0, friction: 3, tension: 160, useNativeDriver: ND }).start();
   }, [land]);
 
-  // ── acariciar: vibración suave mientras se mantiene presionado ──
+  // acariciar: vibración suave mientras se mantiene presionado
   useEffect(() => {
     if (!petting || !HAPTICS) return;
     const id = setInterval(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {}), 380);
     return () => clearInterval(id);
   }, [petting]);
 
-  // ── arrastrar ──
-  const pan = useState(() => new Animated.ValueXY())[0];
-  // se recrea solo cuando cambia la geometría (nunca durante un arrastre)
+  // ── arrastrar y lanzar ──
   const responder = useMemo(() => {
-    const finish = (dx: number, dy: number) => {
-      const g = { right, bottom, w: area.w, h: area.h, size };
-      const r = clamp(g.right - dx, 4, Math.max(4, g.w - g.size - 4));
-      const b = clamp(g.bottom - dy, 4, Math.max(4, g.h - g.size - 4));
+    const commit = (r: number, b: number) => {
       useApp.getState().updateSettings({ mascotPos: { right: Math.round(r), bottom: Math.round(b) } });
       pan.setValue({ x: 0, y: 0 });
       setDragging(false);
@@ -274,6 +531,33 @@ export default function Mascot() {
       land.setValue(1);
       Animated.spring(land, { toValue: 0, friction: 3, tension: 160, useNativeDriver: ND }).start();
       if (HAPTICS) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    };
+    const finish = (dx: number, dy: number, vx: number, vy: number) => {
+      const maxR = Math.max(4, area.w - size - 4);
+      const maxB = Math.max(4, area.h - size - 4);
+      const r0 = right - dx;
+      const b0 = bottom - dy;
+      if (Math.hypot(vx, vy) < 0.8) return commit(clamp(r0, 4, maxR), clamp(b0, 4, maxB));
+      // lanzado: sigue por inercia y rebota en los bordes
+      const k = 260;
+      let r = r0 - vx * k;
+      let b = b0 - vy * k;
+      const wallR = clamp(r, 4, maxR);
+      const wallB = clamp(b, 4, maxB);
+      if (r !== wallR) r = clamp(wallR + (wallR - r) * 0.35, 4, maxR);
+      if (b !== wallB) b = clamp(wallB + (wallB - b) * 0.35, 4, maxB);
+      const toPan = (rr: number, bb: number) => ({ x: right - rr, y: bottom - bb });
+      spin.setValue(0);
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(pan, { toValue: toPan(wallR, wallB), duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: false }),
+          Animated.timing(pan, { toValue: toPan(r, b), duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: false }),
+        ]),
+        Animated.timing(spin, { toValue: vx > 0 ? 1 : -1, duration: 560, easing: Easing.out(Easing.cubic), useNativeDriver: ND }),
+      ]).start(() => {
+        spin.setValue(0);
+        commit(r, b);
+      });
     };
     const moved = (g: { dx: number; dy: number }) => Math.abs(g.dx) + Math.abs(g.dy) > 8;
     return PanResponder.create({
@@ -286,33 +570,77 @@ export default function Mascot() {
         to(lift, 1, 140).start();
       },
       onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
-      onPanResponderRelease: (_, g) => finish(g.dx, g.dy),
-      onPanResponderTerminate: (_, g) => finish(g.dx, g.dy),
+      onPanResponderRelease: (_, g) => finish(g.dx, g.dy, g.vx, g.vy),
+      onPanResponderTerminate: (_, g) => finish(g.dx, g.dy, 0, 0),
     });
-  }, [right, bottom, area.w, area.h, size, pan, lift, land]);
+  }, [right, bottom, area.w, area.h, size, pan, lift, land, spin]);
+
+  // ── toques: simple (menú), doble (voltereta), muchos (se enoja) ──
+  const onTap = () => {
+    setWake((w) => w + 1);
+    const now = Date.now();
+    taps.current = [...taps.current.filter((x) => now - x < 2500), now];
+    if (taps.current.length >= 6) {
+      taps.current = [];
+      if (tapTimer.current) clearTimeout(tapTimer.current);
+      tapTimer.current = null;
+      setMenuOpen(false);
+      react('angry', '¡Ffff! 😾 Déjame un ratito…');
+      if (!reduceMotion) Animated.sequence([to(slide, 1.6, 220, easeOut), wait(1100), to(slide, 0, 500)]).start();
+      if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return;
+    }
+    if (tapTimer.current) {
+      // doble toque
+      clearTimeout(tapTimer.current);
+      tapTimer.current = null;
+      setMenuOpen(false);
+      if (!reduceMotion) trick(1.35);
+      if (HAPTICS) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      return;
+    }
+    tapTimer.current = setTimeout(() => {
+      tapTimer.current = null;
+      setMenuOpen((o) => !o);
+      if (HAPTICS) Haptics.selectionAsync().catch(() => {});
+    }, 260);
+  };
 
   // ── mensajes ──
+  const errLine = runError?.line ?? staticError?.line ?? null;
+  const isUndefined =
+    (!!staticError && (staticError.rule === 'undefined' || staticError.rule === 'undeclared')) ||
+    (!!runError && (runError.code === 'undefined-var' || runError.code === 'undeclared-assign'));
+  const stackOverflow = isRuntimeError && runError?.code === 'stack-overflow';
+  const many = p.errorCount >= 3;
+
   const message = useMemo(() => {
     if (mood === 'pet') return 'Prrr… prrr… 💕';
     if (mood === 'dizzy') return 'Me mareo… 😵 ¿Un ciclo infinito? Revisa que la condición del ciclo llegue a ser falsa.';
+    if (fx?.msg) return fx.msg;
     if (celebrating) return '¡Arreglado! 🎉 ¡Bien hecho!';
-    if (mood === 'running') return status === 'input' ? 'Te espero: escribe el dato abajo 👇' : '¡Ejecutando tu código a toda velocidad! 🏃‍♂️';
-    if (status === 'error' && runError)
-      return runError.syntax
-        ? `¡Miau! Error de sintaxis${runError.line ? ` en la línea ${runError.line}` : ''}: ${runError.message}`
-        : `¡Ay! Algo falló${runError.line ? ` en la línea ${runError.line}` : ''}: ${runError.message}`;
-    if (staticError) return `¡Miau! Revisa la línea ${staticError.line}: ${staticError.message}`;
+    if (mood === 'crash' && runError) {
+      if (stackOverflow) return `¡Me estoy clonando sin fin! 🌀 Recursión sin caso base${errLine ? ` (línea ${errLine})` : ''}.`;
+      return `¡Auch! 💥 Error de ejecución${errLine ? ` en la línea ${errLine}` : ''}: ${isUndefined ? '🔍 ' : ''}${runError.message}`;
+    }
+    if (mood === 'waiting') return 'Te espero: escribe el dato abajo 👇';
+    if (mood === 'running') return '¡Ejecutando tu código a toda velocidad! 🏃‍♂️';
+    if (mood === 'alert') return `¡Alto! ✋ Punto de interrupción en la línea ${p.line}. Revisa tus variables.`;
+    if (thinking) return 'Mmm… 🤔 ¿Se cumplirá la condición? Avanza un paso para verlo.';
+    if (status === 'error' && runError?.syntax) return `¡Miau! Error de sintaxis${errLine ? ` en la línea ${errLine}` : ''}: ${runError.message}`;
+    if (staticError)
+      return `${many ? `¡Son ${p.errorCount} errores! Empecemos por uno: ` : '¡Miau! '}${isUndefined ? '🔍 ' : ''}Línea ${staticError.line}: ${staticError.message}`;
     if (sleeping) return 'Zzz… (tócame para despertarme)';
     if (status === 'finished') return '¡Listo! El programa terminó sin errores 🎉';
     return TIPS[tip % TIPS.length];
-  }, [mood, status, runError, staticError, sleeping, tip, celebrating]);
+  }, [mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip]);
 
-  const persist = mood === 'error' || mood === 'pet' || mood === 'dizzy' || status === 'input';
+  const persist = ['error', 'crash', 'pet', 'dizzy', 'waiting', 'alert'].includes(mood) || thinking || !!fx;
   const bubbleKey = `${message}#${tip}`;
   const hideBubble = useCallback(() => setHiddenKey(bubbleKey), [bubbleKey]);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const removeParticle = useCallback((id: number) => setParticles((arr) => arr.filter((x) => x.id !== id)), []);
 
-  const errLine = runError?.line ?? staticError?.line ?? null;
   const menuItems: MenuItem[] = useMemo(() => {
     const st = useApp.getState();
     const items: MenuItem[] = [];
@@ -340,6 +668,7 @@ export default function Mascot() {
       },
     });
     if (savedPos) items.push({ icon: 'locate-outline', label: 'Volver a mi lugar', onPress: () => st.updateSettings({ mascotPos: null }) });
+    items.push({ icon: 'chevron-forward-circle-outline', label: 'Minimizar (esconderme en el borde)', color: t.textMuted, onPress: () => setMinimized(true) });
     items.push({
       icon: 'eye-off-outline',
       label: 'Ocultar a Michi',
@@ -359,6 +688,25 @@ export default function Mascot() {
 
   if (!enabled) return null;
 
+  if (minimized) {
+    return (
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill} onLayout={onLayout}>
+        <View pointerEvents="box-none" style={{ position: 'absolute', right: 0, bottom: defaultBottom + 10 }}>
+          <PeekingTail
+            onPress={() => {
+              setMinimized(false);
+              setWake((w) => w + 1);
+              vis[mood].setValue(0);
+              Animated.spring(vis[mood], { toValue: 1, friction: 4, tension: 80, useNativeDriver: ND }).start();
+            }}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  const motion = !reduceMotion;
+  const lp = { s, accent: t.primary, muted: t.textMuted, face };
   const layer = (k: Mood, node: React.ReactNode) => (
     <Animated.View
       key={k}
@@ -368,8 +716,7 @@ export default function Mascot() {
         {
           opacity: vis[k].interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
           transformOrigin: 'center bottom',
-          // mira hacia la izquierda (hacia el editor)
-          transform: [{ scale: vis[k].interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }, { scaleX: -1 }],
+          transform: [{ scale: vis[k].interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }, { scaleX: face }],
         },
       ]}
     >
@@ -377,10 +724,22 @@ export default function Mascot() {
     </Animated.View>
   );
 
-  const label =
-    mood === 'running' ? 'ejecutando' : mood === 'error' ? 'preocupado por un error' : mood === 'dizzy' ? 'mareado' : mood === 'pet' ? 'ronroneando' : sleeping ? 'dormido' : 'en reposo';
+  const labels: Record<Mood, string> = {
+    idle: sleeping ? 'dormida' : 'en reposo',
+    error: 'preocupada por un error',
+    running: 'ejecutando',
+    dizzy: 'mareada',
+    pet: 'ronroneando',
+    waiting: 'esperando un dato',
+    crash: 'golpeada por un error de ejecución',
+    alert: 'alerta en un punto de interrupción',
+  };
   const gap = Math.round(size * 0.2);
-  const motion = !reduceMotion;
+  const headX = faceLeft ? 120 : 210;
+  const particleDx = wide && centerX < area.w * 0.535 ? size * 1.3 : 0;
+  const particleDy = !wide && panel === 'editor' && runActive ? size * 0.9 : -size * 1.1;
+  const fxKind: FxKind | null = fx?.kind ?? (thinking ? 'think' : null);
+  const fxKey = fx ? `fx${fx.n}` : thinking ? `think${p.pausedStep}` : '';
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill} onLayout={onLayout}>
@@ -396,15 +755,13 @@ export default function Mascot() {
         ) : null}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Mascota ${label}`}
-          accessibilityHint="Toca para ver atajos. Mantén presionado para acariciarla. Arrástrala para moverla."
+          accessibilityLabel={`Mascota ${labels[mood]}`}
+          accessibilityHint="Toca para ver atajos, toca dos veces para una voltereta, mantén presionado para acariciarla y arrástrala o lánzala para moverla."
           delayLongPress={380}
-          onPress={() => {
-            setWake((w) => w + 1);
-            setMenuOpen((o) => !o);
-            if (HAPTICS) Haptics.selectionAsync().catch(() => {});
-          }}
+          onPress={onTap}
           onLongPress={() => {
+            if (tapTimer.current) clearTimeout(tapTimer.current);
+            tapTimer.current = null;
             setMenuOpen(false);
             setPetting(true);
             setWake((w) => w + 1);
@@ -424,24 +781,59 @@ export default function Mascot() {
               {
                 transformOrigin: 'center bottom',
                 transform: [
-                  { translateY: jump.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.35] }) },
-                  { rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+                  { translateY: jump.interpolate({ inputRange: [0, 2], outputRange: [0, -size * 0.7] }) },
+                  { translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.04] }) },
+                  { translateX: slide.interpolate({ inputRange: [0, 2], outputRange: [0, -dir * size * 0.5] }) },
+                  { rotate: spin.interpolate({ inputRange: [-1, 1], outputRange: ['-360deg', '360deg'] }) },
+                  { rotate: lean.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${dir * 5}deg`] }) },
+                  { rotate: nod.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${dir * 7}deg`] }) },
                   { scale: lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) },
                   { rotate: lift.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-8deg'] }) },
                   { scaleY: land.interpolate({ inputRange: [-1, 0, 1], outputRange: [1.08, 1, 0.82] }) },
                   { scaleX: land.interpolate({ inputRange: [-1, 0, 1], outputRange: [0.95, 1, 1.12] }) },
+                  { scaleY: bob.interpolate({ inputRange: [0, 1], outputRange: [1, 0.97] }) },
                 ],
               },
             ]}
           >
-            {layer('idle', <IdleLayer active={motion && mood === 'idle'} s={s} accent={t.primary} muted={t.textMuted} sleeping={sleeping} celebrate={finishedAt >= 0 ? `fin-${finishedAt}` : null} />)}
-            {layer('error', <ErrorLayer active={motion && mood === 'error'} s={s} accent={t.primary} muted={t.textMuted} />)}
-            {layer('running', <RunningLayer active={motion && mood === 'running'} s={s} accent={t.primary} muted={t.textMuted} />)}
-            {layer('dizzy', <DizzyLayer active={motion && mood === 'dizzy'} s={s} accent={t.primary} muted={t.textMuted} />)}
-            {layer('pet', <PetLayer active={motion && mood === 'pet'} s={s} accent={t.primary} muted={t.textMuted} />)}
+            {layer(
+              'idle',
+              <IdleLayer
+                active={motion && mood === 'idle'}
+                {...lp}
+                sleeping={sleeping}
+                celebrate={p.finishedAt >= 0 ? `fin-${p.finishedAt}` : null}
+                squint={fx?.kind === 'suspicious' || fx?.kind === 'angry'}
+                stretchKey={stretchKey}
+                chase={!fx && !celebrating && !menuOpen}
+              />,
+            )}
+            {layer('error', <ErrorLayer active={motion && mood === 'error'} {...lp} intense={many} search={isUndefined} />)}
+            {layer('running', <RunningLayer active={motion && mood === 'running'} {...lp} />)}
+            {layer('waiting', <WaitingLayer active={motion && mood === 'waiting'} {...lp} />)}
+            {layer('crash', <CrashLayer active={motion && mood === 'crash'} {...lp} clones={stackOverflow} />)}
+            {layer('alert', <AlertLayer active={mood === 'alert'} {...lp} />)}
+            {layer('dizzy', <DizzyLayer active={motion && mood === 'dizzy'} {...lp} />)}
+            {layer('pet', <PetLayer active={motion && mood === 'pet'} {...lp} />)}
           </Animated.View>
+          {motion && fxKind ? <ReactionFx key={fxKey} kind={fxKind} s={s} headX={headX} headY={105} dir={dir} color={t.text} /> : null}
           {celebrating && motion ? <Confetti key={fixCount} size={size} /> : null}
         </Pressable>
+        {motion
+          ? particles.map((pt) => (
+              <View key={pt.id} pointerEvents="none" style={[styles.particles, { bottom: size * 0.6 }]}>
+                <OutputParticle
+                  text={pt.text}
+                  dx={particleDx}
+                  dy={particleDy}
+                  bg={t.surface}
+                  border={t.primary}
+                  color={t.text}
+                  onDone={() => removeParticle(pt.id)}
+                />
+              </View>
+            ))
+          : null}
       </Animated.View>
     </View>
   );
@@ -473,4 +865,6 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
+  particles: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  peek: { paddingLeft: 4, paddingTop: 6 },
 });

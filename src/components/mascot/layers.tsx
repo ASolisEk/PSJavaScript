@@ -2,7 +2,7 @@
  * Una capa por estado de la mascota. Cada capa anima sus partes (cuerpo,
  * cola, ojos y efectos) solo mientras está activa.
  */
-import React, { useEffect } from 'react';
+import React, { memo, useEffect } from 'react';
 import { Animated, Easing, Image, StyleSheet, View } from 'react-native';
 import { MONO } from '../../ui/theme';
 import { easeIn, easeOut, ND, orbit, to, useLoops, useValue, useValues, wait } from './anim';
@@ -14,6 +14,8 @@ export interface LayerProps {
   s: number;
   accent: string;
   muted: string;
+  /** Orientación (-1 izquierda, 1 derecha): los textos la aplican de nuevo para leerse al derecho. */
+  face?: Animated.Value;
 }
 
 const fill = StyleSheet.absoluteFill;
@@ -43,7 +45,20 @@ function Deco({ d, s, style }: { d: Decoration; s: number; style?: any }) {
 
 // ───────────────────────────── reposo ─────────────────────────────
 
-export function IdleLayer({ active, s, muted, sleeping, celebrate }: LayerProps & { sleeping: boolean; celebrate: string | null }) {
+function IdleLayerImpl({
+  active,
+  s,
+  muted,
+  face,
+  sleeping,
+  celebrate,
+  squint = false,
+  stretchKey = 0,
+  chase = false,
+}: LayerProps & { sleeping: boolean; celebrate: string | null; squint?: boolean; stretchKey?: number; chase?: boolean }) {
+  const stretch = useValue(0);
+  const flyT = useValue(0);
+  const lunge = useValue(0);
   const breathe = useValue(0);
   const sway = useValue(0);
   const tail = useValue(0);
@@ -78,9 +93,45 @@ export function IdleLayer({ active, s, muted, sleeping, celebrate }: LayerProps 
     () => z.forEach((v) => v.setValue(0)),
   );
 
-  // parpadeo aleatorio (a veces doble)
+  // ojos entrecerrados (sospecha)
   useEffect(() => {
     if (!active || sleeping) return;
+    to(half, squint ? 1 : 0, 160).start();
+  }, [active, sleeping, squint, half]);
+
+  // estirarse al despertar
+  useEffect(() => {
+    if (!active || !stretchKey) return;
+    Animated.sequence([to(stretch, 1, 550, easeOut), wait(380), to(stretch, 0, 520)]).start();
+  }, [active, stretchKey, stretch]);
+
+  // de vez en cuando aparece una mosca y le lanza un zarpazo
+  useEffect(() => {
+    if (!active || sleeping || !chase) return;
+    let timer: ReturnType<typeof setTimeout>;
+    let anim: Animated.CompositeAnimation | null = null;
+    const schedule = (ms: number) => {
+      timer = setTimeout(() => {
+        flyT.setValue(0);
+        anim = Animated.parallel([
+          Animated.timing(flyT, { toValue: 1, duration: 3400, easing: Easing.linear, useNativeDriver: ND }),
+          Animated.sequence([wait(1750), to(lunge, 1, 150, easeOut), to(lunge, 0, 420, easeIn)]),
+        ]);
+        anim.start(() => schedule(22000 + Math.random() * 18000));
+      }, ms);
+    };
+    schedule(8000 + Math.random() * 8000);
+    return () => {
+      clearTimeout(timer);
+      anim?.stop();
+      flyT.setValue(0);
+      lunge.setValue(0);
+    };
+  }, [active, sleeping, chase, flyT, lunge]);
+
+  // parpadeo aleatorio (a veces doble)
+  useEffect(() => {
+    if (!active || sleeping || squint) return;
     let timer: ReturnType<typeof setTimeout>;
     let running: Animated.CompositeAnimation | null = null;
     const blinkOnce = () =>
@@ -97,7 +148,7 @@ export function IdleLayer({ active, s, muted, sleeping, celebrate }: LayerProps 
       running?.stop();
       half.setValue(0);
     };
-  }, [active, sleeping, half, closed]);
+  }, [active, sleeping, squint, half, closed]);
 
   // saltito: al terminar un programa y de vez en cuando
   useEffect(() => {
@@ -129,9 +180,13 @@ export function IdleLayer({ active, s, muted, sleeping, celebrate }: LayerProps 
           transformOrigin: 'center bottom',
           transform: [
             { translateY: hop.interpolate({ inputRange: [0, 1], outputRange: [0, -26 * s] }) },
+            { translateX: lunge.interpolate({ inputRange: [0, 1], outputRange: [0, 22 * s] }) },
+            { rotate: lunge.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '8deg'] }) },
             { rotate: sway.interpolate({ inputRange: [-1, 1], outputRange: ['-1.6deg', '1.6deg'] }) },
             { scaleY: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.028] }) },
             { scaleX: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 0.99] }) },
+            { scaleX: stretch.interpolate({ inputRange: [0, 1], outputRange: [1, 1.17] }) },
+            { scaleY: stretch.interpolate({ inputRange: [0, 1], outputRange: [1, 0.85] }) },
           ],
         }}
       >
@@ -155,21 +210,46 @@ export function IdleLayer({ active, s, muted, sleeping, celebrate }: LayerProps 
               { translateX: v.interpolate({ inputRange: [0, 1], outputRange: [0, 44 * s] }) },
               { translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -70 * s] }) },
               { rotate: v.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['-10deg', '8deg', '-6deg'] }) },
-              // la mascota está volteada: el texto se voltea de nuevo para leerse bien
-              { scaleX: -1 },
+              // el texto se voltea igual que la mascota para leerse al derecho
+              { scaleX: face ?? -1 },
             ],
           }}
         >
           z
         </Animated.Text>
       ))}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: (o.left - ERROR.fly.w / 2) * s,
+          top: (o.top - ERROR.fly.h / 2) * s,
+          opacity: flyT.interpolate({ inputRange: [0, 0.03, 0.95, 1], outputRange: [0, 1, 1, 0] }),
+          transform: [
+            { translateX: flyT.interpolate({ inputRange: CHASE.t, outputRange: CHASE.x.map((x) => x * s) }) },
+            { translateY: flyT.interpolate({ inputRange: CHASE.t, outputRange: CHASE.y.map((y) => y * s) }) },
+            { scaleX: flyT.interpolate({ inputRange: [0, 0.4, 0.41, 0.6, 0.61, 1], outputRange: [-1, -1, 1, 1, -1, -1] }) },
+          ],
+        }}
+      >
+        <Image source={ERROR.fly.src} style={{ width: ERROR.fly.w * s, height: ERROR.fly.h * s }} />
+      </Animated.View>
     </View>
   );
 }
 
+/** Recorrido de la mosca que persigue en reposo (coordenadas del sprite, frente = derecha). */
+const CHASE = {
+  t: [0, 0.15, 0.3, 0.45, 0.52, 0.58, 0.75, 1],
+  x: [400, 330, 280, 310, 290, 330, 370, 420],
+  y: [-40, 5, 45, 80, 100, 50, -15, -80],
+};
+
 // ───────────────────────────── error ─────────────────────────────
 
-export function ErrorLayer({ active, s }: LayerProps) {
+function ErrorLayerImpl({ active, s, intense = false, search = false }: LayerProps & { intense?: boolean; search?: boolean }) {
+  const rain = useValues(3);
+  const scan = useValue(0);
   const shake = useValue(0);
   const rock = useValue(0);
   const tail = useValue(0);
@@ -185,7 +265,10 @@ export function ErrorLayer({ active, s }: LayerProps) {
     active,
     () => [
       // temblor nervioso con pausas
-      Animated.sequence([to(shake, 1, 45), to(shake, -1, 70), to(shake, 1, 70), to(shake, -1, 70), to(shake, 0, 45), wait(900)]),
+      Animated.sequence([to(shake, 1, 45), to(shake, -1, 70), to(shake, 1, 70), to(shake, -1, 70), to(shake, 0, 45), wait(intense ? 250 : 900)]),
+      // lluvia de la nube (muchos errores) y lupa buscando (variable no definida)
+      ...rain.map((v, i) => Animated.sequence([wait(i * 210), to(v, 1, 520, easeIn), to(v, 0, 0), wait((2 - i) * 210)])),
+      Animated.sequence([to(scan, 1, 700), to(scan, -1, 1400), to(scan, 0, 700)]),
       Animated.sequence([to(rock, 1, 1100), to(rock, -1, 1100)]),
       Animated.sequence([to(tail, 1, 260, easeOut), to(tail, 0, 300, easeIn)]),
       // mirada inquieta: centro → izquierda → centro → derecha
@@ -199,9 +282,11 @@ export function ErrorLayer({ active, s }: LayerProps) {
       Animated.timing(fly, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: ND }),
       Animated.sequence([to(buzz, 1, 60, Easing.linear), to(buzz, -1, 120, Easing.linear), to(buzz, 0, 60, Easing.linear)]),
     ],
-    () => [shake, rock, tail, left, right, drop, sweat, fly, buzz, ...q].forEach((v) => v.setValue(0)),
+    () => [shake, rock, tail, left, right, drop, sweat, fly, buzz, scan, ...q, ...rain].forEach((v) => v.setValue(0)),
+    [intense],
   );
 
+  const amp = intense ? 7 : 3;
   const o = origin(ERROR);
   const w = ERROR.w * s;
   const h = ERROR.h * s;
@@ -215,7 +300,7 @@ export function ErrorLayer({ active, s }: LayerProps) {
           top: o.top * s,
           transformOrigin: 'center bottom',
           transform: [
-            { translateX: shake.interpolate({ inputRange: [-1, 1], outputRange: [-3 * s, 3 * s] }) },
+            { translateX: shake.interpolate({ inputRange: [-1, 1], outputRange: [-amp * s, amp * s] }) },
             { rotate: rock.interpolate({ inputRange: [-1, 1], outputRange: ['-2.2deg', '2.2deg'] }) },
           ],
         }}
@@ -266,18 +351,83 @@ export function ErrorLayer({ active, s }: LayerProps) {
               ],
             }}
           />
+          {intense
+            ? EXTRA_FLIES.map((f, i) => {
+                const p = orbit(f.rx, f.ry);
+                const n = p.input.length - 1;
+                const sh = Math.round(f.phase * n);
+                return (
+                  <Deco
+                    key={`f${i}`}
+                    d={{ ...ERROR.fly, x: f.x, y: f.y, w: ERROR.fly.w * f.k, h: ERROR.fly.h * f.k }}
+                    s={s}
+                    style={{
+                      transform: [
+                        { translateX: fly.interpolate({ inputRange: p.input, outputRange: p.xs.map((_, j) => p.xs[(j + sh) % n] * s) }) },
+                        { translateY: fly.interpolate({ inputRange: p.input, outputRange: p.ys.map((_, j) => p.ys[(j + sh) % n] * s) }) },
+                        { rotate: buzz.interpolate({ inputRange: [-1, 1], outputRange: ['8deg', '-8deg'] }) },
+                      ],
+                    }}
+                  />
+                );
+              })
+            : null}
+          {intense ? (
+            <View pointerEvents="none" style={{ position: 'absolute', left: 60 * s, top: -112 * s }}>
+              <Animated.Text style={{ fontSize: 64 * s, transform: [{ translateX: rock.interpolate({ inputRange: [-1, 1], outputRange: [-6 * s, 6 * s] }) }] }}>☁️</Animated.Text>
+              {rain.map((v, i) => (
+                <Animated.View
+                  key={i}
+                  style={{
+                    position: 'absolute',
+                    left: (18 + i * 16) * s,
+                    top: 58 * s,
+                    width: Math.max(1.5, 3.5 * s),
+                    height: 14 * s,
+                    borderRadius: 2,
+                    backgroundColor: '#5fa8ff',
+                    opacity: v.interpolate({ inputRange: [0, 0.1, 0.8, 1], outputRange: [0, 1, 1, 0] }),
+                    transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, 46 * s] }) }],
+                  }}
+                />
+              ))}
+            </View>
+          ) : null}
+          {search ? (
+            <Animated.Text
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 205 * s,
+                top: 175 * s,
+                fontSize: 54 * s,
+                transform: [
+                  { translateX: scan.interpolate({ inputRange: [-1, 1], outputRange: [-22 * s, 22 * s] }) },
+                  { rotate: scan.interpolate({ inputRange: [-1, 1], outputRange: ['-14deg', '10deg'] }) },
+                ],
+              }}
+            >
+              🔍
+            </Animated.Text>
+          ) : null}
         </Cat>
       </Animated.View>
     </View>
   );
 }
 
+/** Moscas extra cuando hay muchos errores. */
+const EXTRA_FLIES = [
+  { x: 20, y: 20, rx: 26, ry: 16, phase: 0.4, k: 0.75 },
+  { x: 150, y: -60, rx: 34, ry: 12, phase: 0.75, k: 0.6 },
+];
+
 // ───────────────────────────── ejecutando ─────────────────────────────
 
 const CODE_BITS = ['{ }', ';', '=>', '01', '( )'];
 const FLASH_KEYS = [0, 4, 9, 12, 15, 18, 6, 13];
 
-export function RunningLayer({ active, s, accent, muted }: LayerProps) {
+function RunningLayerImpl({ active, s, accent, muted, face }: LayerProps) {
   const gallop = useValue(0);
   const tail = useValue(0);
   const keys = useValues(FLASH_KEYS.length);
@@ -389,7 +539,7 @@ export function RunningLayer({ active, s, accent, muted }: LayerProps) {
               { translateY: v.interpolate({ inputRange: [0, 1], outputRange: [0, -(90 + i * 10) * s] }) },
               { scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1.15] }) },
               { rotate: v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', i % 2 ? '18deg' : '-14deg'] }) },
-              { scaleX: -1 },
+              { scaleX: face ?? -1 },
             ],
           }}
         >
@@ -399,3 +549,9 @@ export function RunningLayer({ active, s, accent, muted }: LayerProps) {
     </View>
   );
 }
+
+// Memorizados: un re-render del padre recrearía los nodos de interpolación
+// y cortaría las animaciones en curso.
+export const IdleLayer = memo(IdleLayerImpl);
+export const ErrorLayer = memo(ErrorLayerImpl);
+export const RunningLayer = memo(RunningLayerImpl);
