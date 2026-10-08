@@ -1,0 +1,135 @@
+import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
+import { useTheme } from '../ui/theme';
+
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+export function IconButton({
+  icon,
+  label,
+  onPress,
+  disabled,
+  color,
+  active,
+  showLabel,
+  size = 20,
+  style,
+}: {
+  icon: IconName;
+  label: string;
+  onPress(): void;
+  disabled?: boolean;
+  color?: string;
+  active?: boolean;
+  showLabel?: boolean;
+  size?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const t = useTheme();
+  const c = disabled ? t.border : color ?? t.text;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      {...({ title: label } as object) /* tooltip en web */}
+      style={({ pressed }) => [
+        styles.iconBtn,
+        { backgroundColor: active ? t.surfaceAlt : pressed ? t.surfaceAlt : 'transparent' },
+        style,
+      ]}
+    >
+      <Ionicons name={icon} size={size} color={c} />
+      {showLabel ? <Text style={[styles.iconLabel, { color: c }]} numberOfLines={1}>{label}</Text> : null}
+    </Pressable>
+  );
+}
+
+export function Button({
+  label,
+  onPress,
+  icon,
+  kind = 'default',
+  disabled,
+  style,
+}: {
+  label: string;
+  onPress(): void;
+  icon?: IconName;
+  kind?: 'default' | 'primary' | 'danger';
+  disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const t = useTheme();
+  const bg = kind === 'primary' ? t.primary : kind === 'danger' ? t.danger : t.surfaceAlt;
+  const fg = kind === 'default' ? t.text : '#fff';
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.btn, { backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.8 : 1, borderColor: t.border }, style]}
+    >
+      {icon ? <Ionicons name={icon} size={16} color={fg} style={{ marginRight: 6 }} /> : null}
+      <Text style={{ color: fg, fontWeight: '600', fontSize: 14 }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function Tab({ label, active, onPress, badge, icon }: { label: string; active: boolean; onPress(): void; badge?: number | string; icon?: IconName }) {
+  const t = useTheme();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="tab" accessibilityState={{ selected: active }} style={[styles.tab, { borderBottomColor: active ? t.primary : 'transparent' }]}>
+      {icon ? <Ionicons name={icon} size={15} color={active ? t.primary : t.textMuted} style={{ marginRight: 5 }} /> : null}
+      <Text style={{ color: active ? t.primary : t.textMuted, fontWeight: active ? '700' : '500', fontSize: 13 }}>{label}</Text>
+      {badge ? (
+        <View style={[styles.badge, { backgroundColor: t.danger }]}>
+          <Text style={styles.badgeText}>{badge}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+export function Chip({ label, active, onPress, style }: { label: string; active?: boolean; onPress(): void; style?: StyleProp<ViewStyle> }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.chip, { backgroundColor: active ? t.primary : t.surfaceAlt, borderColor: active ? t.primary : t.border }, style]}
+    >
+      <Text style={{ color: active ? t.primaryText : t.text, fontSize: 13, fontWeight: active ? '700' : '500' }} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function SectionTitle({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
+  const t = useTheme();
+  return <Text style={[styles.section, { color: t.textMuted }, style]}>{children}</Text>;
+}
+
+export function Empty({ icon, text }: { icon: IconName; text: string }) {
+  const t = useTheme();
+  return (
+    <View style={styles.empty}>
+      <Ionicons name={icon} size={34} color={t.border} />
+      <Text style={{ color: t.textMuted, textAlign: 'center', marginTop: 8, fontSize: 13, lineHeight: 19 }}>{text}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  iconBtn: { minWidth: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, flexDirection: 'row' },
+  iconLabel: { fontSize: 12, marginLeft: 4, fontWeight: '600' },
+  btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, height: 38, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
+  tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 40, borderBottomWidth: 2 },
+  badge: { marginLeft: 5, minWidth: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, marginRight: 6, marginBottom: 6 },
+  section: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 12, marginBottom: 6 },
+  empty: { alignItems: 'center', justifyContent: 'center', padding: 28 },
+});

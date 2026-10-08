@@ -3,11 +3,12 @@
     "name": "PSJavaScript",
     "slug": "PSJavaScript",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.psjavascript.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -16,10 +17,27 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.psjavascript.app",
+      "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "PSJavaScript",
+      "shortName": "PSJS",
+      "lang": "es",
+      "themeColor": "#2f6fed",
+      "backgroundColor": "#f4f6fa"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "psjavascript",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "description": "Entorno para aprender a programar con JavaScript, inspirado en PSeInt: ejecución paso a paso, prueba de escritorio, diagramas de flujo y exportación a otros lenguajes."
   }
 }

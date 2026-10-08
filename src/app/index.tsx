@@ -1,0 +1,12 @@
+import { Stack } from 'expo-router';
+import React from 'react';
+import IDE from '../components/IDE';
+
+export default function Home() {
+  return (
+    <>
+      <Stack.Screen options={{ title: 'PSJavaScript' }} />
+      <IDE />
+    </>
+  );
+}
