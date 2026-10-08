@@ -1,13 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { Image, Platform, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { Image, Platform, StyleSheet, Text, View, Animated } from 'react-native';
 import { useApp } from '../store/app';
 import { useTheme } from '../ui/theme';
-
-const GIFS = {
-  idle: 'https://i.pinimg.com/originals/1f/b8/1b/1fb81b3b3152e63ffaca019e06f0a7bc.gif', // escribiendo/estudiando
-  confused: 'https://i.pinimg.com/originals/4d/58/ee/4d58ee3a092e554d6fd6dd29628565ba.gif', // dudando/preocupado/sudando
-  running: 'https://i.pinimg.com/originals/00/df/d0/00dfd04aa45a715e1c31fa850c512881.gif', // bailando/tecleando rápido
-};
 
 export default function Mascot() {
   const t = useTheme();
@@ -18,7 +12,7 @@ export default function Mascot() {
   
   const [message, setMessage] = useState('');
   
-  let state: keyof typeof GIFS = 'idle';
+  let state: 'idle' | 'confused' | 'running' = 'idle';
   if (run?.status === 'running' || run?.status === 'input') state = 'running';
   else if (errorCount > 0 || run?.status === 'error') state = 'confused';
   
@@ -34,17 +28,50 @@ export default function Mascot() {
     } else if (run?.status === 'paused') {
       setMessage('Código pausado. ¡Aprovecha para inspeccionar las variables!');
     } else {
-      setMessage('');
+      setMessage('¡Hola! Soy tu asistente. Escribe código y te ayudaré.');
+      const timer = setTimeout(() => {
+        setMessage('');
+      }, 5000);
+      return () => clearTimeout(timer);
     }
   }, [run?.status, run?.error, errorCount, diagnostics]);
   
-  // Magia CSS: Capoo es azul (tono ~200). Garfield es naranja (tono ~30).
-  // Girar el tono -160 o +200 grados y aumentar saturación convierte al gatito en un Garfield.
-  const imageStyle = Platform.OS === 'web' 
-    ? { filter: 'hue-rotate(200deg) saturate(1.8) brightness(1.1) contrast(1.1)' } as any 
-    : {};
+  // En Web usamos mix-blend-mode multiply para volver el fondo blanco transparente
+  const imageStyle = Platform.OS === 'web' ? { mixBlendMode: 'multiply' } as any : {};
 
-  if (!message && state === 'idle') return null;
+  // Animación de rebote (bounce)
+  const bounceAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (state === 'running') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(bounceAnim, { toValue: -8, duration: 100, useNativeDriver: true }),
+          Animated.timing(bounceAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
+        ])
+      ).start();
+    } else if (state === 'confused') {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(bounceAnim, { toValue: -3, duration: 50, useNativeDriver: true }),
+          Animated.timing(bounceAnim, { toValue: 3, duration: 50, useNativeDriver: true }),
+          Animated.timing(bounceAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+          Animated.timing(bounceAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      bounceAnim.stopAnimation();
+      bounceAnim.setValue(0);
+    }
+  }, [state, bounceAnim]);
+
+  // Sprite cropping positions
+  // La imagen original tiene 3 gatos (arriba izq, arriba der, abajo centro)
+  // Ajustamos el tamaño a 340x340 para hacer zoom, y movemos (left, top) para enfocar.
+  const poses = {
+    idle: { left: 0, top: -20 },
+    confused: { left: -160, top: -30 },
+    running: { left: -90, top: -180 },
+  };
 
   return (
     <View style={styles.container} pointerEvents="none">
@@ -54,11 +81,13 @@ export default function Mascot() {
           <View style={[styles.arrow, { borderTopColor: t.surface }]} />
         </View>
       ) : null}
-      <Image
-        source={{ uri: GIFS[state] }}
-        style={[styles.cat, imageStyle]}
-        resizeMode="contain"
-      />
+      <Animated.View style={[styles.catWrapper, { transform: [{ translateY: bounceAnim }, { translateX: state === 'confused' ? bounceAnim : 0 }] }]}>
+        <Image
+          source={require('../../assets/garfield.jpg')}
+          style={[styles.catSprite, poses[state], imageStyle]}
+          resizeMode="cover"
+        />
+      </Animated.View>
     </View>
   );
 }
@@ -71,10 +100,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     zIndex: 9999,
   },
-  cat: {
-    width: 120,
-    height: 120,
+  catWrapper: {
+    width: 150,
+    height: 150,
+    overflow: 'hidden',
     marginRight: 10,
+  },
+  catSprite: {
+    width: 340,
+    height: 340,
+    position: 'absolute',
   },
   bubble: {
     maxWidth: 240,
