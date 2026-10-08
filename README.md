@@ -27,6 +27,21 @@ Entorno para aprender a programar inspirado en [PSeInt](https://pseint.sourcefor
 
 JavaScript soportado: `let/const/var`, funciones (declaraciones, expresiones, flecha, recursión, closures, parámetros por defecto y rest), `if/else`, `switch`, `while`, `do…while`, `for`, `for…of`, `for…in`, etiquetas, `break/continue`, `try/catch/finally/throw`, arreglos y objetos (desestructuración, spread), plantillas de texto, encadenamiento opcional, `??`, clases (herencia, `super`, getters/setters, `static`, campos privados), `Math`, `JSON`, `Map`, `Set`, `Date`, métodos de texto y arreglos (los callbacks de `map/filter/reduce/sort…` también se ejecutan paso a paso) y `setTimeout/setInterval` con tiempo simulado. No soportado: `async/await`, promesas, generadores, módulos, DOM y red.
 
+## Mascota
+
+Michi, el gatito guía (`src/components/Mascot.tsx`), reacciona al estado del programa con animaciones por capas (cuerpo, cola, ojos y efectos) usando `Animated` con driver nativo:
+
+- **Reposo**: respira, se balancea, mueve la cola, parpadea al azar y da saltitos; al terminar un programa celebra. Tras 45 s sin actividad se duerme (ojos cerrados y "Zzz"); se despierta al tocarlo o editar.
+- **Error** (sintaxis o ejecución): tiembla, mira nervioso a los lados, "???" saltando, gota de sudor y una mosca dando vueltas.
+- **Ejecutando**: corre tecleando, con destellos en las teclas, símbolos de código saliendo del teclado y líneas de velocidad.
+
+- **Mareado**: si una ejecución supera muchos pasos (posible ciclo infinito) los ojos giran en espiral y orbitan estrellas.
+- **Celebración**: al corregir un error da un salto con giro, lanza confeti y dice "¡Arreglado!".
+
+Interacción: **tocarlo** abre un menú (Ejecutar/Detener, Explícame el error, Consejo, Volver a su lugar, Ocultar); **mantenerlo presionado** lo acaricia (ronronea, corazones y vibración suave en el teléfono con `expo-haptics`); **arrastrarlo** lo mueve a cualquier lugar y la posición se recuerda.
+
+Los sprites (`assets/mascot/`) se generan desde `assets/mascot.jpg` con `scripts/generar_mascota.py` (quita el fondo blanco conservando el blanco de los ojos, separa la cola y crea los cuadros de parpadeo y mirada). Respeta la opción del sistema "reducir movimiento" y puede ocultarse en Configuración.
+
 ## Arquitectura
 
 ```
@@ -78,3 +93,9 @@ npm run export:web   # sitio estático en dist/
 - Editar el diagrama de flujo y regenerar el código (PSeInt lo permite).
 - Más lenguajes de exportación (Java, C#, PHP…).
 - Verificar el editor en dispositivos iOS/Android reales (la versión web está probada; los bundles nativos compilan).
+
+## Autor y licencia
+
+Creado por **Angel Solis Ek**. PSJavaScript es **código libre** bajo la [licencia MIT](LICENSE): cualquiera puede descargarlo, usarlo, estudiarlo, modificarlo y compartirlo, incluso con fines comerciales, conservando el aviso de copyright.
+
+Descarga el código: <https://github.com/ASolisEk/PSJavaScript>

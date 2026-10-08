@@ -1,12 +1,13 @@
 /** Pantalla principal del entorno: barra de herramientas, editor y paneles. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCode } from '../core/editor/indent';
 import { PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
 import { MONO, useTheme } from '../ui/theme';
 import CodeEditor from './CodeEditor';
+import Footer, { REPO_URL } from './Footer';
 import ExportModal from './modals/ExportModal';
 import FilesModal from './modals/FilesModal';
 import HelpModal from './modals/HelpModal';
@@ -333,12 +334,23 @@ export default function IDE() {
           <View style={{ flex: 1 }}>
             <FileTabs />
           </View>
+          <Pressable
+            onPress={() => Linking.openURL(REPO_URL)}
+            accessibilityRole="link"
+            accessibilityLabel="Ver el código fuente en GitHub"
+            {...({ title: 'Ver el código fuente en GitHub' } as object)}
+            style={({ pressed }) => [styles.repoLink, { borderColor: t.border, backgroundColor: pressed ? t.surfaceAlt : t.surface }]}
+          >
+            <Ionicons name="logo-github" size={16} color={t.text} />
+            {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Código fuente</Text> : null}
+          </Pressable>
         </View>
         <View style={[styles.toolbarWrap, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
           <Toolbar compact={width < 1200} />
         </View>
         <Notice />
 
+        <View style={{ flex: 1 }}>
         {wide ? (
           <View style={{ flex: 1, flexDirection: 'row' }}>
             <View style={{ flex: 1.15, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border }}>{editor}</View>
@@ -365,13 +377,15 @@ export default function IDE() {
             {panel === 'editor' && runActive ? <MiniConsole /> : null}
           </View>
         )}
+          <Mascot />
+        </View>
 
         <InputBar />
         <DebugBar />
         <View style={{ paddingBottom: insets.bottom, backgroundColor: t.surfaceAlt }}>
           <StatusBar />
+          <Footer />
         </View>
-        <Mascot />
       </View>
 
       {modal === 'files' ? <FilesModal /> : null}
@@ -385,6 +399,7 @@ export default function IDE() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 10, paddingTop: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  repoLink: { flexDirection: 'row', alignItems: 'center', height: 28, paddingHorizontal: 9, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, marginHorizontal: 8, marginBottom: 4 },
   brand: { fontSize: 17, fontWeight: '900', marginRight: 10, marginBottom: 8, letterSpacing: -0.5 },
   fileTab: { flexDirection: 'row', alignItems: 'center', height: 34, paddingHorizontal: 12, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, maxWidth: 220 },
   addTab: { height: 34, width: 34, alignItems: 'center', justifyContent: 'center' },

@@ -69,6 +69,8 @@ export default function ConsolePanel() {
   const t = useTheme();
   const run = useApp((s) => s.run);
   const clearConsole = useApp((s) => s.clearConsole);
+  // deja espacio para que la mascota no tape las últimas líneas
+  const mascot = useApp((s) => s.settings.mascot);
   const scroll = useRef<ScrollView>(null);
   const [showInputs, setShowInputs] = useState(false);
 
@@ -111,7 +113,7 @@ export default function ConsolePanel() {
         {output.filter(l => l.kind !== 'canvas').length === 0 ? (
           <Empty icon="terminal-outline" text={'La salida del programa aparecerá aquí.\nPresiona ▶ Ejecutar o ⏭ Paso a paso.'} />
         ) : (
-          <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
+          <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: mascot ? 170 : 12 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
             {output.filter(l => l.kind !== 'canvas').map((l) => (
               <Line key={l.id} l={l} />
             ))}

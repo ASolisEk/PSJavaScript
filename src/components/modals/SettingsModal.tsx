@@ -100,6 +100,7 @@ export default function SettingsModal() {
             <Chip key={n} label={String(n)} active={settings.fontSize === n} onPress={() => update({ fontSize: n })} />
           ))}
         </View>
+        <Row label="Mostrar mascota" hint="Gatito que reacciona a errores, ejecución y reposo. Tócalo para ver consejos." value={settings.mascot} onChange={(v) => update({ mascot: v })} />
         <Row label="Barra de símbolos" hint="Teclas rápidas para { } ( ) ; = etc. (útil en el teléfono)." value={settings.symbolBar} onChange={(v) => update({ symbolBar: v })} />
       </ScrollView>
     </ModalShell>

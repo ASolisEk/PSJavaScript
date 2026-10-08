@@ -33,6 +33,9 @@ export interface Settings {
   diagramMode: 'classic' | 'nassi';
   showFunctions: boolean;
   symbolBar: boolean;
+  mascot: boolean;
+  /** Posición elegida al arrastrar la mascota (distancia a la esquina inferior derecha). */
+  mascotPos: { right: number; bottom: number } | null;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -46,6 +49,8 @@ const DEFAULT_SETTINGS: Settings = {
   diagramMode: 'classic',
   showFunctions: false,
   symbolBar: true,
+  mascot: true,
+  mascotPos: null,
 };
 
 export const SPEEDS = [1200, 700, 400, 200, 80, 20];
