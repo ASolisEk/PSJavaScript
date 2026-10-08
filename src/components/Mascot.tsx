@@ -65,12 +65,12 @@ export default function Mascot() {
   }, [state, bounceAnim]);
 
   // Sprite cropping positions
-  // La imagen original tiene 3 gatos (arriba izq, arriba der, abajo centro)
-  // Ajustamos el tamaño a 340x340 para hacer zoom, y movemos (left, top) para enfocar.
+  // La imagen original tiene 3 gatos en horizontal.
+  // Ajustamos el tamaño a 800x800 y movemos (left, top) para enfocar.
   const poses = {
-    idle: { left: 0, top: -20 },
-    confused: { left: -160, top: -30 },
-    running: { left: -90, top: -180 },
+    idle: { left: -10, top: -230 },
+    confused: { left: -260, top: -230 },
+    running: { left: -540, top: -230 },
   };
 
   return (
@@ -83,7 +83,7 @@ export default function Mascot() {
       ) : null}
       <Animated.View style={[styles.catWrapper, { transform: [{ translateY: bounceAnim }, { translateX: state === 'confused' ? bounceAnim : 0 }] }]}>
         <Image
-          source={require('../../assets/garfield.jpg')}
+          source={require('../../assets/mascot.jpg')}
           style={[styles.catSprite, poses[state], imageStyle]}
           resizeMode="cover"
         />
@@ -101,14 +101,14 @@ const styles = StyleSheet.create({
     zIndex: 9999,
   },
   catWrapper: {
-    width: 150,
-    height: 150,
+    width: 220,
+    height: 220,
     overflow: 'hidden',
     marginRight: 10,
   },
   catSprite: {
-    width: 340,
-    height: 340,
+    width: 800,
+    height: 800,
     position: 'absolute',
   },
   bubble: {
