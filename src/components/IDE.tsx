@@ -18,6 +18,7 @@ import DiagramPanel from './panels/DiagramPanel';
 import ExplainPanel from './panels/ExplainPanel';
 import ProblemsPanel from './panels/ProblemsPanel';
 import VariablesPanel from './panels/VariablesPanel';
+import Mascot from './Mascot';
 import { Button, IconButton, Tab } from './ui';
 
 const PANELS: { id: PanelId; label: string; short: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -370,6 +371,7 @@ export default function IDE() {
         <View style={{ paddingBottom: insets.bottom, backgroundColor: t.surfaceAlt }}>
           <StatusBar />
         </View>
+        <Mascot />
       </View>
 
       {modal === 'files' ? <FilesModal /> : null}
