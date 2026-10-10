@@ -334,6 +334,14 @@ export default function IDE() {
           <View style={{ flex: 1 }}>
             <FileTabs />
           </View>
+          {Platform.OS === 'web' && (
+            <a href="PSJavaScript-Setup.exe" download="PSJavaScript-Setup.exe" style={{ textDecoration: 'none', marginRight: 8 }}>
+              <View style={[styles.repoLink, { borderColor: t.border, backgroundColor: t.surface }]}>
+                <Ionicons name="logo-windows" size={16} color={t.text} />
+                {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Windows</Text> : null}
+              </View>
+            </a>
+          )}
           <Pressable
             onPress={() => Linking.openURL(REPO_URL)}
             accessibilityRole="link"
