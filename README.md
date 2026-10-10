@@ -1,6 +1,6 @@
 # PSJavaScript
 
-Entorno para aprender a programar inspirado en [PSeInt](https://pseint.sourceforge.net/), pero usando **la sintaxis real de JavaScript**. Hecho con React Native + Expo para publicarse en **web, iOS, Android y escritorio** desde un mismo código.
+Entorno para aprender a programar inspirado en [PSeInt](https://pseint.sourceforge.net/), pero usando **la sintaxis real de JavaScript**. Hecho con React Native + Expo para publicarse en **web, iOS, Android y escritorio** desde un mismo código, para estudiantes y de Código Abierto.
 
 ## Funcionalidades (equivalencia con PSeInt)
 
