@@ -38,7 +38,8 @@
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
     "lint": "expo lint",
-    "export:web": "expo export --platform web"
+    "export:web": "expo export --platform web",
+    "build:desktop": "powershell -ExecutionPolicy Bypass -File scripts/build-desktop.ps1"
   },
   "private": true
 }

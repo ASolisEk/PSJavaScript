@@ -76,11 +76,20 @@ npm test             # pruebas del núcleo
 npm run typecheck    # TypeScript (app y pruebas)
 npx expo lint        # ESLint
 npm run export:web   # sitio estático en dist/
+npm run build:desktop # empaqueta la versión web como ejecutable de Windows (.exe)
 ```
+
+Para generar la versión de escritorio de Windows (.exe), asegúrate de tener instalado [Node.js](https://nodejs.org) y ejecuta:
+```bash
+npm install
+npm run build:desktop
+```
+Esto creará el instalador `PSJavaScript-Setup.exe` en la carpeta `public/` y regenerará el sitio web con el enlace actualizado.
 
 ## Publicación multiplataforma
 
-- **Web / escritorio**: `npm run export:web` genera `dist/`, publicable en cualquier hosting estático. Para una app de escritorio instalable se puede servir como PWA o empaquetar `dist/` con Electron o Tauri.
+- **Web**: `npm run export:web` genera `dist/`, publicable en cualquier hosting estático.
+- **Escritorio**: Usa `npm run build:desktop` para generar el empaquetado para Windows automáticamente empleando Electron y `electron-builder`.
 - **iOS y Android**: con EAS (`eas.json` incluido):
   ```bash
   npx eas-cli@latest build --platform android --profile preview   # APK de prueba

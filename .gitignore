@@ -39,3 +39,10 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Electron
+desktop-app
+
+.claude
+CLAUDE.md
+AGENTS.md
