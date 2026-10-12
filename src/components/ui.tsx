@@ -1,13 +1,65 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleProp, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
 import { useTheme } from '../ui/theme';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
+export function Tooltip({
+  text,
+  children,
+  position = 'bottom',
+}: {
+  text: string;
+  children: React.ReactNode;
+  position?: 'top' | 'bottom';
+}) {
+  const t = useTheme();
+  const [hovered, setHovered] = React.useState(false);
+  const domRef = React.useRef<any>(null);
+
+  React.useEffect(() => {
+    if (Platform.OS === 'web' && domRef.current) {
+      try {
+        domRef.current.title = text;
+        domRef.current.setAttribute?.('title', text);
+      } catch {}
+    }
+  }, [text]);
+
+  return (
+    <View
+      ref={domRef}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      style={styles.tooltipContainer}
+    >
+      {children}
+      {hovered ? (
+        <View
+          style={[
+            styles.tooltipBubble,
+            position === 'top' ? styles.tooltipTop : styles.tooltipBottom,
+            {
+              backgroundColor: t.dark ? '#222226' : '#1e1e24',
+              borderColor: t.dark ? '#404048' : '#333338',
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <Text style={styles.tooltipText} numberOfLines={1}>
+            {text}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function IconButton({
   icon,
   label,
+  tooltip,
   onPress,
   disabled,
   color,
@@ -18,6 +70,7 @@ export function IconButton({
 }: {
   icon: IconName;
   label: string;
+  tooltip?: string;
   onPress(): void;
   disabled?: boolean;
   color?: string;
@@ -28,22 +81,56 @@ export function IconButton({
 }) {
   const t = useTheme();
   const c = disabled ? t.border : color ?? t.text;
+  const tipText = tooltip ?? label;
+  const domRef = React.useRef<any>(null);
+  const [hovered, setHovered] = React.useState(false);
+
+  React.useEffect(() => {
+    if (Platform.OS === 'web' && domRef.current) {
+      try {
+        domRef.current.title = tipText;
+        domRef.current.setAttribute?.('title', tipText);
+      } catch {}
+    }
+  }, [tipText]);
+
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      {...({ title: label } as object) /* tooltip en web */}
-      style={({ pressed }) => [
-        styles.iconBtn,
-        { backgroundColor: active ? t.surfaceAlt : pressed ? t.surfaceAlt : 'transparent' },
-        style,
-      ]}
-    >
-      <Ionicons name={icon} size={size} color={c} />
-      {showLabel ? <Text style={[styles.iconLabel, { color: c }]} numberOfLines={1}>{label}</Text> : null}
-    </Pressable>
+    <View style={styles.tooltipContainer}>
+      <Pressable
+        ref={domRef}
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+        style={({ pressed }) => [
+          styles.iconBtn,
+          { backgroundColor: active ? t.surfaceAlt : pressed ? t.surfaceAlt : 'transparent' },
+          style,
+        ]}
+      >
+        <Ionicons name={icon} size={size} color={c} />
+        {showLabel ? <Text style={[styles.iconLabel, { color: c }]} numberOfLines={1}>{label}</Text> : null}
+      </Pressable>
+      {hovered ? (
+        <View
+          style={[
+            styles.tooltipBubble,
+            styles.tooltipBottom,
+            {
+              backgroundColor: t.dark ? '#222226' : '#1e1e24',
+              borderColor: t.dark ? '#404048' : '#333338',
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <Text style={styles.tooltipText} numberOfLines={1}>
+            {tipText}
+          </Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -132,4 +219,33 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, marginRight: 6, marginBottom: 6 },
   section: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase', marginTop: 12, marginBottom: 6 },
   empty: { alignItems: 'center', justifyContent: 'center', padding: 28 },
+  tooltipContainer: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  tooltipBubble: {
+    position: 'absolute',
+    zIndex: 99999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 40,
+  },
+  tooltipBottom: {
+    top: 42,
+  },
+  tooltipTop: {
+    bottom: 42,
+  },
+  tooltipText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
 });

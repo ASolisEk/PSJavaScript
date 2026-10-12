@@ -20,7 +20,7 @@ import ExplainPanel from './panels/ExplainPanel';
 import ProblemsPanel from './panels/ProblemsPanel';
 import VariablesPanel from './panels/VariablesPanel';
 import Mascot from './Mascot';
-import { Button, IconButton, Tab } from './ui';
+import { Button, IconButton, Tab, Tooltip } from './ui';
 
 const PANELS: { id: PanelId; label: string; short: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { id: 'console', label: 'Consola', short: 'Consola', icon: 'terminal-outline' },
@@ -109,31 +109,37 @@ function Toolbar({ compact }: { compact: boolean }) {
   const label = !compact;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar} keyboardShouldPersistTaps="handled">
-      <IconButton icon="folder-open-outline" label="Archivos" onPress={() => setModal('files')} showLabel={label} />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar} style={{ overflow: 'visible' }} keyboardShouldPersistTaps="handled">
+      <IconButton icon="folder-open-outline" label="Archivos" tooltip="Archivos y ejemplos" onPress={() => setModal('files')} showLabel={label} />
       <View style={[styles.sep, { backgroundColor: t.border }]} />
-      <IconButton icon="play" label={status === 'paused' ? 'Continuar' : 'Ejecutar'} color={t.success} onPress={() => runProgram('run')} showLabel={label} disabled={running} />
-      <IconButton icon="play-forward" label="Paso a paso" color={t.primary} onPress={() => runProgram('animate')} showLabel={label} disabled={running} />
-      <IconButton icon="play-skip-forward" label="Siguiente paso" onPress={stepOnce} disabled={status === 'input'} />
-      <IconButton icon="play-skip-back" label="Paso anterior" onPress={stepBack} disabled={!canBack} />
-      <IconButton icon="pause" label="Pausar" onPress={pause} disabled={!running} />
-      <IconButton icon="stop" label="Detener" color={t.danger} onPress={stop} disabled={!active} />
-      <View style={[styles.speed, { borderColor: t.border }]}>
-        <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.max(0, speedIdx - 1)] })} hitSlop={6} accessibilityLabel="Más lento">
-          <Ionicons name="remove" size={16} color={t.textMuted} />
-        </Pressable>
-        <Ionicons name="speedometer-outline" size={15} color={t.textMuted} style={{ marginHorizontal: 4 }} />
-        <Text style={{ color: t.text, fontSize: 12, width: 12, textAlign: 'center' }}>{speedIdx + 1}</Text>
-        <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.min(SPEEDS.length - 1, speedIdx + 1)] })} hitSlop={6} accessibilityLabel="Más rápido">
-          <Ionicons name="add" size={16} color={t.textMuted} />
-        </Pressable>
-      </View>
+      <IconButton icon="play" label={status === 'paused' ? 'Continuar' : 'Ejecutar'} tooltip={status === 'paused' ? 'Continuar ejecución' : 'Ejecutar programa completo'} color={t.success} onPress={() => runProgram('run')} showLabel={label} disabled={running} />
+      <IconButton icon="play-forward" label="Paso a paso" tooltip="Ejecución animada paso a paso" color={t.primary} onPress={() => runProgram('animate')} showLabel={label} disabled={running} />
+      <IconButton icon="play-skip-forward" label="Siguiente paso" tooltip="Siguiente paso (una instrucción)" onPress={stepOnce} disabled={status === 'input'} />
+      <IconButton icon="play-skip-back" label="Paso anterior" tooltip="Paso anterior (retroceder)" onPress={stepBack} disabled={!canBack} />
+      <IconButton icon="pause" label="Pausar" tooltip="Pausar ejecución" onPress={pause} disabled={!running} />
+      <IconButton icon="stop" label="Detener" tooltip="Detener ejecución" color={t.danger} onPress={stop} disabled={!active} />
+      <Tooltip text={`Velocidad paso a paso: nivel ${speedIdx + 1} de 5 (${speed} ms)`}>
+        <View style={[styles.speed, { borderColor: t.border }]}>
+          <Tooltip text="Más lento">
+            <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.max(0, speedIdx - 1)] })} hitSlop={6} accessibilityLabel="Más lento">
+              <Ionicons name="remove" size={16} color={t.textMuted} />
+            </Pressable>
+          </Tooltip>
+          <Ionicons name="speedometer-outline" size={15} color={t.textMuted} style={{ marginHorizontal: 4 }} />
+          <Text style={{ color: t.text, fontSize: 12, width: 12, textAlign: 'center' }}>{speedIdx + 1}</Text>
+          <Tooltip text="Más rápido">
+            <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.min(SPEEDS.length - 1, speedIdx + 1)] })} hitSlop={6} accessibilityLabel="Más rápido">
+              <Ionicons name="add" size={16} color={t.textMuted} />
+            </Pressable>
+          </Tooltip>
+        </View>
+      </Tooltip>
       <View style={[styles.sep, { backgroundColor: t.border }]} />
-      <IconButton icon="add-circle-outline" label="Insertar" onPress={() => setModal('insert')} showLabel={label} />
-      <IconButton icon="color-wand-outline" label="Formatear código" onPress={() => file && replaceCode(formatCode(file.code))} />
-      <IconButton icon="swap-horizontal" label="Exportar" onPress={() => setModal('export')} showLabel={label} />
-      <IconButton icon="settings-outline" label="Configuración y perfil" onPress={() => setModal('settings')} />
-      <IconButton icon="help-circle-outline" label="Ayuda" onPress={() => setModal('help')} />
+      <IconButton icon="add-circle-outline" label="Insertar" tooltip="Insertar comandos y estructuras" onPress={() => setModal('insert')} showLabel={label} />
+      <IconButton icon="color-wand-outline" label="Formatear código" tooltip="Formatear código (auto-indentación)" onPress={() => file && replaceCode(formatCode(file.code))} />
+      <IconButton icon="swap-horizontal" label="Exportar" tooltip="Exportar a otros lenguajes" onPress={() => setModal('export')} showLabel={label} />
+      <IconButton icon="settings-outline" label="Configuración y perfil" tooltip="Configuración y perfil del lenguaje" onPress={() => setModal('settings')} />
+      <IconButton icon="help-circle-outline" label="Ayuda" tooltip="Ayuda y documentación del lenguaje" onPress={() => setModal('help')} />
     </ScrollView>
   );
 }
@@ -428,7 +434,7 @@ const styles = StyleSheet.create({
   brand: { fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
   fileTab: { flexDirection: 'row', alignItems: 'center', height: 34, paddingHorizontal: 12, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, maxWidth: 220 },
   addTab: { height: 34, width: 34, alignItems: 'center', justifyContent: 'center' },
-  toolbarWrap: { borderBottomWidth: StyleSheet.hairlineWidth },
+  toolbarWrap: { borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 100, overflow: 'visible' },
   toolbar: { alignItems: 'center', paddingHorizontal: 6, paddingVertical: 3 },
   sep: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 6 },
   speed: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 6, height: 30, marginLeft: 4 },
