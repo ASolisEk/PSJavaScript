@@ -26,6 +26,8 @@ export const COMMANDS: CatalogItem[] = [
   { label: 'Confirmar', kind: 'command', category: 'Entrada/Salida', insert: 'const ok = confirm("¿Continuar?");$0', doc: 'Pregunta Sí/No. Devuelve true o false.' },
   { label: 'Declarar variable', kind: 'command', category: 'Variables', pseint: 'Definir / <-', insert: 'let variable = $0;', doc: 'Declara una variable que puede cambiar de valor.' },
   { label: 'Declarar constante', kind: 'command', category: 'Variables', insert: 'const NOMBRE = $0;', doc: 'Declara una constante: su valor no puede reasignarse.' },
+  { label: 'Desestructurar arreglo', kind: 'command', category: 'Variables', insert: 'const [primero, segundo] = $0;', doc: 'Extrae elementos de un arreglo en variables independientes.' },
+  { label: 'Desestructurar objeto', kind: 'command', category: 'Variables', insert: 'const { propiedad } = $0;', doc: 'Extrae propiedades de un objeto en variables con el mismo nombre.' },
   { label: 'Asignar', kind: 'command', category: 'Variables', pseint: '<-', insert: 'variable = $0;', doc: 'Cambia el valor de una variable ya declarada.' },
   { label: 'Si-Entonces (if)', kind: 'command', category: 'Condicionales', pseint: 'Si ... Entonces ... FinSi', insert: 'if (condicion) {\n  $0\n}', doc: 'Ejecuta el bloque solo si la condición es verdadera.' },
   { label: 'Si-SiNo (if/else)', kind: 'command', category: 'Condicionales', pseint: 'Si ... SiNo ... FinSi', insert: 'if (condicion) {\n  $0\n} else {\n  \n}', doc: 'Elige entre dos caminos según la condición.' },
@@ -42,6 +44,7 @@ export const COMMANDS: CatalogItem[] = [
   { label: 'Matriz', kind: 'command', category: 'Arreglos', insert: 'const matriz = [\n  [1, 2, 3],\n  [4, 5, 6],\n];$0', doc: 'Arreglo de arreglos (dos dimensiones).' },
   { label: 'Objeto', kind: 'command', category: 'Objetos', insert: 'const persona = {\n  nombre: "Ana",\n  edad: 20,$0\n};', doc: 'Agrupa datos con nombre (propiedades).' },
   { label: 'Clase', kind: 'command', category: 'Objetos', insert: 'class Nombre {\n  constructor(valor) {\n    this.valor = valor;\n  }\n\n  metodo() {\n    $0\n  }\n}', doc: 'Molde para crear objetos con new.' },
+  { label: 'Conjunto (Set)', kind: 'command', category: 'Colecciones', insert: 'const conjunto = new Set([$0]);', doc: 'Crea una colección de valores únicos (sin duplicados).' },
   { label: 'Intentar (try/catch)', kind: 'command', category: 'Errores', insert: 'try {\n  $0\n} catch (error) {\n  console.error(error.message);\n}', doc: 'Atrapa errores para que el programa no se detenga.' },
   { label: 'Lanzar error', kind: 'command', category: 'Errores', insert: 'throw new Error("Mensaje$0");', doc: 'Genera un error que detiene el programa si no se atrapa.' },
   { label: 'Comentario', kind: 'command', category: 'Otros', insert: '// $0', doc: 'Texto que el programa ignora.' },
@@ -129,6 +132,11 @@ export const FUNCTIONS: CatalogItem[] = [
   fn('Object.entries', 'Objetos', 'Object.entries(objeto)', 'Arreglo de pares [clave, valor].'),
   fn('JSON.stringify', 'Objetos', 'JSON.stringify(valor)', 'Convierte un valor a texto JSON.'),
   fn('JSON.parse', 'Objetos', 'JSON.parse(texto)', 'Convierte texto JSON a valor.'),
+  fn('new Set', 'Colecciones', 'new Set(iterable?)', 'Crea una colección con elementos únicos.', undefined, 'new Set($0)'),
+  fn('.add', 'Colecciones', 'set.add(valor)', 'Agrega un valor al conjunto (Set).', undefined, '.add($0)'),
+  fn('.has', 'Colecciones', 'set.has(valor)', 'Devuelve true si el conjunto contiene el valor.', undefined, '.has($0)'),
+  fn('.delete', 'Colecciones', 'set.delete(valor)', 'Elimina un valor del conjunto.', undefined, '.delete($0)'),
+  { label: '.size', kind: 'property', category: 'Colecciones', insert: '.size$0', doc: 'Cantidad de elementos en un Set o Map.' },
   fn('setTimeout', 'Tiempo', 'setTimeout(funcion, milisegundos)', 'Ejecuta la función después de un tiempo (simulado).'),
 ];
 

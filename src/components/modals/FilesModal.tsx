@@ -26,7 +26,7 @@ export default function FilesModal() {
     () => [...files].sort((a, b) => b.updatedAt - a.updatedAt).filter((f) => !query || f.name.toLowerCase().includes(query.toLowerCase())),
     [files, query],
   );
-  const levels: Level[] = ['Básico', 'Intermedio', 'Avanzado'];
+  const levels: Level[] = ['Básico', 'Intermedio', 'Avanzado', 'Desafíos'];
 
   return (
     <ModalShell title="Archivos" onClose={() => setModal(null)} wide>

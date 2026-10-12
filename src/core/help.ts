@@ -238,6 +238,42 @@ export const HELP: HelpTopic[] = [
     ],
   },
   {
+    id: 'colecciones',
+    title: 'Colecciones (Set y Map)',
+    group: 'Lenguaje',
+    blocks: [
+      { p: 'Set almacena valores únicos (sin duplicados). Map almacena pares clave-valor donde cualquier tipo puede ser clave.' },
+      { code: 'const numeros = new Set([1, 2, 2, 3]);\nnumeros.add(4);\nconsole.log(numeros.has(2)); // true\nconsole.log(numeros.size);    // 4\n\nconst mapa = new Map();\nmapa.set("a", 10);\nconsole.log(mapa.get("a"));   // 10' },
+      { p: 'Ambos se pueden recorrer con ciclos for...of y tienen métodos claros para agregar (.add() / .set()), buscar (.has()) y eliminar (.delete()).' },
+    ],
+  },
+  {
+    id: 'desestructuracion',
+    title: 'Desestructuración y operador Spread (...)',
+    group: 'Lenguaje',
+    blocks: [
+      { p: 'La desestructuración permite extraer valores de arreglos u objetos directamente en variables independientes. El operador spread (...) expande elementos.' },
+      { code: 'const [primero, segundo] = [10, 20];\nconst { nombre, edad } = { nombre: "Ana", edad: 21 };\n\nconst listaA = [1, 2];\nconst listaB = [...listaA, 3, 4]; // [1, 2, 3, 4]' },
+      { p: 'Esto hace que el código sea más conciso, legible y expresivo sin necesidad de variables intermedias.' },
+    ],
+  },
+  {
+    id: 'buenas_practicas',
+    title: 'Buenas prácticas esenciales',
+    group: 'Lenguaje',
+    blocks: [
+      { p: 'Reglas recomendadas para escribir código limpio, seguro y fácil de entender:' },
+      { list: [
+        'Usa siempre const por defecto; usa let solo si el valor necesita reasignarse. Evita var.',
+        'Compara siempre con === y !== (igualdad estricta) en lugar de == y != para evitar conversiones implícitas no deseadas.',
+        'Convierte entradas de usuario con Number() y valida con isNaN() antes de operar.',
+        'Usa nombres de variables y funciones descriptivos en camelCase (por ejemplo, calcularPromedio, totalVentas).',
+        'Divide problemas grandes en funciones pequeñas y con un único propósito.',
+        'Maneja casos límite y entradas inesperadas usando condicionales o bloques try...catch.',
+      ] },
+    ],
+  },
+  {
     id: 'limitaciones',
     title: 'Características no soportadas',
     group: 'Lenguaje',

@@ -1,6 +1,6 @@
-/** Colección de ejemplos por nivel de dificultad (como los de PSeInt). */
+/** Colección de ejemplos y desafíos por nivel de dificultad (como los de PSeInt). */
 
-export type Level = 'Básico' | 'Intermedio' | 'Avanzado';
+export type Level = 'Básico' | 'Intermedio' | 'Avanzado' | 'Desafíos';
 
 export interface Example {
   id: string;
@@ -478,6 +478,125 @@ if (esPalindromo(frase)) {
   console.log("Es palíndromo");
 } else {
   console.log("No es palíndromo");
+}
+`,
+  },
+  {
+    id: 'validar',
+    title: 'Validación de entrada',
+    level: 'Básico',
+    description: 'Comprueba si un valor es un número válido usando isNaN y operadores lógicos.',
+    sampleInputs: ['abc', '25'],
+    code: `const entrada = prompt("Ingresa tu edad:");
+const edad = Number(entrada);
+
+if (isNaN(edad) || entrada === "") {
+  console.log("Error: debes ingresar un número válido.");
+} else if (edad < 0 || edad > 120) {
+  console.log("Edad fuera de rango.");
+} else if (edad >= 18) {
+  console.log("Eres mayor de edad.");
+} else {
+  console.log("Eres menor de edad.");
+}
+`,
+  },
+  {
+    id: 'set',
+    title: 'Colecciones únicas con Set',
+    level: 'Intermedio',
+    description: 'Eliminar duplicados de una lista y verificar pertenencia eficiente con Set.',
+    code: `const repetidos = [1, 2, 2, 3, 4, 4, 5, 1];
+const unicos = new Set(repetidos);
+
+unicos.add(10);
+console.log("Tiene el 3?", unicos.has(3));
+console.log("Tiene el 99?", unicos.has(99));
+console.log("Cantidad de elementos únicos:", unicos.size);
+
+for (const elemento of unicos) {
+  console.log("Elemento:", elemento);
+}
+`,
+  },
+  {
+    id: 'desestructuracion',
+    title: 'Desestructuración y Spread',
+    level: 'Intermedio',
+    description: 'Extraer datos de arreglos y objetos, y combinar elementos con el operador spread.',
+    code: `const coordenadas = [15, 30];
+const [x, y] = coordenadas;
+console.log("X:", x, "Y:", y);
+
+const usuario = { nombre: "Carlos", rol: "Estudiante", nivel: 2 };
+const { nombre, rol } = usuario;
+console.log(\`Usuario: \${nombre} (\${rol})\`);
+
+const primos = [2, 3, 5];
+const pares = [4, 6, 8];
+const combinados = [...primos, ...pares];
+console.log("Combinados:", combinados);
+`,
+  },
+  {
+    id: 'fizzbuzz',
+    title: 'Desafío: FizzBuzz',
+    level: 'Desafíos',
+    description: 'Múltiplos de 3 imprimen "Fizz", de 5 "Buzz", y de ambos "FizzBuzz". Clásico de entrevistas.',
+    code: `for (let i = 1; i <= 20; i++) {
+  if (i % 3 === 0 && i % 5 === 0) {
+    console.log("FizzBuzz");
+  } else if (i % 3 === 0) {
+    console.log("Fizz");
+  } else if (i % 5 === 0) {
+    console.log("Buzz");
+  } else {
+    console.log(i);
+  }
+}
+`,
+  },
+  {
+    id: 'palabras',
+    title: 'Desafío: Contar palabras',
+    level: 'Desafíos',
+    description: 'Separa un texto por espacios e ignora espacios vacíos para contar palabras reales.',
+    sampleInputs: ['  Aprender JavaScript con PSJavaScript es genial!  '],
+    code: `const texto = prompt("Ingresa una oración:").trim();
+const partes = texto.split(" ");
+const palabras = [];
+
+for (const p of partes) {
+  if (p !== "") {
+    palabras.push(p);
+  }
+}
+
+console.log("Total de palabras:", palabras.length);
+console.log("Lista:", palabras);
+`,
+  },
+  {
+    id: 'frecuencia',
+    title: 'Desafío: Frecuencia de caracteres',
+    level: 'Desafíos',
+    description: 'Cuenta cuántas veces se repite cada letra en un texto usando un objeto contador.',
+    sampleInputs: ['javascript'],
+    code: `const palabra = prompt("Escribe una palabra:").toLowerCase();
+const conteo = {};
+
+for (let i = 0; i < palabra.length; i++) {
+  const letra = palabra[i];
+  if (conteo[letra]) {
+    conteo[letra]++;
+  } else {
+    conteo[letra] = 1;
+  }
+}
+
+console.log("Frecuencia de letras:");
+for (const letra in conteo) {
+  console.log(\`\${letra}: \${conteo[letra]}\`);
 }
 `,
   },
