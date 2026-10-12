@@ -39,6 +39,7 @@ const packageJson = {
     directories: {
       output: 'out'
     },
+    compression: 'maximum',
     mac: {
       category: 'public.app-category.education',
       target: [

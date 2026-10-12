@@ -71,7 +71,13 @@ DMG_FILE=$(find desktop-app/out -maxdepth 1 -name "*.dmg" | head -n 1)
 
 if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
   cp -f "$DMG_FILE" "public/PSJavaScript.dmg"
-  echo "Instalador guardado en public/PSJavaScript.dmg"
+  DMG_SIZE_BYTES=$(stat -f%z "public/PSJavaScript.dmg" 2>/dev/null || wc -c < "public/PSJavaScript.dmg")
+  DMG_SIZE_MB=$(( DMG_SIZE_BYTES / 1048576 ))
+  echo "Instalador guardado en public/PSJavaScript.dmg (${DMG_SIZE_MB} MB / ${DMG_SIZE_BYTES} bytes)"
+  if [ "$DMG_SIZE_BYTES" -gt 104857600 ]; then
+    echo "ERROR: El archivo .dmg excede el límite de 100 MB de GitHub (${DMG_SIZE_MB} MB)"
+    exit 1
+  fi
 else
   echo "ERROR: No se encontró ningún archivo .dmg en desktop-app/out"
   exit 1
