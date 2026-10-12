@@ -28,7 +28,7 @@ New-Item -ItemType Directory -Path "desktop-app/www" | Out-Null
 Copy-Item -Path "dist/*" -Destination "desktop-app/www" -Recurse
 
 # Eliminar instaladores pesados que pudieran estar en dist para no inflar la app
-Remove-Item -Path "desktop-app/www/*.exe", "desktop-app/www/*.dmg" -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "desktop-app/www/*.exe", "desktop-app/www/*.dmg", "desktop-app/www/*.AppImage", "desktop-app/www/*.deb", "desktop-app/www/*.tar.gz" -Force -ErrorAction SilentlyContinue
 
 # 4. Inyectar fuentes Ionicons en base64 para garantizar soporte 100% offline
 Write-Host "4. Inyectando fuentes Ionicons base64 para visualización de iconos offline..."

@@ -361,6 +361,12 @@ export default function IDE() {
                   {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Windows</Text> : null}
                 </View>
               </a>
+              <a href="PSJavaScript.AppImage" download="PSJavaScript.AppImage" style={{ textDecoration: 'none', marginRight: 8 }}>
+                <View style={[styles.repoLink, { borderColor: t.border, backgroundColor: t.surface }]}>
+                  <Ionicons name="logo-tux" size={16} color={t.text} />
+                  {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Linux</Text> : null}
+                </View>
+              </a>
             </>
           )}
           <Pressable

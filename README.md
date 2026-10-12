@@ -76,7 +76,8 @@ npm test             # pruebas del núcleo
 npm run typecheck    # TypeScript (app y pruebas)
 npx expo lint        # ESLint
 npm run export:web   # sitio estático en dist/
-npm run build:desktop # empaqueta la versión según tu sistema (macOS .dmg o Windows .exe)
+npm run build:desktop # empaqueta la versión según tu sistema (GNU/Linux .AppImage, macOS .dmg o Windows .exe)
+npm run build:desktop:linux # empaqueta específicamente para GNU/Linux (.AppImage / .deb)
 npm run build:desktop:mac # empaqueta específicamente para macOS (.dmg)
 npm run build:desktop:win # empaqueta específicamente para Windows (.exe)
 ```
@@ -84,6 +85,21 @@ npm run build:desktop:win # empaqueta específicamente para Windows (.exe)
 ### Generación de instaladores de escritorio
 
 Asegúrate de tener instalado [Node.js](https://nodejs.org).
+
+- **En GNU/Linux (.AppImage / .deb)**:
+  ```bash
+  npm run build:desktop:linux
+  ```
+  Esto generará el paquete portable `public/PSJavaScript.AppImage` (y opcionalmente `.deb`).
+  Para ejecutar la versión portable:
+  ```bash
+  chmod +x public/PSJavaScript.AppImage
+  ./public/PSJavaScript.AppImage
+  ```
+  O si generas el paquete Debian/Ubuntu:
+  ```bash
+  sudo dpkg -i public/PSJavaScript.deb
+  ```
 
 - **En macOS (.dmg)**:
   ```bash
@@ -97,12 +113,12 @@ Asegúrate de tener instalado [Node.js](https://nodejs.org).
   ```
   Esto generará el instalador `public/PSJavaScript-Setup.exe`.
 
-Ambos comandos copian automáticamente el instalador a la carpeta `public/` y regeneran el sitio web para que los usuarios puedan descargarlo directamente desde los botones de la barra superior.
+Los comandos copian automáticamente el instalador a la carpeta `public/` y regeneran el sitio web para que los usuarios puedan descargarlo directamente desde los botones de la barra superior.
 
 ## Publicación multiplataforma
 
 - **Web**: `npm run export:web` genera `dist/`, publicable en cualquier hosting estático.
-- **Escritorio**: Usa `npm run build:desktop` para generar el empaquetado para macOS (`.dmg`) o Windows (`.exe`) automáticamente empleando Electron y `electron-builder`.
+- **Escritorio**: Usa `npm run build:desktop` para generar el empaquetado para GNU/Linux (`.AppImage` / `.deb`), macOS (`.dmg`) o Windows (`.exe`) automáticamente empleando Electron y `electron-builder`.
 - **iOS y Android**: con EAS (`eas.json` incluido):
   ```bash
   npx eas-cli@latest build --platform android --profile preview   # APK de prueba

@@ -18,12 +18,22 @@ if (fs.existsSync(iconPng)) {
 if (fs.existsSync(iconIcns)) {
   fs.copyFileSync(iconIcns, path.join(desktopDir, 'icon.icns'));
 }
+const licenseFile = path.join(rootDir, 'LICENSE');
+if (fs.existsSync(licenseFile)) {
+  fs.copyFileSync(licenseFile, path.join(desktopDir, 'LICENSE'));
+}
 
 // 2. desktop-app/package.json
 const packageJson = {
   name: 'psjavascript-desktop',
   version: '1.0.0',
   description: 'PSJavaScript Entorno Educativo de Programación',
+  author: {
+    name: 'Angel Solís Ek',
+    email: 'angelsolisek@users.noreply.github.com',
+    url: 'https://github.com/ASolisEk'
+  },
+  desktopName: 'psjavascript.desktop',
   main: 'main.js',
   repository: 'github:ASolisEk/PSJavaScript',
   dependencies: {
@@ -83,12 +93,37 @@ const packageJson = {
       createStartMenuShortcut: true,
       shortcutName: 'PSJavaScript'
     },
+    linux: {
+      category: 'Education',
+      target: [
+        {
+          target: 'AppImage',
+          arch: ['x64']
+        },
+        {
+          target: 'deb',
+          arch: ['x64']
+        }
+      ],
+      icon: 'icon.png',
+      maintainer: 'Angel Solís Ek <angelsolisek@users.noreply.github.com>',
+      synopsis: 'PSJavaScript - Entorno Educativo de Programación',
+      description: 'Entorno de programación y aprendizaje de JavaScript y algoritmos en español'
+    },
+    deb: {
+      packageCategory: 'education',
+      priority: 'optional'
+    },
+    appImage: {
+      license: 'LICENSE'
+    },
     asar: false,
     files: [
       'main.js',
       'package.json',
       'icon.png',
       'icon.icns',
+      'LICENSE',
       'www/**/*'
     ]
   }
