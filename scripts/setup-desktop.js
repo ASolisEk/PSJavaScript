@@ -31,7 +31,7 @@ const packageJson = {
   },
   devDependencies: {
     electron: '30.0.0',
-    'electron-builder': '^24.13.3'
+    'electron-builder': 'latest'
   },
   build: {
     appId: 'com.psjavascript.desktop',
