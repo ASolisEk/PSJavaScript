@@ -1,7 +1,7 @@
 /** Pantalla principal del entorno: barra de herramientas, editor y paneles. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCode } from '../core/editor/indent';
 import { PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
@@ -215,7 +215,7 @@ function DebugBar() {
   const t = useTheme();
   const run = useApp((s) => s.run);
   const { runProgram, stepOnce, stepBack, stop } = useApp.getState();
-  
+
   if (run?.status !== 'paused') return null;
 
   return (
@@ -328,9 +328,16 @@ export default function IDE() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={{ flex: 1, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
         <View style={[styles.header, { borderBottomColor: t.border }]}>
-          <Text style={[styles.brand, { color: t.text }]}>
-            PS<Text style={{ color: '#e8b100' }}>JS</Text>
-          </Text>
+          <View style={styles.brandContainer}>
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.brandIcon}
+              accessibilityLabel="PSJavaScript Icon"
+            />
+            <Text style={[styles.brand, { color: t.text }]}>
+              PS<Text style={{ color: '#e8b100' }}>JS</Text>
+            </Text>
+          </View>
           <View style={{ flex: 1 }}>
             <FileTabs />
           </View>
@@ -358,7 +365,7 @@ export default function IDE() {
             style={({ pressed }) => [styles.repoLink, { borderColor: t.border, backgroundColor: pressed ? t.surfaceAlt : t.surface }]}
           >
             <Ionicons name="logo-github" size={16} color={t.text} />
-            {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Código fuente</Text> : null}
+            {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5, marginRight: 5 }}>Código fuente</Text> : null}
           </Pressable>
         </View>
         <View style={[styles.toolbarWrap, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
@@ -367,32 +374,32 @@ export default function IDE() {
         <Notice />
 
         <View style={{ flex: 1 }}>
-        {wide ? (
-          <View style={{ flex: 1, flexDirection: 'row' }}>
-            <View style={{ flex: 1.15, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border }}>{editor}</View>
-            <View style={{ flex: 1, minWidth: 380 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
-                {PANELS.map((p) => (
-                  <Tab key={p.id} label={p.label} icon={p.icon} active={sidePanel === p.id} onPress={() => setSidePanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
-                ))}
-              </ScrollView>
-              <View style={{ flex: 1 }}>
-                <PanelView id={sidePanel} />
+          {wide ? (
+            <View style={{ flex: 1, flexDirection: 'row' }}>
+              <View style={{ flex: 1.15, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border }}>{editor}</View>
+              <View style={{ flex: 1, minWidth: 380 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
+                  {PANELS.map((p) => (
+                    <Tab key={p.id} label={p.label} icon={p.icon} active={sidePanel === p.id} onPress={() => setSidePanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
+                  ))}
+                </ScrollView>
+                <View style={{ flex: 1 }}>
+                  <PanelView id={sidePanel} />
+                </View>
               </View>
             </View>
-          </View>
-        ) : (
-          <View style={{ flex: 1 }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
-              <Tab label="Código" icon="code-slash" active={panel === 'editor'} onPress={() => setPanel('editor')} />
-              {PANELS.map((p) => (
-                <Tab key={p.id} label={p.short} icon={p.icon} active={panel === p.id} onPress={() => setPanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
-              ))}
-            </ScrollView>
-            <View style={{ flex: 1 }}>{panel === 'editor' ? editor : <PanelView id={panel} />}</View>
-            {panel === 'editor' && runActive ? <MiniConsole /> : null}
-          </View>
-        )}
+          ) : (
+            <View style={{ flex: 1 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
+                <Tab label="Código" icon="code-slash" active={panel === 'editor'} onPress={() => setPanel('editor')} />
+                {PANELS.map((p) => (
+                  <Tab key={p.id} label={p.short} icon={p.icon} active={panel === p.id} onPress={() => setPanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
+                ))}
+              </ScrollView>
+              <View style={{ flex: 1 }}>{panel === 'editor' ? editor : <PanelView id={panel} />}</View>
+              {panel === 'editor' && runActive ? <MiniConsole /> : null}
+            </View>
+          )}
           <Mascot />
         </View>
 
@@ -416,7 +423,9 @@ export default function IDE() {
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 10, paddingTop: 6, borderBottomWidth: StyleSheet.hairlineWidth },
   repoLink: { flexDirection: 'row', alignItems: 'center', height: 28, paddingHorizontal: 9, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, marginHorizontal: 8, marginBottom: 4 },
-  brand: { fontSize: 17, fontWeight: '900', marginRight: 10, marginBottom: 8, letterSpacing: -0.5 },
+  brandContainer: { flexDirection: 'row', alignItems: 'center', marginRight: 10, marginBottom: 7 },
+  brandIcon: { width: 22, height: 22, borderRadius: 5, marginRight: 6 },
+  brand: { fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
   fileTab: { flexDirection: 'row', alignItems: 'center', height: 34, paddingHorizontal: 12, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, maxWidth: 220 },
   addTab: { height: 34, width: 34, alignItems: 'center', justifyContent: 'center' },
   toolbarWrap: { borderBottomWidth: StyleSheet.hairlineWidth },

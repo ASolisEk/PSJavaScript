@@ -82,7 +82,7 @@ export default function ConsolePanel() {
       const op = JSON.parse(cmd.text);
       if (op.type === 'clear') shapes = [];
       else shapes.push(op);
-    } catch (_) {}
+    } catch {}
   }
 
   return (

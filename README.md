@@ -118,6 +118,6 @@ Ambos comandos copian automáticamente el instalador a la carpeta `public/` y re
 
 ## Autor y licencia
 
-Creado por **Angel Solis Ek**. PSJavaScript es **código libre** bajo la [licencia MIT](LICENSE): cualquiera puede descargarlo, usarlo, estudiarlo, modificarlo y compartirlo, incluso con fines comerciales, conservando el aviso de copyright.
+Creado por **Angel Solís Ek**. PSJavaScript es **código libre** bajo la [licencia MIT](LICENSE): cualquiera puede descargarlo, usarlo, estudiarlo, modificarlo y compartirlo, incluso con fines comerciales, conservando el aviso de copyright.
 
 Descarga el código: <https://github.com/ASolisEk/PSJavaScript>

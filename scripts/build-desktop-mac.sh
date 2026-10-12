@@ -13,9 +13,10 @@ echo "=================================================="
 echo "  Compilando PSJavaScript para macOS (.dmg)"
 echo "=================================================="
 
-# 1. Asegurar icono nativo para macOS (.icns)
-echo "1. Verificando icono para macOS (assets/icon.icns)..."
+# 1. Asegurar iconos nativos para macOS y web
+echo "1. Verificando iconos (macOS .icns y web favicon/png)..."
 node scripts/generate-icns.js
+node scripts/generate-web-icons.js
 
 # 2. Compilar versión web con Expo
 echo "2. Exportando aplicación web de React Native..."
