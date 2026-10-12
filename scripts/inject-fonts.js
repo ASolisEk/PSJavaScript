@@ -11,6 +11,11 @@ if (!fs.existsSync(indexHtmlPath)) {
 
 let indexHtml = fs.readFileSync(indexHtmlPath, 'utf8');
 
+if (indexHtml.includes('id="injected-ionicons"')) {
+  console.log('Ionicons font already injected into index.html, skipping.');
+  process.exit(0);
+}
+
 // Find Ionicons font file
 const fontsDir = path.join(wwwDir, 'assets', 'node_modules', '@expo', 'vector-icons', 'build', 'vendor', 'react-native-vector-icons', 'Fonts');
 if (!fs.existsSync(fontsDir)) {

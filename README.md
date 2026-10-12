@@ -76,20 +76,33 @@ npm test             # pruebas del núcleo
 npm run typecheck    # TypeScript (app y pruebas)
 npx expo lint        # ESLint
 npm run export:web   # sitio estático en dist/
-npm run build:desktop # empaqueta la versión web como ejecutable de Windows (.exe)
+npm run build:desktop # empaqueta la versión según tu sistema (macOS .dmg o Windows .exe)
+npm run build:desktop:mac # empaqueta específicamente para macOS (.dmg)
+npm run build:desktop:win # empaqueta específicamente para Windows (.exe)
 ```
 
-Para generar la versión de escritorio de Windows (.exe), asegúrate de tener instalado [Node.js](https://nodejs.org) y ejecuta:
-```bash
-npm install
-npm run build:desktop
-```
-Esto creará el instalador `PSJavaScript-Setup.exe` en la carpeta `public/` y regenerará el sitio web con el enlace actualizado.
+### Generación de instaladores de escritorio
+
+Asegúrate de tener instalado [Node.js](https://nodejs.org).
+
+- **En macOS (.dmg)**:
+  ```bash
+  npm run build:desktop:mac
+  ```
+  Esto generará `public/PSJavaScript.dmg` con soporte nativo para Apple Silicon / Intel, iconos en alta definición (`.icns`), menú del sistema y soporte 100% offline para los iconos del editor.
+
+- **En Windows (.exe)**:
+  ```bash
+  npm run build:desktop:win
+  ```
+  Esto generará el instalador `public/PSJavaScript-Setup.exe`.
+
+Ambos comandos copian automáticamente el instalador a la carpeta `public/` y regeneran el sitio web para que los usuarios puedan descargarlo directamente desde los botones de la barra superior.
 
 ## Publicación multiplataforma
 
 - **Web**: `npm run export:web` genera `dist/`, publicable en cualquier hosting estático.
-- **Escritorio**: Usa `npm run build:desktop` para generar el empaquetado para Windows automáticamente empleando Electron y `electron-builder`.
+- **Escritorio**: Usa `npm run build:desktop` para generar el empaquetado para macOS (`.dmg`) o Windows (`.exe`) automáticamente empleando Electron y `electron-builder`.
 - **iOS y Android**: con EAS (`eas.json` incluido):
   ```bash
   npx eas-cli@latest build --platform android --profile preview   # APK de prueba
