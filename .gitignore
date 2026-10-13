@@ -46,3 +46,7 @@ desktop-app
 .claude
 CLAUDE.md
 AGENTS.md
+
+# Large package archives (>100MB)
+*.tar.gz
+*.zip
