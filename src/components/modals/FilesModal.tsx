@@ -1,6 +1,6 @@
 /** Archivos: programas guardados, ejemplos e importación. */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { EXAMPLES, Level } from '../../core/examples';
 import { useApp } from '../../store/app';

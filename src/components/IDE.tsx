@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pres
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCode } from '../core/editor/indent';
 import { PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
+import type { VarDetail } from '../core/runner';
 import { MONO, useTheme } from '../ui/theme';
 import CodeEditor from './CodeEditor';
 import Footer, { REPO_URL } from './Footer';
@@ -13,6 +14,8 @@ import FilesModal from './modals/FilesModal';
 import HelpModal from './modals/HelpModal';
 import InsertModal from './modals/InsertModal';
 import SettingsModal from './modals/SettingsModal';
+import UpdateModal from './modals/UpdateModal';
+import { checkForUpdate, isNonWeb } from '../core/updater';
 import ConsolePanel, { InputBar } from './panels/ConsolePanel';
 import DesktopPanel from './panels/DesktopPanel';
 import DiagramPanel from './panels/DiagramPanel';
@@ -24,9 +27,9 @@ import { Button, IconButton, Tab, Tooltip } from './ui';
 
 const PANELS: { id: PanelId; label: string; short: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { id: 'console', label: 'Consola', short: 'Consola', icon: 'terminal-outline' },
+  { id: 'diagram', label: 'Diagrama', short: 'Diagrama', icon: 'git-network-outline' },
   { id: 'variables', label: 'Variables', short: 'Variables', icon: 'cube-outline' },
   { id: 'desktop', label: 'Prueba de escritorio', short: 'Escritorio', icon: 'grid-outline' },
-  { id: 'diagram', label: 'Diagrama', short: 'Diagrama', icon: 'git-network-outline' },
   { id: 'explain', label: 'Explicación', short: 'Explicación', icon: 'chatbubbles-outline' },
   { id: 'problems', label: 'Problemas', short: 'Problemas', icon: 'alert-circle-outline' },
 ];
@@ -136,7 +139,17 @@ function Toolbar({ compact }: { compact: boolean }) {
       </Tooltip>
       <View style={[styles.sep, { backgroundColor: t.border }]} />
       <IconButton icon="add-circle-outline" label="Insertar" tooltip="Insertar comandos y estructuras" onPress={() => setModal('insert')} showLabel={label} />
-      <IconButton icon="color-wand-outline" label="Formatear código" tooltip="Formatear código (auto-indentación)" onPress={() => file && replaceCode(formatCode(file.code))} />
+      <IconButton
+        icon="color-wand-outline"
+        label="Formatear"
+        tooltip="Formatear código (auto-indentación)"
+        showLabel={label}
+        onPress={() => {
+          if (!file) return;
+          replaceCode(formatCode(file.code));
+          useApp.getState().setNotice('Código formateado correctamente ✨');
+        }}
+      />
       <IconButton icon="swap-horizontal" label="Exportar" tooltip="Exportar a otros lenguajes" onPress={() => setModal('export')} showLabel={label} />
       <IconButton icon="settings-outline" label="Configuración y perfil" tooltip="Configuración y perfil del lenguaje" onPress={() => setModal('settings')} />
       <IconButton icon="help-circle-outline" label="Ayuda" tooltip="Ayuda y documentación del lenguaje" onPress={() => setModal('help')} />
@@ -186,13 +199,33 @@ function Notice() {
   const t = useTheme();
   const notice = useApp((s) => s.notice);
   const runNotice = useApp((s) => s.run?.notice ?? null);
+  const updateInfo = useApp((s) => s.updateInfo);
   const setNotice = useApp((s) => s.setNotice);
+  const setModal = useApp((s) => s.setModal);
   const text = notice ?? runNotice;
   if (!text) return null;
+
+  const isUpdateNotice = Boolean(updateInfo?.hasUpdate && text.includes('versión'));
+
   return (
-    <View style={[styles.notice, { backgroundColor: t.surfaceAlt, borderBottomColor: t.warning }]}>
-      <Ionicons name="information-circle" size={16} color={t.warning} />
+    <View style={[styles.notice, { backgroundColor: t.surfaceAlt, borderBottomColor: isUpdateNotice ? t.primary : t.warning }]}>
+      <Ionicons name={isUpdateNotice ? 'cloud-download-outline' : 'information-circle'} size={16} color={isUpdateNotice ? t.primary : t.warning} />
       <Text style={{ color: t.text, fontSize: 13, flex: 1, marginLeft: 6 }}>{text}</Text>
+      {isUpdateNotice ? (
+        <Pressable
+          onPress={() => setModal('update')}
+          style={({ pressed }) => ({
+            backgroundColor: t.primary,
+            opacity: pressed ? 0.85 : 1,
+            paddingHorizontal: 10,
+            paddingVertical: 3,
+            borderRadius: 6,
+            marginRight: 6,
+          })}
+        >
+          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Actualizar</Text>
+        </Pressable>
+      ) : null}
       {notice ? <IconButton icon="close" label="Cerrar aviso" size={16} onPress={() => setNotice(null)} /> : null}
     </View>
   );
@@ -208,12 +241,136 @@ function MiniConsole() {
       {lines.map((l) => {
         const color = l.kind === 'error' ? '#ff5555' : l.kind === 'warn' ? '#f1fa8c' : l.kind === 'input' ? '#50fa7b' : '#f8f8f2';
         return (
-          <Text key={l.id} style={{ color, fontFamily: MONO, fontSize: 13, textShadowColor: 'rgba(0, 0, 0, 0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1 }} numberOfLines={1}>
+          <Text
+            key={l.id}
+            style={[
+              { color, fontFamily: MONO, fontSize: 13 },
+              Platform.select({
+                web: { textShadow: '0 1px 1px rgba(0, 0, 0, 0.5)' },
+                default: {
+                  textShadowColor: 'rgba(0, 0, 0, 0.5)',
+                  textShadowOffset: { width: 0, height: 1 },
+                  textShadowRadius: 1,
+                },
+              }),
+            ]}
+            numberOfLines={1}
+          >
             {l.kind === 'input' ? `${l.prompt ?? ''} › ${l.text}` : l.text}
           </Text>
         );
       })}
     </Pressable>
+  );
+}
+
+function FloatingDebugWidget() {
+  const t = useTheme();
+  const run = useApp((s) => s.run);
+  const { runProgram, stepOnce, stepBack, pause, stop } = useApp.getState();
+
+  const isDebugging = Boolean(
+    run && (run.status === 'paused' || run.status === 'input' || (run.status === 'running' && run.mode === 'animate'))
+  );
+
+  if (!isDebugging || !run) return null;
+
+  return (
+    <View
+      style={[
+        styles.floatingDebugWidget,
+        {
+          backgroundColor: t.surfaceAlt,
+          borderColor: t.border,
+          ...Platform.select({
+            web: { boxShadow: '0 3px 6px rgba(0, 0, 0, 0.28)' },
+            default: { shadowColor: '#000' },
+          }),
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.debugStepBadge,
+          {
+            backgroundColor: run.status === 'paused' ? t.warning + '25' : run.status === 'input' ? t.primary + '25' : t.success + '25',
+          },
+        ]}
+      >
+        <Ionicons
+          name={run.status === 'paused' ? 'pause-circle' : run.status === 'input' ? 'keypad-outline' : 'play-forward'}
+          size={14}
+          color={run.status === 'paused' ? t.warning : run.status === 'input' ? t.primary : t.success}
+        />
+        <Text
+          style={{
+            color: run.status === 'paused' ? t.warning : run.status === 'input' ? t.primary : t.success,
+            fontSize: 11,
+            fontWeight: '700',
+            fontFamily: MONO,
+            marginLeft: 5,
+          }}
+        >
+          {run.status === 'input' ? 'Entrada' : `Paso ${run.stepCount}`}
+        </Text>
+      </View>
+
+      <View style={[styles.floatingSep, { backgroundColor: t.border }]} />
+
+      {run.status === 'paused' ? (
+        <>
+          <Tooltip text="Continuar (F5)" position="bottom">
+            <Pressable
+              onPress={() => runProgram('run')}
+              style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+              accessibilityLabel="Continuar (F5)"
+            >
+              <Ionicons name="play" size={16} color={t.success} />
+            </Pressable>
+          </Tooltip>
+
+          <Tooltip text="Siguiente paso (F7 / F10)" position="bottom">
+            <Pressable
+              onPress={stepOnce}
+              style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+              accessibilityLabel="Siguiente paso (F7)"
+            >
+              <Ionicons name="play-skip-forward" size={16} color={t.primary} />
+            </Pressable>
+          </Tooltip>
+
+          <Tooltip text="Paso anterior (Shift+F7)" position="bottom">
+            <Pressable
+              onPress={stepBack}
+              style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+              accessibilityLabel="Paso anterior (Shift+F7)"
+            >
+              <Ionicons name="play-skip-back" size={16} color={t.text} />
+            </Pressable>
+          </Tooltip>
+        </>
+      ) : run.status === 'running' ? (
+        <Tooltip text="Pausar ejecución" position="bottom">
+          <Pressable
+            onPress={pause}
+            style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+            accessibilityLabel="Pausar"
+          >
+            <Ionicons name="pause" size={16} color={t.warning} />
+          </Pressable>
+        </Tooltip>
+      ) : null}
+
+      <Tooltip text="Detener ejecución (Shift+F5)" position="bottom">
+        <Pressable
+          onPress={stop}
+          style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
+          accessibilityLabel="Detener (Shift+F5)"
+        >
+          <Ionicons name="stop" size={16} color={t.danger} />
+        </Pressable>
+      </Tooltip>
+    </View>
   );
 }
 
@@ -255,6 +412,33 @@ export default function IDE() {
     hydrate();
   }, [hydrate]);
 
+  // En plataformas diferentes a web (escritorio / móvil), verificar si existe versión más reciente
+  useEffect(() => {
+    if (!isNonWeb()) return;
+    let mounted = true;
+    const timer = setTimeout(() => {
+      checkForUpdate()
+        .then((res) => {
+          if (!mounted) return;
+          const { setUpdateInfo, setNotice, setModal } = useApp.getState();
+          setUpdateInfo(res);
+          if (res.hasUpdate) {
+            setNotice(`¡Nueva versión v${res.latestVersion} disponible! Toca "Actualizar" para descargar e instalar.`);
+            // Si el usuario no tiene abierto otro modal, mostrar diálogo de actualización
+            if (!useApp.getState().modal) {
+              setModal('update');
+            }
+          }
+        })
+        .catch(() => { });
+    }, 1500);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
   // En pantallas angostas, al terminar una ejecución completa se muestra la consola
   const lastStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -290,18 +474,31 @@ export default function IDE() {
     return () => window.removeEventListener('keydown', onKey);
   }, [onKey]);
 
-  const currentVars = useMemo(() => {
-    if (run?.status !== 'paused' && run?.status !== 'running') return undefined;
+  const varDetails = useMemo(() => {
+    if (!run || (run.status !== 'paused' && run.status !== 'running' && run.status !== 'input')) return undefined;
     const frame = run.frames?.[0];
     if (!frame) return undefined;
-    const m: Record<string, string> = {};
+    const changedSet = new Set((run.changed ?? []).map((c) => c.split('/').pop()!));
+    const m: Record<string, VarDetail> = {};
     for (const scope of frame.scopes) {
       for (const v of scope.vars) {
-        if (!(v.name in m)) m[v.name] = v.value;
+        if (!(v.name in m)) {
+          m[v.name] = {
+            name: v.name,
+            kind: v.kind,
+            type: v.type,
+            value: v.value,
+            changed: changedSet.has(v.name),
+          };
+        }
       }
     }
     return m;
-  }, [run?.status, run?.frames]);
+  }, [run]);
+
+  const isDebugging = Boolean(
+    run && (run.status === 'paused' || run.status === 'input' || (run.status === 'running' && run.mode === 'animate'))
+  );
 
   if (!hydrated || !file) {
     return (
@@ -325,7 +522,8 @@ export default function IDE() {
       diagnostics={diagnostics}
       fontSize={fontSize}
       showSymbolBar={symbolBar && (Platform.OS !== 'web' || !wide)}
-      currentVars={currentVars}
+      varDetails={varDetails}
+      isDebugging={isDebugging}
     />
   );
   const runActive = run && run.status !== 'idle';
@@ -388,8 +586,11 @@ export default function IDE() {
         <View style={{ flex: 1 }}>
           {wide ? (
             <View style={{ flex: 1, flexDirection: 'row' }}>
-              <View style={{ flex: 1.15, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border }}>{editor}</View>
-              <View style={{ flex: 1, minWidth: 380 }}>
+              <View style={{ flex: 1.4, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border, position: 'relative' }}>
+                {editor}
+                <FloatingDebugWidget />
+              </View>
+              <View style={{ flex: 0.8, minWidth: 300 }}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
                   {PANELS.map((p) => (
                     <Tab key={p.id} label={p.label} icon={p.icon} active={sidePanel === p.id} onPress={() => setSidePanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
@@ -408,7 +609,10 @@ export default function IDE() {
                   <Tab key={p.id} label={p.short} icon={p.icon} active={panel === p.id} onPress={() => setPanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
                 ))}
               </ScrollView>
-              <View style={{ flex: 1 }}>{panel === 'editor' ? editor : <PanelView id={panel} />}</View>
+              <View style={{ flex: 1, position: 'relative' }}>
+                {panel === 'editor' ? editor : <PanelView id={panel} />}
+                {panel === 'editor' && <FloatingDebugWidget />}
+              </View>
               {panel === 'editor' && runActive ? <MiniConsole /> : null}
             </View>
           )}
@@ -428,6 +632,7 @@ export default function IDE() {
       {modal === 'settings' ? <SettingsModal /> : null}
       {modal === 'help' ? <HelpModal /> : null}
       {modal === 'insert' ? <InsertModal /> : null}
+      {modal === 'update' ? <UpdateModal /> : null}
     </KeyboardAvoidingView>
   );
 }
@@ -449,4 +654,46 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderBottomWidth: 2 },
   mini: { maxHeight: 92, paddingHorizontal: 10, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth },
+  floatingDebugWidget: {
+    position: 'absolute',
+    top: 10,
+    right: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 3px 6px rgba(0, 0, 0, 0.28)',
+      },
+      default: {
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.28,
+        shadowRadius: 6,
+        elevation: 8,
+      },
+    }),
+    zIndex: 100,
+  },
+  debugStepBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  floatingSep: {
+    width: 1,
+    height: 18,
+    marginHorizontal: 6,
+  },
+  floatingBtn: {
+    padding: 6,
+    borderRadius: 6,
+    marginHorizontal: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

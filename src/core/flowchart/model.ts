@@ -1,12 +1,13 @@
 /**
  * Convierte el AST del programa en bloques estructurados para dibujar
- * diagramas de flujo y diagramas de Nassi-Shneiderman.
+ * diagramas de flujo y diagramas de Nassi-Shneiderman, incluyendo comentarios
+ * y anotaciones presentes en el código fuente.
  */
 import * as acorn from 'acorn';
 
 type N = any;
 
-export type OpShape = 'process' | 'input' | 'output' | 'call' | 'return' | 'terminal' | 'jump';
+export type OpShape = 'process' | 'input' | 'output' | 'call' | 'return' | 'terminal' | 'jump' | 'comment';
 
 export type FBlock =
   | { k: 'seq'; items: FBlock[] }
@@ -27,10 +28,22 @@ export interface FlowDiagram {
   body: FBlock;
 }
 
+export interface BuildFlowOptions {
+  showComments?: boolean;
+}
+
 const OUTPUT_FNS = new Set(['console.log', 'console.info', 'console.warn', 'console.error', 'console.table', 'alert']);
 
-export function buildFlow(code: string): FlowDiagram[] {
-  const ast: N = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'script', locations: true });
+export function buildFlow(code: string, options: BuildFlowOptions = {}): FlowDiagram[] {
+  const showComments = options.showComments ?? true;
+  const comments: acorn.Comment[] = [];
+  const ast: N = acorn.parse(code, {
+    ecmaVersion: 'latest',
+    sourceType: 'script',
+    locations: true,
+    onComment: comments,
+  });
+
   const src = (n: N) => code.slice(n.start, n.end).replace(/\s+/g, ' ').replace(/;$/, '').trim();
   const diagrams: FlowDiagram[] = [];
   const functions: { name: string; node: N; kind: 'function' | 'method' }[] = [];
@@ -95,10 +108,93 @@ export function buildFlow(code: string): FlowDiagram[] {
     return op('process', src(e), n);
   };
 
+  const formatComment = (c: acorn.Comment): string => {
+    if (c.type === 'Line') {
+      return `// ${c.value.trim()}`;
+    }
+    const lines = c.value
+      .split('\n')
+      .map((l) => l.replace(/^\s*\*\s?/, '').trim())
+      .filter((l) => l.length > 0);
+    return lines.length ? lines.map((l) => `/* ${l} */`).join('\n') : '/* */';
+  };
+
+  const getCommentsForRange = (stmts: N[], startRange: number, endRange: number): acorn.Comment[] => {
+    if (!showComments || !comments.length) return [];
+    return comments.filter((c) => {
+      if (c.start < startRange || c.end > endRange) return false;
+      for (const s of stmts) {
+        if (c.start >= s.start && c.end <= s.end) return false;
+      }
+      return true;
+    });
+  };
+
+  const seq = (stmts: N[], startRange?: number, endRange?: number): FBlock => {
+    if (!showComments || startRange === undefined || endRange === undefined) {
+      return { k: 'seq', items: stmts.map(block).filter((b): b is FBlock => b !== null) };
+    }
+
+    const localComments = getCommentsForRange(stmts, startRange, endRange);
+    const entities: ({ kind: 'stmt'; node: N; start: number } | { kind: 'comment'; node: acorn.Comment; start: number })[] = [];
+
+    for (const s of stmts) {
+      entities.push({ kind: 'stmt', node: s, start: s.start });
+    }
+    for (const c of localComments) {
+      entities.push({ kind: 'comment', node: c, start: c.start });
+    }
+    entities.sort((a, b) => a.start - b.start);
+
+    const items: FBlock[] = [];
+    let pendingComment: { text: string; line: number; lastLine: number } | null = null;
+
+    const flushComment = () => {
+      if (pendingComment) {
+        items.push({
+          k: 'op',
+          shape: 'comment',
+          text: pendingComment.text,
+          line: pendingComment.line,
+        });
+        pendingComment = null;
+      }
+    };
+
+    for (const ent of entities) {
+      if (ent.kind === 'comment') {
+        const c = ent.node;
+        const formatted = formatComment(c);
+        const cLine = c.loc?.start.line ?? 0;
+        const cEndLine = c.loc?.end.line ?? cLine;
+        if (pendingComment && c.type === 'Line' && pendingComment.lastLine + 1 === cLine) {
+          pendingComment.text += '\n' + formatted;
+          pendingComment.lastLine = cEndLine;
+        } else {
+          flushComment();
+          pendingComment = {
+            text: formatted,
+            line: cLine,
+            lastLine: cEndLine,
+          };
+        }
+      } else {
+        flushComment();
+        const b = block(ent.node);
+        if (b !== null) {
+          items.push(b);
+        }
+      }
+    }
+    flushComment();
+
+    return { k: 'seq', items };
+  };
+
   const block = (n: N): FBlock | null => {
     switch (n.type) {
       case 'BlockStatement':
-        return seq(n.body);
+        return seq(n.body, n.start, n.end);
       case 'ExpressionStatement':
         return exprBlock(n.expression, n);
       case 'VariableDeclaration': {
@@ -117,25 +213,42 @@ export function buildFlow(code: string): FlowDiagram[] {
         return op('jump', n.label ? `continue ${n.label.name}` : 'continue', n);
       case 'ThrowStatement':
         return op('jump', `throw ${src(n.argument)}`, n);
-      case 'IfStatement':
-        return { k: 'if', cond: src(n.test), line: n.loc.start.line, yes: block(n.consequent) ?? seq([]), no: n.alternate ? block(n.alternate) ?? seq([]) : null };
-      case 'WhileStatement':
-        return { k: 'while', cond: src(n.test), line: n.loc.start.line, body: block(n.body) ?? seq([]) };
-      case 'DoWhileStatement':
-        return { k: 'dowhile', cond: src(n.test), line: n.test.loc.start.line, body: block(n.body) ?? seq([]) };
-      case 'ForStatement':
+      case 'IfStatement': {
+        const yesBlock = n.consequent.type === 'BlockStatement' ? block(n.consequent) : seq([n.consequent], n.test.end, n.consequent.end);
+        let noBlock: FBlock | null = null;
+        if (n.alternate) {
+          if (n.alternate.type === 'BlockStatement' || n.alternate.type === 'IfStatement') {
+            noBlock = block(n.alternate);
+          } else {
+            noBlock = seq([n.alternate], n.consequent.end, n.alternate.end);
+          }
+        }
+        return { k: 'if', cond: src(n.test), line: n.loc.start.line, yes: yesBlock ?? seq([]), no: noBlock };
+      }
+      case 'WhileStatement': {
+        const body = n.body.type === 'BlockStatement' ? block(n.body) : seq([n.body], n.test.end, n.body.end);
+        return { k: 'while', cond: src(n.test), line: n.loc.start.line, body: body ?? seq([]) };
+      }
+      case 'DoWhileStatement': {
+        const body = n.body.type === 'BlockStatement' ? block(n.body) : seq([n.body], n.start, n.body.end);
+        return { k: 'dowhile', cond: src(n.test), line: n.test.loc.start.line, body: body ?? seq([]) };
+      }
+      case 'ForStatement': {
+        const body = n.body.type === 'BlockStatement' ? block(n.body) : seq([n.body], n.start, n.body.end);
         return {
           k: 'for',
           init: n.init ? src(n.init) : '',
           cond: n.test ? src(n.test) : 'true',
           update: n.update ? src(n.update) : '',
           line: n.loc.start.line,
-          body: block(n.body) ?? seq([]),
+          body: body ?? seq([]),
         };
+      }
       case 'ForOfStatement':
       case 'ForInStatement': {
         const left = n.left.type === 'VariableDeclaration' ? src(n.left.declarations[0].id) : src(n.left);
-        return { k: 'forof', variable: left, iterable: src(n.right), of: n.type === 'ForOfStatement', line: n.loc.start.line, body: block(n.body) ?? seq([]) };
+        const body = n.body.type === 'BlockStatement' ? block(n.body) : seq([n.body], n.start, n.body.end);
+        return { k: 'forof', variable: left, iterable: src(n.right), of: n.type === 'ForOfStatement', line: n.loc.start.line, body: body ?? seq([]) };
       }
       case 'SwitchStatement':
         return {
@@ -145,7 +258,7 @@ export function buildFlow(code: string): FlowDiagram[] {
           cases: n.cases.map((c: N) => ({
             label: c.test ? src(c.test) : 'default',
             line: c.loc.start.line,
-            body: seq(c.consequent.filter((s: N) => !(s.type === 'BreakStatement' && !s.label))),
+            body: seq(c.consequent.filter((s: N) => !(s.type === 'BreakStatement' && !s.label)), c.start, c.end),
           })),
         };
       case 'TryStatement':
@@ -170,8 +283,6 @@ export function buildFlow(code: string): FlowDiagram[] {
     return op('process', src(n), n);
   };
 
-  const seq = (stmts: N[]): FBlock => ({ k: 'seq', items: stmts.map(block).filter((b): b is FBlock => b !== null) });
-
   collectFunctions(ast);
 
   diagrams.push({
@@ -179,13 +290,39 @@ export function buildFlow(code: string): FlowDiagram[] {
     name: 'Programa principal',
     kind: 'main',
     line: 1,
-    body: { k: 'seq', items: [{ k: 'op', shape: 'terminal', text: 'Inicio', line: 0 }, seq(ast.body), { k: 'op', shape: 'terminal', text: 'Fin', line: 0 }] },
+    body: {
+      k: 'seq',
+      items: [
+        { k: 'op', shape: 'terminal', text: 'Inicio', line: 0 },
+        seq(ast.body, 0, code.length),
+        { k: 'op', shape: 'terminal', text: 'Fin', line: 0 },
+      ],
+    },
   });
 
   for (const f of functions) {
     const n = f.node;
     const params = n.params.map(src).join(', ');
-    const body: FBlock = n.body.type === 'BlockStatement' ? seq(n.body.body) : op('return', `return ${src(n.body)}`, n.body);
+    const body: FBlock = n.body.type === 'BlockStatement' ? seq(n.body.body, n.body.start, n.body.end) : op('return', `return ${src(n.body)}`, n.body);
+
+    const leadingBlocks: FBlock[] = [];
+    if (showComments) {
+      const leading = comments.filter((c) => {
+        if (c.end > n.start) return false;
+        const gap = code.slice(c.end, n.start);
+        return gap.trim() === '';
+      });
+      if (leading.length) {
+        const text = leading.map(formatComment).join('\n');
+        leadingBlocks.push({
+          k: 'op',
+          shape: 'comment',
+          text,
+          line: leading[0]?.loc?.start.line ?? n.loc.start.line,
+        });
+      }
+    }
+
     diagrams.push({
       id: `${f.name}@${n.start}`,
       name: f.name,
@@ -193,7 +330,12 @@ export function buildFlow(code: string): FlowDiagram[] {
       line: n.loc.start.line,
       body: {
         k: 'seq',
-        items: [{ k: 'op', shape: 'terminal', text: `${f.name}(${params})`, line: n.loc.start.line }, body, { k: 'op', shape: 'terminal', text: `Fin ${f.name}`, line: 0 }],
+        items: [
+          { k: 'op', shape: 'terminal', text: `${f.name}(${params})`, line: n.loc.start.line },
+          ...leadingBlocks,
+          body,
+          { k: 'op', shape: 'terminal', text: `Fin ${f.name}`, line: 0 },
+        ],
       },
     });
   }

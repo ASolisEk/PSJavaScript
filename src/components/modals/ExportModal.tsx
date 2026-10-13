@@ -1,5 +1,5 @@
 /** Exportar a otros lenguajes (PSeInt, Python, C++, lenguaje coloquial). */
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { EXPORT_TARGETS, exportCode } from '../../core/exporters';
 import { useActiveFile, useApp } from '../../store/app';

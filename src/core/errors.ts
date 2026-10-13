@@ -27,7 +27,8 @@ export type ErrorCode =
   | 'uncaught'
   | 'native'
   | 'syntax'
-  | 'step-limit';
+  | 'step-limit'
+  | 'semicolon';
 
 const HINTS: Record<ErrorCode, ErrorHint> = {
   'undefined-var': {
@@ -119,6 +120,10 @@ const HINTS: Record<ErrorCode, ErrorHint> = {
   'step-limit': {
     causes: ['El programa ejecutó demasiados pasos: probablemente un ciclo infinito.'],
     solutions: ['Revisa que la condición del ciclo llegue a ser falsa (que la variable de control cambie).'],
+  },
+  semicolon: {
+    causes: ["La instrucción no termina con ';' como lo exige el perfil de configuración."],
+    solutions: ["Agrega ';' al final de la línea o usa el botón de corrección rápida 'Insertar ;'."],
   },
 };
 

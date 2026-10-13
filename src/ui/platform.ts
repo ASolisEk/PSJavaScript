@@ -12,11 +12,6 @@ export async function confirmDialog(title: string, message: string, okLabel = 'A
   );
 }
 
-export function notify(title: string, message: string) {
-  if (Platform.OS === 'web') window.alert(`${title}\n\n${message}`);
-  else Alert.alert(title, message);
-}
-
 export async function copyText(text: string): Promise<void> {
   await Clipboard.setStringAsync(text);
 }

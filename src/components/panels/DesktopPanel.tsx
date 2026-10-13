@@ -1,5 +1,5 @@
 /** Prueba de escritorio: tabla con la evolución de las variables. */
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useApp } from '../../store/app';
 import { copyText } from '../../ui/platform';

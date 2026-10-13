@@ -41,6 +41,15 @@ jobs:
       - name: Export Web
         run: npx expo export -p web
 
+      - name: Ensure Subpath Favicons in dist
+        run: |
+          REPO_NAME=$(echo ${{ github.repository }} | cut -d'/' -f 2)
+          # Asegurar que las referencias de favicon en dist/index.html incluyan la subruta del repositorio
+          sed -i "s|href=\"/favicon|href=\"/$REPO_NAME/favicon|g" dist/index.html || true
+          sed -i "s|href=\"/apple-touch-icon|href=\"/$REPO_NAME/apple-touch-icon|g" dist/index.html || true
+          sed -i "s|href=\"\./favicon|href=\"/$REPO_NAME/favicon|g" dist/index.html || true
+          sed -i "s|href=\"\./apple-touch-icon|href=\"/$REPO_NAME/apple-touch-icon|g" dist/index.html || true
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

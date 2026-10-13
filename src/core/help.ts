@@ -88,6 +88,7 @@ export const HELP: HelpTopic[] = [
         'Paralelogramo: entrada (prompt) o salida (console.log).',
         'Rombo: decisión (if, switch, condición de ciclos).',
         'Rectángulo con barras: llamada a una función.',
+        'Rectángulo con esquina doblada y borde punteado: comentario o anotación en el código.',
       ] },
       { p: 'También puedes ver el diagrama de Nassi-Shneiderman (estructograma) y exportarlo como imagen vectorial SVG.' },
     ],
@@ -271,6 +272,64 @@ export const HELP: HelpTopic[] = [
         'Divide problemas grandes en funciones pequeñas y con un único propósito.',
         'Maneja casos límite y entradas inesperadas usando condicionales o bloques try...catch.',
       ] },
+    ],
+  },
+  {
+    id: 'truthy_falsy',
+    title: 'Valores Truthy, Falsy y Coerción',
+    group: 'Lenguaje',
+    blocks: [
+      { p: 'En JavaScript, cualquier valor evaluado dentro de una condición (como en un if) se convierte implícitamente a un booleano (true o false). Solo existen 8 valores falsy (que se evalúan como false):' },
+      { table: [
+        ['Valor', 'Tipo', 'Boolean(valor)'],
+        ['false', 'boolean', 'false'],
+        ['0  y  -0', 'number', 'false'],
+        ['0n', 'bigint', 'false'],
+        ['"" (texto vacío)', 'string', 'false'],
+        ['null', 'null', 'false'],
+        ['undefined', 'undefined', 'false'],
+        ['NaN', 'number', 'false'],
+      ] },
+      { p: '¡Cuidado! Todos los demás valores son truthy, incluyendo los arreglos vacíos [] y los objetos vacíos {}.' },
+      { code: 'const lista = [];\nif (lista) {\n  console.log("[] es truthy aunque esté vacío");\n}\n\n// Cortocircuito lógico con && y ||:\nconst nombre = "" || "Invitado"; // "Invitado"\nconsole.log(nombre);' },
+    ],
+  },
+  {
+    id: 'this_context',
+    title: 'El contexto y la palabra clave this',
+    group: 'Lenguaje',
+    blocks: [
+      { p: 'this hace referencia al objeto actual donde se ejecuta una función o método. Su valor depende de la forma en que se invoque la función:' },
+      { list: [
+        'En un método de objeto: this apunta al objeto que tiene el método.',
+        'En una clase: this apunta a la instancia creada con new.',
+        'En una función flecha (() => {}): this no tiene su propio contexto; hereda el this del ámbito exterior donde fue creada (enlace léxico).',
+      ] },
+      { code: 'const reloj = {\n  segundos: 0,\n  iniciar() {\n    // La función flecha conserva el this del objeto reloj:\n    const tick = () => {\n      this.segundos++;\n      console.log("Segundos:", this.segundos);\n    };\n    tick();\n  },\n};\nreloj.iniciar();' },
+    ],
+  },
+  {
+    id: 'prototipos',
+    title: 'Prototipos y Clases',
+    group: 'Lenguaje',
+    blocks: [
+      { p: 'JavaScript utiliza herencia basada en prototipos. Cada objeto tiene un enlace interno a otro objeto (su prototipo) del cual hereda métodos y propiedades.' },
+      { p: 'La sintaxis class de JavaScript moderno es "azúcar sintáctico" sobre este modelo de prototipos, lo que hace que la creación y extensión de clases sea más clara y estructurada.' },
+      { code: 'class Animal {\n  constructor(nombre) {\n    this.nombre = nombre;\n  }\n  hablar() {\n    return `${this.nombre} hace un sonido`;\n  }\n}\n\nclass Perro extends Animal {\n  hablar() {\n    return `${this.nombre} ladra`;\n  }\n}\n\nconst firulais = new Perro("Firulais");\nconsole.log(firulais.hablar());' },
+    ],
+  },
+  {
+    id: 'arreglos_mutabilidad',
+    title: 'Métodos de arreglos y mutabilidad',
+    group: 'Lenguaje',
+    blocks: [
+      { p: 'Es fundamental distinguir entre métodos que modifican el arreglo original (mutables) y los que devuelven uno nuevo (inmutables):' },
+      { table: [
+        ['Tipo', 'Métodos', 'Efecto'],
+        ['Mutables', 'push, pop, shift, unshift, splice, sort, reverse', 'Modifican el arreglo original'],
+        ['Inmutables', 'slice, concat, map, filter, toSorted, toReversed', 'Devuelven un nuevo arreglo'],
+      ] },
+      { code: 'const numeros = [3, 1, 4];\n// Inmutable (recomendado para no alterar datos originales):\nconst ordenados = numeros.toSorted((a, b) => a - b);\nconsole.log("Original:", numeros);    // [3, 1, 4]\nconsole.log("Ordenado:", ordenados);  // [1, 3, 4]' },
     ],
   },
   {

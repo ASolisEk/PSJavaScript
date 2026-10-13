@@ -24,9 +24,10 @@ if (fs.existsSync(licenseFile)) {
 }
 
 // 2. desktop-app/package.json
+const rootPkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 const packageJson = {
   name: 'psjavascript-desktop',
-  version: '1.0.0',
+  version: rootPkg.version || '1.0.1',
   description: 'PSJavaScript Entorno Educativo de Programación',
   author: {
     name: 'Angel Solís Ek',
@@ -136,12 +137,81 @@ fs.writeFileSync(
 );
 
 // 3. desktop-app/main.js
-const mainJs = `const { app, BrowserWindow, session, Menu } = require('electron');
+const mainJs = `const { app, BrowserWindow, session, Menu, shell } = require('electron');
 const path = require('path');
 const express = require('express');
 const fs = require('fs');
+const os = require('os');
+const https = require('https');
+const http = require('http');
+const { spawn } = require('child_process');
 
 let server;
+let currentDownload = null;
+
+function downloadAndInstall(fileUrl, customName, callback) {
+  const defaultExt = process.platform === 'win32' ? '.exe' : process.platform === 'darwin' ? '.dmg' : '.AppImage';
+  const fname = customName || (path.basename(fileUrl.split('?')[0]) || \`PSJavaScript-update\${defaultExt}\`);
+  const targetDir = app.getPath('downloads') || os.tmpdir();
+  const destPath = path.join(targetDir, fname);
+
+  const file = fs.createWriteStream(destPath);
+  currentDownload = { status: 'downloading', percent: 0, received: 0, total: 0, filename: fname, path: destPath };
+
+  function fetchUrl(targetUrl) {
+    const client = targetUrl.startsWith('https') ? https : http;
+    client.get(targetUrl, (response) => {
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        return fetchUrl(response.headers.location);
+      }
+      if (response.statusCode !== 200) {
+        file.close();
+        try { fs.unlinkSync(destPath); } catch {}
+        currentDownload = { status: 'error', error: \`Error HTTP \${response.statusCode}\` };
+        return callback(new Error(\`Error HTTP \${response.statusCode}\`));
+      }
+
+      const total = parseInt(response.headers['content-length'] || '0', 10);
+      let received = 0;
+
+      response.on('data', (chunk) => {
+        received += chunk.length;
+        const percent = total > 0 ? Math.round((received / total) * 100) : 0;
+        currentDownload = { status: 'downloading', percent, received, total, filename: fname, path: destPath };
+      });
+
+      response.pipe(file);
+
+      file.on('finish', () => {
+        file.close(() => {
+          currentDownload = { status: 'installing', percent: 100, received, total, filename: fname, path: destPath };
+          try {
+            if (process.platform === 'linux') {
+              fs.chmodSync(destPath, 0o755);
+              spawn(destPath, [], { detached: true, stdio: 'ignore' }).unref();
+            } else if (process.platform === 'win32') {
+              shell.openPath(destPath);
+            } else if (process.platform === 'darwin') {
+              shell.openPath(destPath);
+            }
+            currentDownload = { status: 'completed', percent: 100, received, total, filename: fname, path: destPath };
+            callback(null, { path: destPath });
+          } catch (e) {
+            currentDownload = { status: 'error', error: e.message };
+            callback(e);
+          }
+        });
+      });
+    }).on('error', (err) => {
+      file.close();
+      try { fs.unlinkSync(destPath); } catch {}
+      currentDownload = { status: 'error', error: err.message };
+      callback(err);
+    });
+  }
+
+  fetchUrl(fileUrl);
+}
 
 function setupMenu(win) {
   if (process.platform === 'darwin') {
@@ -227,6 +297,32 @@ function createWindow() {
   }
 
   const expApp = express();
+  expApp.use(express.json());
+
+  expApp.get('/api/desktop/info', (req, res) => {
+    res.json({
+      isElectron: true,
+      platform: process.platform,
+      arch: process.arch,
+      appVersion: app.getVersion()
+    });
+  });
+
+  expApp.get('/api/desktop/download-progress', (req, res) => {
+    res.json(currentDownload || { status: 'idle' });
+  });
+
+  expApp.post('/api/desktop/install', (req, res) => {
+    const { url, filename } = req.body || {};
+    if (!url) return res.status(400).json({ error: 'URL requerida' });
+
+    downloadAndInstall(url, filename, (err, result) => {
+      if (err) console.error('Error al actualizar:', err);
+      else console.log('Actualización instalada o iniciada:', result);
+    });
+
+    res.json({ started: true });
+  });
 
   expApp.get('*', (req, res) => {
     let urlPath = req.path;

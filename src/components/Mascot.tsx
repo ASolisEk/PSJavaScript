@@ -16,6 +16,12 @@
  *  - interacción: tocar (menú), doble toque (voltereta), muchos toques (se
  *    enoja), mantener (caricias), arrastrar y lanzar (rebota en los bordes),
  *    minimizar (solo asoma la cola), se estira al despertar y caza moscas
+ *  - a ratos (al azar, en reposo) corre a esconderse en el borde y solo asoma
+ *    la cola; vuelve solo, al tocarla o en cuanto pasa algo en el programa
+ *
+ * Vestuarios de temporada (ver mascot/costumes.tsx): se viste solo según la
+ * fecha (Halloween, Día de Muertos, Navidad, fiestas patrias…) o con el
+ * vestuario elegido en Configuración o en su menú.
  */
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -36,15 +42,20 @@ import {
 } from 'react-native';
 import { useActiveFile, useApp } from '../store/app';
 import { useTheme } from '../ui/theme';
-import { easeIn, easeOut, ND, to, useValue, wait } from './mascot/anim';
+import { easeIn, easeOut, ND, startNextFrame, to, useValue, wait } from './mascot/anim';
+import { Ambient, COSTUMES, CostumeProvider, FaceProvider, resolveCostume, useSprites } from './mascot/costumes';
 import { AlertLayer, Confetti, CrashLayer, DizzyLayer, FxKind, OutputParticle, PetLayer, ReactionFx, WaitingLayer } from './mascot/extras';
 import { ErrorLayer, IdleLayer, RunningLayer } from './mascot/layers';
-import { BOX, IDLE } from './mascot/sprites';
+import { BOX } from './mascot/sprites';
 
 type Mood = 'idle' | 'error' | 'running' | 'dizzy' | 'pet' | 'waiting' | 'crash' | 'alert';
 const MOODS: Mood[] = ['idle', 'error', 'running', 'dizzy', 'pet', 'waiting', 'crash', 'alert'];
 
 const SLEEP_AFTER_MS = 45_000;
+/** Cada cuánto (al azar, en reposo) se esconde en el borde y cuánto tarda en volver. */
+const HIDE_EVERY_MS: [number, number] = [120_000, 300_000];
+const HIDE_FOR_MS: [number, number] = [8_000, 20_000];
+const between = ([a, b]: [number, number]) => a + Math.random() * (b - a);
 /** Pasos a partir de los cuales una ejecución rápida "marea" a la mascota. */
 const DIZZY_STEPS = 150_000;
 const HAPTICS = Platform.OS !== 'web';
@@ -62,14 +73,15 @@ const FX_MS: Record<FxKind, number> = {
 };
 
 const TIPS = [
-  '¡Hola! Soy Michi 🐾 Tócame para ver atajos, mantén presionado para acariciarme o arrástrame.',
+  '¡Hola! 🐾 Tócame una vez para ver más o mantenme presionado para acariciarme o moverme.',
   'Toca un número de línea para poner un punto de interrupción.',
   'prompt() siempre devuelve texto: conviértelo con Number().',
   'En la pestaña Diagrama verás tu programa como diagrama de flujo.',
   'La prueba de escritorio muestra cómo cambian tus variables.',
   'Puedes exportar tu código a PSeInt, Python y más.',
   'Usa === para comparar: no convierte los tipos.',
-  'Toca dos veces rápido y verás una voltereta 🤸',
+  'Toca dos veces rápido y verás una voltereta',
+  'A veces me escondo en el borde ¡Toca mi cola para encontrarme!',
 ];
 
 function useProgram() {
@@ -154,7 +166,7 @@ function Bubble({ text, persist, onHide, gap, side }: { text: string; persist: b
     return () => clearTimeout(id);
   }, [persist, onHide]);
   return (
-    <View pointerEvents="none">
+    <View style={{ pointerEvents: 'none' }}>
       <Card gap={gap} side={side}>
         <Text style={{ color: t.text, fontSize: 13, lineHeight: 18 }}>{text}</Text>
       </Card>
@@ -195,8 +207,9 @@ function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; s
   );
 }
 
-/** Mascota minimizada: solo asoma la cola por el borde. */
-function PeekingTail({ onPress }: { onPress(): void }) {
+/** Mascota minimizada o escondida: solo asoma la cola por el borde. */
+function PeekingTail({ onPress, edge, label }: { onPress(): void; edge: 'left' | 'right'; label: string }) {
+  const { IDLE } = useSprites();
   const wag = useValue(0);
   useEffect(() => {
     const a = Animated.loop(Animated.sequence([to(wag, 1, 520), to(wag, -1, 1040), to(wag, 0, 520), wait(600)]));
@@ -205,7 +218,7 @@ function PeekingTail({ onPress }: { onPress(): void }) {
   }, [wag]);
   const s = 0.42;
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel="Mostrar a Michi" style={styles.peek}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={[styles.peek, edge === 'left' && { transform: [{ scaleX: -1 }] }]}>
       <Animated.View
         style={{
           width: 88 * s,
@@ -231,6 +244,7 @@ export default function Mascot() {
   const symbolBar = useApp((s) => s.settings.symbolBar);
   const editorRequest = useApp((s) => s.editorRequest);
   const runActive = useApp((s) => !!s.run && s.run.status !== 'idle');
+  const costumeSetting = useApp((s) => s.settings.mascotCostume);
   const { width } = useWindowDimensions();
   const file = useActiveFile();
   const code = file?.code ?? '';
@@ -246,7 +260,11 @@ export default function Mascot() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [petting, setPetting] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [minimized, setMinimized] = useState(false);
+  // 'manual': desde el menú (vuelve al tocar la cola) · 'auto': se escondió jugando
+  const [minimized, setMinimized] = useState<false | 'manual' | 'auto'>(false);
+  const [sneaking, setSneaking] = useState(false);
+  const [hideEdge, setHideEdge] = useState<'left' | 'right'>('right');
+  const [returnNonce, setReturnNonce] = useState(0);
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [fx, setFx] = useState<{ kind: FxKind; msg?: string; n: number } | null>(null);
   const [keyNonce, setKeyNonce] = useState(0);
@@ -255,8 +273,26 @@ export default function Mascot() {
   const [stretchKey, setStretchKey] = useState(0);
   const [particles, setParticles] = useState<{ id: number; text: string }[]>([]);
   const [particleId, setParticleId] = useState(0);
+  // fecha actual para el vestuario automático (se revisa cada hora)
+  const [today, setToday] = useState(() => new Date());
+  const costume = useMemo(() => resolveCostume(costumeSetting, today), [costumeSetting, today]);
+  const [shownCostume, setShownCostume] = useState(costume?.id ?? null);
+  const [costumeNonce, setCostumeNonce] = useState(0);
+  const tips = useMemo(() => (costume ? [costume.greeting, ...TIPS] : TIPS), [costume]);
 
   const react = (kind: FxKind, msg?: string) => setFx((f) => ({ kind, msg, n: (f?.n ?? 0) + 1 }));
+
+  // al cambiar de vestuario: saluda y da una voltereta
+  if ((costume?.id ?? null) !== shownCostume) {
+    setShownCostume(costume?.id ?? null);
+    setWake((w) => w + 1);
+    setTip(0);
+    setHiddenKey(null);
+    if (costume) {
+      react('sparkles', costume.greeting);
+      setCostumeNonce((n) => n + 1);
+    }
+  }
 
   const wide = width >= 900;
   const size = wide ? 132 : 96;
@@ -273,7 +309,15 @@ export default function Mascot() {
   const dir = faceLeft ? -1 : 1;
 
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const id = setInterval(() => {
+      const now = new Date();
+      setToday((d) => (d.toDateString() === now.toDateString() ? d : now));
+    }, 3_600_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => { });
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
     return () => sub.remove();
   }, []);
@@ -406,7 +450,7 @@ export default function Mascot() {
   // celebración al corregir
   useEffect(() => {
     if (!fixCount) return;
-    if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
     const id = setTimeout(() => setCelebratedUpTo(fixCount), 4000);
     return () => clearTimeout(id);
   }, [fixCount]);
@@ -438,7 +482,10 @@ export default function Mascot() {
   const lean = useValue(0);
   const nod = useValue(0);
   const slide = useValue(0);
+  const escape = useValue(0);
   const pan = useState(() => new Animated.ValueXY())[0];
+  const sneakAnim = useRef<Animated.CompositeAnimation | null>(null);
+  const hideSnapshot = useRef('');
   const keyTimes = useRef<number[]>([]);
   const lastExcited = useRef(0);
   const taps = useRef<number[]>([]);
@@ -475,6 +522,11 @@ export default function Mascot() {
     if (!fixCount || reduceMotion) return;
     trick();
   }, [fixCount, reduceMotion, trick]);
+
+  useEffect(() => {
+    if (!costumeNonce || reduceMotion) return;
+    trick(0.9);
+  }, [costumeNonce, reduceMotion, trick]);
 
   // al teclear: rebote, inclinación hacia el editor y emoción si tecleas rápido
   useEffect(() => {
@@ -517,7 +569,7 @@ export default function Mascot() {
   // acariciar: vibración suave mientras se mantiene presionado
   useEffect(() => {
     if (!petting || !HAPTICS) return;
-    const id = setInterval(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => {}), 380);
+    const id = setInterval(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft).catch(() => { }), 380);
     return () => clearInterval(id);
   }, [petting]);
 
@@ -530,7 +582,7 @@ export default function Mascot() {
       to(lift, 0, 160).start();
       land.setValue(1);
       Animated.spring(land, { toValue: 0, friction: 3, tension: 160, useNativeDriver: ND }).start();
-      if (HAPTICS) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      if (HAPTICS) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     };
     const finish = (dx: number, dy: number, vx: number, vy: number) => {
       const maxR = Math.max(4, area.w - size - 4);
@@ -575,9 +627,98 @@ export default function Mascot() {
     });
   }, [right, bottom, area.w, area.h, size, pan, lift, land, spin]);
 
+  // ── escondidas: corre al borde más cercano y solo asoma la cola ──
+  const hops = (n: number) => Animated.sequence(Array.from({ length: n }, () => Animated.sequence([to(jump, 0.2, 120, easeOut), to(jump, 0, 120, easeIn)])));
+  const turn = (toValue: number) => Animated.timing(face, { toValue, duration: 260, easing: Easing.inOut(Easing.cubic), useNativeDriver: ND });
+
+  const sneakAway = () => {
+    const edge = side;
+    hideSnapshot.current = code;
+    setHideEdge(edge);
+    setSneaking(true);
+    setMenuOpen(false);
+    setHiddenKey(null);
+    escape.setValue(0);
+    const anim = Animated.sequence([
+      wait(1500),
+      turn(edge === 'right' ? 1 : -1),
+      Animated.sequence([to(land, 1, 140, easeOut), to(land, 0, 120, easeIn)]),
+      Animated.parallel([Animated.timing(escape, { toValue: 1, duration: 900, easing: Easing.in(Easing.quad), useNativeDriver: false }), hops(4)]),
+    ]);
+    sneakAnim.current = anim;
+    anim.start(({ finished }) => {
+      if (sneakAnim.current !== anim) return;
+      sneakAnim.current = null;
+      if (!finished) return;
+      setSneaking(false);
+      setMinimized('auto');
+    });
+  };
+
+  /** Interrumpe la huida (lo tocaron o pasó algo): vuelve a su lugar. */
+  const cancelSneak = (msg?: string) => {
+    sneakAnim.current?.stop();
+    sneakAnim.current = null;
+    setSneaking(false);
+    Animated.spring(escape, { toValue: 0, friction: 6, tension: 80, useNativeDriver: false }).start();
+    turn(faceLeft ? -1 : 1).start();
+    if (msg) react('sparkles', msg);
+  };
+
+  /** Sale del escondite (la animación de regreso corre al montarse de nuevo). */
+  const comeBack = (msg?: string) => {
+    setMinimized(false);
+    setWake((w) => w + 1);
+    escape.setValue(1);
+    face.setValue(hideEdge === 'right' ? -1 : 1);
+    setReturnNonce((n) => n + 1);
+    if (msg) react('sparkles', msg);
+  };
+
+  const canHide = !reduceMotion && enabled && !minimized && !sneaking && mood === 'idle' && !sleeping && !menuOpen && !dragging && !petting && !fx && !celebrating && area.w > 0;
+  useEffect(() => {
+    if (!canHide) return;
+    const id = setTimeout(sneakAway, between(HIDE_EVERY_MS));
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canHide, activity]);
+
+  // si escribes o cambia el programa mientras huye, se queda
+  useEffect(() => {
+    if (!sneaking || (code === hideSnapshot.current && mood === 'idle')) return;
+    const id = setTimeout(() => cancelSneak(), 0);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sneaking, code, mood]);
+
+  // escondido: vuelve solo tras un rato, o enseguida si escribes o cambia el programa
+  useEffect(() => {
+    if (minimized !== 'auto') return;
+    const now = code !== hideSnapshot.current || mood !== 'idle';
+    const id = setTimeout(() => comeBack(now ? undefined : '¡Aquí estoy! 😸 ¿Me extrañaste?'), now ? 0 : between(HIDE_FOR_MS));
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minimized, code, mood]);
+
+  // regreso: entra a saltitos desde el borde y voltea hacia el editor
+  useEffect(() => {
+    if (!returnNonce) return;
+    return startNextFrame(
+      Animated.sequence([
+        Animated.parallel([Animated.timing(escape, { toValue: 0, duration: 850, easing: Easing.out(Easing.quad), useNativeDriver: false }), hops(4)]),
+        turn(faceLeft ? -1 : 1),
+      ]),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnNonce]);
+
   // ── toques: simple (menú), doble (voltereta), muchos (se enoja) ──
   const onTap = () => {
     setWake((w) => w + 1);
+    if (sneaking) {
+      cancelSneak('¡Me atrapaste! 😹 Está bien, me quedo.');
+      return;
+    }
     const now = Date.now();
     taps.current = [...taps.current.filter((x) => now - x < 2500), now];
     if (taps.current.length >= 6) {
@@ -587,7 +728,7 @@ export default function Mascot() {
       setMenuOpen(false);
       react('angry', '¡Ffff! 😾 Déjame un ratito…');
       if (!reduceMotion) Animated.sequence([to(slide, 1.6, 220, easeOut), wait(1100), to(slide, 0, 500)]).start();
-      if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => { });
       return;
     }
     if (tapTimer.current) {
@@ -596,13 +737,13 @@ export default function Mascot() {
       tapTimer.current = null;
       setMenuOpen(false);
       if (!reduceMotion) trick(1.35);
-      if (HAPTICS) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      if (HAPTICS) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
       return;
     }
     tapTimer.current = setTimeout(() => {
       tapTimer.current = null;
       setMenuOpen((o) => !o);
-      if (HAPTICS) Haptics.selectionAsync().catch(() => {});
+      if (HAPTICS) Haptics.selectionAsync().catch(() => { });
     }, 260);
   };
 
@@ -615,6 +756,7 @@ export default function Mascot() {
   const many = p.errorCount >= 3;
 
   const message = useMemo(() => {
+    if (sneaking) return '¡Me escondo! 🙈 A ver si me encuentras…';
     if (mood === 'pet') return 'Prrr… prrr… 💕';
     if (mood === 'dizzy') return 'Me mareo… 😵 ¿Un ciclo infinito? Revisa que la condición del ciclo llegue a ser falsa.';
     if (fx?.msg) return fx.msg;
@@ -627,15 +769,20 @@ export default function Mascot() {
     if (mood === 'running') return '¡Ejecutando tu código a toda velocidad! 🏃‍♂️';
     if (mood === 'alert') return `¡Alto! ✋ Punto de interrupción en la línea ${p.line}. Revisa tus variables.`;
     if (thinking) return 'Mmm… 🤔 ¿Se cumplirá la condición? Avanza un paso para verlo.';
-    if (status === 'error' && runError?.syntax) return `¡Miau! Error de sintaxis${errLine ? ` en la línea ${errLine}` : ''}: ${runError.message}`;
+    // errores de sintaxis: el título corto y una invitación a ver la explicación completa
+    if (status === 'error' && runError?.syntax)
+      return runError.title
+        ? `¡Miau! Línea ${errLine}: ${runError.title}. Tócame → "Explícame el error" 🐾`
+        : `¡Miau! Error de sintaxis${errLine ? ` en la línea ${errLine}` : ''}: ${runError.message}`;
     if (staticError)
-      return `${many ? `¡Son ${p.errorCount} errores! Empecemos por uno: ` : '¡Miau! '}${isUndefined ? '🔍 ' : ''}Línea ${staticError.line}: ${staticError.message}`;
+      return `${many ? `¡Son ${p.errorCount} errores! Empecemos por uno: ` : '¡Miau! '}${isUndefined ? '🔍 ' : ''}Línea ${staticError.line}: ${staticError.title ? `${staticError.title}. Tócame → "Explícame el error" 🐾` : staticError.message
+        }`;
     if (sleeping) return 'Zzz… (tócame para despertarme)';
     if (status === 'finished') return '¡Listo! El programa terminó sin errores 🎉';
-    return TIPS[tip % TIPS.length];
-  }, [mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip]);
+    return tips[tip % tips.length];
+  }, [sneaking, mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip, tips]);
 
-  const persist = ['error', 'crash', 'pet', 'dizzy', 'waiting', 'alert'].includes(mood) || thinking || !!fx;
+  const persist = ['error', 'crash', 'pet', 'dizzy', 'waiting', 'alert'].includes(mood) || thinking || !!fx || sneaking;
   const bubbleKey = `${message}#${tip}`;
   const hideBubble = useCallback(() => setHiddenKey(bubbleKey), [bubbleKey]);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
@@ -667,8 +814,18 @@ export default function Mascot() {
         setHiddenKey(null);
       },
     });
+    // probar los vestuarios: ninguno → cada fiesta → ninguno…
+    const order = ['none', ...COSTUMES.map((c) => c.id)];
+    const next = order[(order.indexOf(costume?.id ?? 'none') + 1) % order.length];
+    const nextCostume = COSTUMES.find((c) => c.id === next);
+    items.push({
+      icon: 'shirt-outline',
+      label: nextCostume ? `Vestuario: ${nextCostume.emoji} ${nextCostume.name}` : 'Quitar vestuario',
+      color: t.primary,
+      onPress: () => st.updateSettings({ mascotCostume: next }),
+    });
     if (savedPos) items.push({ icon: 'locate-outline', label: 'Volver a mi lugar', onPress: () => st.updateSettings({ mascotPos: null }) });
-    items.push({ icon: 'chevron-forward-circle-outline', label: 'Minimizar (esconderme en el borde)', color: t.textMuted, onPress: () => setMinimized(true) });
+    items.push({ icon: 'chevron-forward-circle-outline', label: 'Minimizar (esconderme en el borde)', color: t.textMuted, onPress: () => setMinimized('manual') });
     items.push({
       icon: 'eye-off-outline',
       label: 'Ocultar a Michi',
@@ -679,7 +836,7 @@ export default function Mascot() {
       },
     });
     return items;
-  }, [status, hasError, errLine, wide, savedPos, t]);
+  }, [status, hasError, errLine, wide, savedPos, t, costume]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width: w, height: h } = e.nativeEvent.layout;
@@ -690,18 +847,27 @@ export default function Mascot() {
 
   if (minimized) {
     return (
-      <View pointerEvents="box-none" style={StyleSheet.absoluteFill} onLayout={onLayout}>
-        <View pointerEvents="box-none" style={{ position: 'absolute', right: 0, bottom: defaultBottom + 10 }}>
-          <PeekingTail
-            onPress={() => {
-              setMinimized(false);
-              setWake((w) => w + 1);
-              vis[mood].setValue(0);
-              Animated.spring(vis[mood], { toValue: 1, friction: 4, tension: 80, useNativeDriver: ND }).start();
-            }}
-          />
+      <CostumeProvider value={costume}>
+        <View style={styles.minOverlay} onLayout={onLayout}>
+          <View style={[styles.minBlock, { bottom: bottom + 10 }, minimized === 'auto' && hideEdge === 'left' ? { left: 0 } : { right: 0 }]}>
+            <PeekingTail
+              edge={minimized === 'auto' ? hideEdge : 'right'}
+              label={minimized === 'auto' ? 'Encontrar a Michi' : 'Mostrar a Michi'}
+              onPress={() => {
+                if (minimized === 'auto') {
+                  if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+                  comeBack('¡Me encontraste! 😸');
+                  return;
+                }
+                setMinimized(false);
+                setWake((w) => w + 1);
+                vis[mood].setValue(0);
+                Animated.spring(vis[mood], { toValue: 1, friction: 4, tension: 80, useNativeDriver: ND }).start();
+              }}
+            />
+          </View>
         </View>
-      </View>
+      </CostumeProvider>
     );
   }
 
@@ -710,10 +876,10 @@ export default function Mascot() {
   const layer = (k: Mood, node: React.ReactNode) => (
     <Animated.View
       key={k}
-      pointerEvents="none"
       style={[
         StyleSheet.absoluteFill,
         {
+          pointerEvents: 'none',
           opacity: vis[k].interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
           transformOrigin: 'center bottom',
           transform: [{ scale: vis[k].interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) }, { scaleX: face }],
@@ -735,6 +901,8 @@ export default function Mascot() {
     alert: 'alerta en un punto de interrupción',
   };
   const gap = Math.round(size * 0.2);
+  // distancia hasta salir por el borde al esconderse
+  const escapeX = hideEdge === 'right' ? right + size + 16 : -(area.w - right + 16);
   const headX = faceLeft ? 120 : 210;
   const particleDx = wide && centerX < area.w * 0.535 ? size * 1.3 : 0;
   const particleDy = !wide && panel === 'editor' && runActive ? size * 0.9 : -size * 1.1;
@@ -742,86 +910,98 @@ export default function Mascot() {
   const fxKey = fx ? `fx${fx.n}` : thinking ? `think${p.pausedStep}` : '';
 
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFill} onLayout={onLayout}>
-      <Animated.View
-        pointerEvents="box-none"
-        style={[styles.block, { right, bottom, alignItems: side === 'left' ? 'flex-start' : 'flex-end', transform: pan.getTranslateTransform() }]}
-        {...responder.panHandlers}
-      >
-        {dragging ? null : menuOpen ? (
-          <Menu items={menuItems} gap={gap} side={side} onClose={closeMenu} />
-        ) : hiddenKey !== bubbleKey ? (
-          <Bubble key={bubbleKey} text={message} persist={persist} onHide={hideBubble} gap={gap} side={side} />
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Mascota ${labels[mood]}`}
-          accessibilityHint="Toca para ver atajos, toca dos veces para una voltereta, mantén presionado para acariciarla y arrástrala o lánzala para moverla."
-          delayLongPress={380}
-          onPress={onTap}
-          onLongPress={() => {
-            if (tapTimer.current) clearTimeout(tapTimer.current);
-            tapTimer.current = null;
-            setMenuOpen(false);
-            setPetting(true);
-            setWake((w) => w + 1);
-            setHiddenKey(null);
-          }}
-          onPressOut={() => {
-            if (petting) {
-              setPetting(false);
-              landBounce();
-            }
-          }}
-          style={{ width: size, height: size, ...(Platform.OS === 'web' ? ({ cursor: dragging ? 'grabbing' : 'grab' } as object) : null) }}
+    <CostumeProvider value={costume}>
+      {/* recorta al salir corriendo por el borde (sin barras de desplazamiento) */}
+      <View style={styles.overlay} onLayout={onLayout}>
+        <Animated.View
+          style={[
+            styles.block,
+            {
+              right,
+              bottom,
+              alignItems: side === 'left' ? 'flex-start' : 'flex-end',
+              transform: [...pan.getTranslateTransform(), { translateX: escape.interpolate({ inputRange: [0, 1], outputRange: [0, escapeX] }) }],
+            },
+          ]}
+          {...responder.panHandlers}
         >
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                transformOrigin: 'center bottom',
-                transform: [
-                  { translateY: jump.interpolate({ inputRange: [0, 2], outputRange: [0, -size * 0.7] }) },
-                  { translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.04] }) },
-                  { translateX: slide.interpolate({ inputRange: [0, 2], outputRange: [0, -dir * size * 0.5] }) },
-                  { rotate: spin.interpolate({ inputRange: [-1, 1], outputRange: ['-360deg', '360deg'] }) },
-                  { rotate: lean.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${dir * 5}deg`] }) },
-                  { rotate: nod.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${dir * 7}deg`] }) },
-                  { scale: lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) },
-                  { rotate: lift.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-8deg'] }) },
-                  { scaleY: land.interpolate({ inputRange: [-1, 0, 1], outputRange: [1.08, 1, 0.82] }) },
-                  { scaleX: land.interpolate({ inputRange: [-1, 0, 1], outputRange: [0.95, 1, 1.12] }) },
-                  { scaleY: bob.interpolate({ inputRange: [0, 1], outputRange: [1, 0.97] }) },
-                ],
-              },
-            ]}
+          {dragging ? null : menuOpen ? (
+            <Menu items={menuItems} gap={gap} side={side} onClose={closeMenu} />
+          ) : hiddenKey !== bubbleKey ? (
+            <Bubble key={bubbleKey} text={message} persist={persist} onHide={hideBubble} gap={gap} side={side} />
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Mascota ${labels[mood]}`}
+            accessibilityHint="Toca para ver atajos, toca dos veces para una voltereta, mantén presionado para acariciarla y arrástrala o lánzala para moverla."
+            delayLongPress={380}
+            onPress={onTap}
+            onLongPress={() => {
+              if (tapTimer.current) clearTimeout(tapTimer.current);
+              tapTimer.current = null;
+              setMenuOpen(false);
+              setPetting(true);
+              setWake((w) => w + 1);
+              setHiddenKey(null);
+            }}
+            onPressOut={() => {
+              if (petting) {
+                setPetting(false);
+                landBounce();
+              }
+            }}
+            style={{ width: size, height: size, ...(Platform.OS === 'web' ? ({ cursor: dragging ? 'grabbing' : 'grab' } as object) : null) }}
           >
-            {layer(
-              'idle',
-              <IdleLayer
-                active={motion && mood === 'idle'}
-                {...lp}
-                sleeping={sleeping}
-                celebrate={p.finishedAt >= 0 ? `fin-${p.finishedAt}` : null}
-                squint={fx?.kind === 'suspicious' || fx?.kind === 'angry'}
-                stretchKey={stretchKey}
-                chase={!fx && !celebrating && !menuOpen}
-              />,
-            )}
-            {layer('error', <ErrorLayer active={motion && mood === 'error'} {...lp} intense={many} search={isUndefined} />)}
-            {layer('running', <RunningLayer active={motion && mood === 'running'} {...lp} />)}
-            {layer('waiting', <WaitingLayer active={motion && mood === 'waiting'} {...lp} />)}
-            {layer('crash', <CrashLayer active={motion && mood === 'crash'} {...lp} clones={stackOverflow} />)}
-            {layer('alert', <AlertLayer active={mood === 'alert'} {...lp} />)}
-            {layer('dizzy', <DizzyLayer active={motion && mood === 'dizzy'} {...lp} />)}
-            {layer('pet', <PetLayer active={motion && mood === 'pet'} {...lp} />)}
-          </Animated.View>
-          {motion && fxKind ? <ReactionFx key={fxKey} kind={fxKind} s={s} headX={headX} headY={105} dir={dir} color={t.text} /> : null}
-          {celebrating && motion ? <Confetti key={fixCount} size={size} /> : null}
-        </Pressable>
-        {motion
-          ? particles.map((pt) => (
-              <View key={pt.id} pointerEvents="none" style={[styles.particles, { bottom: size * 0.6 }]}>
+            <Animated.View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  transformOrigin: 'center bottom',
+                  transform: [
+                    { translateY: jump.interpolate({ inputRange: [0, 2], outputRange: [0, -size * 0.7] }) },
+                    { translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.04] }) },
+                    { translateX: slide.interpolate({ inputRange: [0, 2], outputRange: [0, -dir * size * 0.5] }) },
+                    { rotate: spin.interpolate({ inputRange: [-1, 1], outputRange: ['-360deg', '360deg'] }) },
+                    { rotate: lean.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${dir * 5}deg`] }) },
+                    { rotate: nod.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${dir * 7}deg`] }) },
+                    { scale: lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] }) },
+                    { rotate: lift.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-8deg'] }) },
+                    { scaleY: land.interpolate({ inputRange: [-1, 0, 1], outputRange: [1.08, 1, 0.82] }) },
+                    { scaleX: land.interpolate({ inputRange: [-1, 0, 1], outputRange: [0.95, 1, 1.12] }) },
+                    { scaleY: bob.interpolate({ inputRange: [0, 1], outputRange: [1, 0.97] }) },
+                  ],
+                },
+              ]}
+            >
+              <FaceProvider value={face}>
+                {layer(
+                  'idle',
+                  <IdleLayer
+                    active={motion && mood === 'idle'}
+                    {...lp}
+                    sleeping={sleeping}
+                    celebrate={p.finishedAt >= 0 ? `fin-${p.finishedAt}` : null}
+                    squint={fx?.kind === 'suspicious' || fx?.kind === 'angry'}
+                    stretchKey={stretchKey}
+                    chase={!fx && !celebrating && !menuOpen}
+                  />,
+                )}
+                {layer('error', <ErrorLayer active={motion && mood === 'error'} {...lp} intense={many} search={isUndefined} />)}
+                {layer('running', <RunningLayer active={motion && mood === 'running'} {...lp} />)}
+                {layer('waiting', <WaitingLayer active={motion && mood === 'waiting'} {...lp} />)}
+                {layer('crash', <CrashLayer active={motion && mood === 'crash'} {...lp} clones={stackOverflow} />)}
+                {layer('alert', <AlertLayer active={mood === 'alert'} {...lp} />)}
+                {layer('dizzy', <DizzyLayer active={motion && mood === 'dizzy'} {...lp} />)}
+                {layer('pet', <PetLayer active={motion && mood === 'pet'} {...lp} />)}
+              </FaceProvider>
+            </Animated.View>
+            {motion ? <Ambient size={size} active={(mood === 'idle' && !sleeping) || mood === 'pet' || mood === 'waiting'} color={t.primary} /> : null}
+            {motion && fxKind ? <ReactionFx key={fxKey} kind={fxKind} s={s} headX={headX} headY={105} dir={dir} color={t.text} /> : null}
+            {celebrating && motion ? <Confetti key={fixCount} size={size} /> : null}
+          </Pressable>
+          {motion
+            ? particles.map((pt) => (
+              <View key={pt.id} style={[styles.particles, { bottom: size * 0.6, pointerEvents: 'none' }]}>
                 <OutputParticle
                   text={pt.text}
                   dx={particleDx}
@@ -833,25 +1013,59 @@ export default function Mascot() {
                 />
               </View>
             ))
-          : null}
-      </Animated.View>
-    </View>
+            : null}
+        </Animated.View>
+      </View>
+    </CostumeProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  block: { position: 'absolute', zIndex: 50 },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    pointerEvents: 'box-none',
+  },
+  minOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'box-none',
+  },
+  minBlock: {
+    position: 'absolute',
+    pointerEvents: 'box-none',
+  },
+  block: {
+    position: 'absolute',
+    zIndex: 50,
+    pointerEvents: 'box-none',
+  },
+  clip: { overflow: 'hidden' },
   card: {
     maxWidth: 260,
     paddingHorizontal: 12,
     paddingVertical: 9,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 3px 8px rgba(0, 0, 0, 0.15)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: 4,
+      },
+    }),
   },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, paddingHorizontal: 6, borderRadius: 8 },
   arrow: {

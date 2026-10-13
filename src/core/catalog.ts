@@ -43,7 +43,12 @@ export const COMMANDS: CatalogItem[] = [
   { label: 'Arreglo', kind: 'command', category: 'Arreglos', pseint: 'Dimensionar', insert: 'const lista = [$0];', doc: 'Crea un arreglo (lista). Los índices empiezan en 0.' },
   { label: 'Matriz', kind: 'command', category: 'Arreglos', insert: 'const matriz = [\n  [1, 2, 3],\n  [4, 5, 6],\n];$0', doc: 'Arreglo de arreglos (dos dimensiones).' },
   { label: 'Objeto', kind: 'command', category: 'Objetos', insert: 'const persona = {\n  nombre: "Ana",\n  edad: 20,$0\n};', doc: 'Agrupa datos con nombre (propiedades).' },
+  { label: 'Propiedad calculada', kind: 'command', category: 'Objetos', insert: 'const objeto = {\n  [clave]: valor,$0\n};', doc: 'Propiedad con nombre dinámico evaluado entre corchetes [].' },
+  { label: 'Getter y Setter', kind: 'command', category: 'Objetos', insert: 'get valor() {\n  return this._valor;\n}\n\nset valor(nuevo) {\n  this._valor = nuevo;\n}$0', doc: 'Define métodos de acceso (get) y modificación (set) con sintaxis de propiedad.' },
   { label: 'Clase', kind: 'command', category: 'Objetos', insert: 'class Nombre {\n  constructor(valor) {\n    this.valor = valor;\n  }\n\n  metodo() {\n    $0\n  }\n}', doc: 'Molde para crear objetos con new.' },
+  { label: 'Método estático', kind: 'command', category: 'Objetos', insert: 'static crear($0) {\n  return new this();\n}', doc: 'Método asociado a la clase y no a las instancias particulares.' },
+  { label: 'Bloque estático', kind: 'command', category: 'Objetos', insert: 'static {\n  $0\n}', doc: 'Bloque static {} para inicializar la clase una sola vez al definirse.' },
+  { label: 'Separador numérico', kind: 'command', category: 'Variables', insert: 'const numeroGrande = 1_000_000;$0', doc: 'Usa guiones bajos (_) como separadores visuales en números grandes.' },
   { label: 'Conjunto (Set)', kind: 'command', category: 'Colecciones', insert: 'const conjunto = new Set([$0]);', doc: 'Crea una colección de valores únicos (sin duplicados).' },
   { label: 'Intentar (try/catch)', kind: 'command', category: 'Errores', insert: 'try {\n  $0\n} catch (error) {\n  console.error(error.message);\n}', doc: 'Atrapa errores para que el programa no se detenga.' },
   { label: 'Lanzar error', kind: 'command', category: 'Errores', insert: 'throw new Error("Mensaje$0");', doc: 'Genera un error que detiene el programa si no se atrapa.' },
@@ -127,9 +132,13 @@ export const FUNCTIONS: CatalogItem[] = [
   fn('Array.from', 'Arreglos', 'Array.from({ length: n }, (_, i) => i)', 'Crea un arreglo a partir de algo iterable o de un tamaño.'),
   fn('Array.isArray', 'Arreglos', 'Array.isArray(x)', 'true si x es un arreglo.'),
   fn('new Array', 'Arreglos', 'new Array(n).fill(0)', 'Arreglo de tamaño n (rellénalo con fill).', 'Dimensionar a[n]', 'new Array($0).fill(0)'),
+  fn('.toSorted', 'Arreglos', 'arreglo.toSorted((a, b) => a - b)', 'Copia ordenada del arreglo sin modificar el original.', undefined, '.toSorted((a, b) => a - b)$0'),
+  fn('.toReversed', 'Arreglos', 'arreglo.toReversed()', 'Copia invertida del arreglo sin modificar el original.', undefined, '.toReversed()$0'),
   fn('Object.keys', 'Objetos', 'Object.keys(objeto)', 'Arreglo con los nombres de las propiedades.'),
   fn('Object.values', 'Objetos', 'Object.values(objeto)', 'Arreglo con los valores de las propiedades.'),
   fn('Object.entries', 'Objetos', 'Object.entries(objeto)', 'Arreglo de pares [clave, valor].'),
+  fn('Object.assign', 'Objetos', 'Object.assign(destino, ...fuentes)', 'Copia propiedades de uno o varios objetos al destino.'),
+  fn('Object.freeze', 'Objetos', 'Object.freeze(objeto)', 'Inmoviliza un objeto impidiendo modificar o añadir propiedades.'),
   fn('JSON.stringify', 'Objetos', 'JSON.stringify(valor)', 'Convierte un valor a texto JSON.'),
   fn('JSON.parse', 'Objetos', 'JSON.parse(texto)', 'Convierte texto JSON a valor.'),
   fn('new Set', 'Colecciones', 'new Set(iterable?)', 'Crea una colección con elementos únicos.', undefined, 'new Set($0)'),
@@ -192,8 +201,6 @@ export const KEYWORD_ITEMS: CatalogItem[] = [
   ['null', 'Valor vacío intencional.'],
   ['undefined', 'Sin valor.'],
 ].map(([label, doc]) => ({ label, kind: 'keyword' as const, category: 'Palabras clave', insert: `${label}$0`, doc }));
-
-export const ALL_ITEMS: CatalogItem[] = [...FUNCTIONS, ...KEYWORD_ITEMS];
 
 /** Ayuda emergente para la palabra bajo el cursor. */
 export function lookupHelp(word: string): CatalogItem | undefined {

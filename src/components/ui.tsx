@@ -5,6 +5,8 @@ import { useTheme } from '../ui/theme';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
+export const ModalContext = React.createContext<boolean>(false);
+
 export function Tooltip({
   text,
   children,
@@ -15,17 +17,26 @@ export function Tooltip({
   position?: 'top' | 'bottom';
 }) {
   const t = useTheme();
+  const inModal = React.useContext(ModalContext);
   const [hovered, setHovered] = React.useState(false);
   const domRef = React.useRef<any>(null);
 
   React.useEffect(() => {
     if (Platform.OS === 'web' && domRef.current) {
       try {
-        domRef.current.title = text;
-        domRef.current.setAttribute?.('title', text);
-      } catch {}
+        if (!inModal && text) {
+          domRef.current.title = text;
+          domRef.current.setAttribute?.('title', text);
+        } else {
+          domRef.current.removeAttribute?.('title');
+        }
+      } catch { }
     }
-  }, [text]);
+  }, [text, inModal]);
+
+  if (inModal) {
+    return <>{children}</>;
+  }
 
   return (
     <View
@@ -45,7 +56,6 @@ export function Tooltip({
               borderColor: t.dark ? '#404048' : '#333338',
             },
           ]}
-          pointerEvents="none"
         >
           <Text style={styles.tooltipText} numberOfLines={1}>
             {text}
@@ -80,39 +90,56 @@ export function IconButton({
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
+  const inModal = React.useContext(ModalContext);
   const c = disabled ? t.border : color ?? t.text;
-  const tipText = tooltip ?? label;
+  const tipText = inModal ? undefined : tooltip;
   const domRef = React.useRef<any>(null);
   const [hovered, setHovered] = React.useState(false);
 
   React.useEffect(() => {
     if (Platform.OS === 'web' && domRef.current) {
       try {
-        domRef.current.title = tipText;
-        domRef.current.setAttribute?.('title', tipText);
-      } catch {}
+        if (tipText) {
+          domRef.current.title = tipText;
+          domRef.current.setAttribute?.('title', tipText);
+        } else {
+          domRef.current.removeAttribute?.('title');
+        }
+      } catch { }
     }
   }, [tipText]);
 
+  const button = (
+    <Pressable
+      ref={domRef}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPointerEnter={() => {
+        if (tipText) setHovered(true);
+      }}
+      onPointerLeave={() => {
+        if (tipText) setHovered(false);
+      }}
+      style={({ pressed }) => [
+        styles.iconBtn,
+        { backgroundColor: active ? t.surfaceAlt : pressed ? t.surfaceAlt : 'transparent' },
+        style,
+      ]}
+    >
+      <Ionicons name={icon} size={size} color={c} />
+      {showLabel ? <Text style={[styles.iconLabel, { color: c }]} numberOfLines={1}>{label}</Text> : null}
+    </Pressable>
+  );
+
+  if (!tipText) {
+    return button;
+  }
+
   return (
     <View style={styles.tooltipContainer}>
-      <Pressable
-        ref={domRef}
-        onPress={onPress}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        onPointerEnter={() => setHovered(true)}
-        onPointerLeave={() => setHovered(false)}
-        style={({ pressed }) => [
-          styles.iconBtn,
-          { backgroundColor: active ? t.surfaceAlt : pressed ? t.surfaceAlt : 'transparent' },
-          style,
-        ]}
-      >
-        <Ionicons name={icon} size={size} color={c} />
-        {showLabel ? <Text style={[styles.iconLabel, { color: c }]} numberOfLines={1}>{label}</Text> : null}
-      </Pressable>
+      {button}
       {hovered ? (
         <View
           style={[
@@ -123,7 +150,6 @@ export function IconButton({
               borderColor: t.dark ? '#404048' : '#333338',
             },
           ]}
-          pointerEvents="none"
         >
           <Text style={styles.tooltipText} numberOfLines={1}>
             {tipText}
@@ -222,16 +248,24 @@ const styles = StyleSheet.create({
   tooltipContainer: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
   tooltipBubble: {
     position: 'absolute',
-    zIndex: 99999,
+    zIndex: 999999,
     paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: 6,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
-    elevation: 8,
+    pointerEvents: 'none',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 3px 5px rgba(0, 0, 0, 0.35)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.35,
+        shadowRadius: 5,
+        elevation: 8,
+      },
+    }),
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 40,

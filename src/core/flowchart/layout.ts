@@ -49,25 +49,33 @@ const VG = 26;
 const HG = 34;
 const MAX_CHARS = 32;
 
-export function wrapText(text: string, max = MAX_CHARS, maxLines = 4): string[] {
+export function wrapText(text: string, max = MAX_CHARS, maxLines = 5): string[] {
+  const paragraphs = text.split('\n');
   const out: string[] = [];
-  let rest = text;
-  while (rest.length > max && out.length < maxLines - 1) {
-    let cut = -1;
-    for (let i = Math.min(max, rest.length - 1); i > max * 0.4; i--) {
-      if (rest[i] === ' ') {
-        cut = i;
-        break;
+  for (const para of paragraphs) {
+    let rest = para.trim();
+    if (!rest) continue;
+    while (rest.length > max && out.length < maxLines - 1) {
+      let cut = -1;
+      for (let i = Math.min(max, rest.length - 1); i > max * 0.4; i--) {
+        if (rest[i] === ' ') {
+          cut = i;
+          break;
+        }
+        if ('(,+'.includes(rest[i - 1]) && cut < 0) cut = i;
       }
-      if ('(,+'.includes(rest[i - 1]) && cut < 0) cut = i;
+      if (cut < 0) cut = max;
+      out.push(rest.slice(0, cut).trimEnd());
+      rest = rest.slice(cut).trimStart();
+      if (out.length >= maxLines - 1) break;
     }
-    if (cut < 0) cut = max;
-    out.push(rest.slice(0, cut).trimEnd());
-    rest = rest.slice(cut).trimStart();
+    if (out.length < maxLines && rest.length > 0) {
+      if (rest.length > max && out.length === maxLines - 1) rest = rest.slice(0, max - 1) + '…';
+      out.push(rest);
+    }
+    if (out.length >= maxLines) break;
   }
-  if (rest.length > max) rest = rest.slice(0, max - 1) + '…';
-  out.push(rest);
-  return out;
+  return out.length ? out : [''];
 }
 
 const textW = (lines: string[]) => Math.max(...lines.map((l) => l.length)) * CW;
@@ -84,9 +92,10 @@ interface Piece {
 const EMPTY: Piece = { l: 0, r: 0, h: 0, draw() {} };
 
 function opPiece(shape: OpShape, text: string, line: number): Piece {
-  const lines = wrapText(text);
+  const isComment = shape === 'comment';
+  const lines = wrapText(text, isComment ? 36 : MAX_CHARS);
   const skew = shape === 'input' || shape === 'output' ? 22 : 0;
-  const pad = shape === 'call' ? 36 : shape === 'terminal' || shape === 'return' ? 32 : 24;
+  const pad = isComment ? 30 : shape === 'call' ? 36 : shape === 'terminal' || shape === 'return' ? 32 : 24;
   const w = Math.max(shape === 'terminal' ? 90 : 100, textW(lines) + pad + skew);
   const h = lines.length * LH + 16;
   return {
@@ -94,7 +103,18 @@ function opPiece(shape: OpShape, text: string, line: number): Piece {
     r: w / 2,
     h,
     draw(cx, y, out) {
-      out.push({ t: 'box', shape, x: cx - w / 2, y, w, h, lines, line });
+      out.push({
+        t: 'box',
+        shape,
+        x: cx - w / 2,
+        y,
+        w,
+        h,
+        lines,
+        line,
+        dashed: isComment,
+        align: isComment ? 'left' : 'center',
+      });
     },
   };
 }
@@ -435,7 +455,18 @@ function nsRender(b: FBlock, x: number, y: number, w: number, out: FEl[], hOverr
       return h;
     }
     case 'op':
-      out.push({ t: 'box', shape: 'ns', x, y, w, h, lines: nsLines(nsOpText(b)), line: b.line, align: 'left' });
+      out.push({
+        t: 'box',
+        shape: b.shape === 'comment' ? 'comment' : 'ns',
+        x,
+        y,
+        w,
+        h,
+        lines: nsLines(nsOpText(b)),
+        line: b.line,
+        align: 'left',
+        dashed: b.shape === 'comment',
+      });
       return h;
     case 'if': {
       const lines = nsLines(b.cond);

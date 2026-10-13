@@ -1,12 +1,11 @@
 /** Pie de página: autor, versión y aviso de código libre. */
-import Constants from 'expo-constants';
-import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { CURRENT_VERSION } from '../core/updater';
 import { useTheme } from '../ui/theme';
 
-export const AUTHOR = 'Angel Solís Ek';
+const AUTHOR = 'Angel Solís Ek';
 export const REPO_URL = 'https://github.com/ASolisEk/PSJavaScript';
-export const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+const APP_VERSION = CURRENT_VERSION;
 
 export default function Footer() {
   const t = useTheme();
@@ -31,6 +30,4 @@ const styles = StyleSheet.create({
     columnGap: 10,
   },
   text: { fontSize: 11, textAlign: 'center' },
-  links: { flexDirection: 'row', alignItems: 'center', columnGap: 10 },
-  link: { flexDirection: 'row', alignItems: 'center' },
 });

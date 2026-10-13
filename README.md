@@ -19,7 +19,7 @@ Entorno para aprender a programar inspirado en [PSeInt](https://pseint.sourcefor
 | Prueba de escritorio automática | Tabla generada al ejecutar (columnas = variables o expresiones vigiladas), exportable a CSV |
 | Modo que explica cada acción | Panel **Explicación** en lenguaje natural |
 | Modificar datos de una ejecución y ver el efecto | Editar los datos ingresados y **re-ejecutar**; modo **ejecución en tiempo real** al editar el código |
-| Errores de sintaxis en tiempo real y descripción detallada | Analizador estático mientras se escribe + errores de ejecución en español con causas y soluciones (y "¿quisiste decir…?") |
+| Errores de sintaxis en tiempo real y descripción detallada | Analizador estático mientras se escribe + errores de ejecución en español con causas y soluciones (y "¿quisiste decir…?"). El **detective de sintaxis** (`src/core/syntaxHelp.ts`) explica en lenguaje sencillo el error real: paréntesis/llaves/comillas sin cerrar (señalando dónde se abrieron), condiciones sin paréntesis, `for` con comas, comas u operadores faltantes, palabras mal escritas y hábitos de PSeInt (`Si…Entonces`, `:=`, `y`/`o`, `=<`) |
 | Diagramas de flujo y Nassi-Shneiderman | Generados del código (programa y cada función/método), resaltan la instrucción en ejecución, exportan a **SVG** |
 | Exportar a otros lenguajes | Pseudocódigo **PSeInt**, **Python 3**, **C++** y descripción en **lenguaje coloquial** |
 | Perfiles configurables | Flexible, Estándar, Programación estructurada (tipos estrictos e índices verificados), Estricto y Personalizado |
@@ -38,9 +38,31 @@ Michi, el gatito guía (`src/components/Mascot.tsx`), reacciona al estado del pr
 - **Mareado**: si una ejecución supera muchos pasos (posible ciclo infinito) los ojos giran en espiral y orbitan estrellas.
 - **Celebración**: al corregir un error da un salto con giro, lanza confeti y dice "¡Arreglado!".
 
-Interacción: **tocarlo** abre un menú (Ejecutar/Detener, Explícame el error, Consejo, Volver a su lugar, Ocultar); **mantenerlo presionado** lo acaricia (ronronea, corazones y vibración suave en el teléfono con `expo-haptics`); **arrastrarlo** lo mueve a cualquier lugar y la posición se recuerda.
+Interacción: **tocarlo** abre un menú (Ejecutar/Detener, Explícame el error, Consejo, Volver a su lugar, Ocultar); **mantenerlo presionado** lo acaricia (ronronea, corazones y vibración suave en el teléfono con `expo-haptics`); **arrastrarlo** lo mueve a cualquier lugar y la posición se recuerda. Cada 2–5 minutos (al azar, solo en reposo) juega a las **escondidas**: avisa "¡Me escondo! 🙈", corre al borde más cercano y solo asoma la cola; vuelve solo a los 8–20 s, al tocar la cola ("¡Me encontraste!") o en cuanto escribes o cambia el programa. Si lo tocas mientras huye, se queda.
 
 Los sprites (`assets/mascot/`) se generan desde `assets/mascot.jpg` con `scripts/generar_mascota.py` (quita el fondo blanco conservando el blanco de los ojos, separa la cola y crea los cuadros de parpadeo y mirada). Respeta la opción del sistema "reducir movimiento" y puede ocultarse en Configuración.
+
+### Vestuarios de temporada
+
+Michi se disfraza solo según la fecha (`src/core/holidays.ts`): se pone el vestuario **un mes antes** del día festivo y lo conserva **10 días después**. Si otra fiesta cae en el mismo mes, la anticipación se acorta a **10 días**. Cuando dos periodos se enciman gana la fiesta más cercana (en empate, la que viene). También se puede elegir en **Configuración → Vestuario de la mascota** o desde su menú ("Vestuario: …" recorre todos). Los accesorios son SVG que siguen las animaciones del cuerpo en todas las poses (`src/components/mascot/costumes.tsx`) y cada fiesta trae sus propias partículas:
+
+| Fiesta | Día festivo | Periodo automático | Vestuario |
+| --- | --- | --- | --- |
+| Año Nuevo | 1 ene | 22 dic – 11 ene | Gorro de fiesta, confeti |
+| Día de Reyes | 6 ene | 27 dic – 16 ene | Corona dorada con joyas |
+| San Valentín | 14 feb | 14 ene – 24 feb | Alas de ángel que aletean, aureola y dije de corazón |
+| Primavera | 21 mar | 21 feb – 31 mar | Corona de flores, mariposas |
+| Día del Niño | 30 abr | 30 mar – 10 may | Gorra con hélice que gira, globos |
+| Día de las Madres | 10 may | 30 abr – 20 may | Corona de rosas |
+| Día del Maestro | 15 may | 5 – 25 may | Birrete con borla y lentes redondos |
+| Fiestas Patrias | 16 sep | 16 ago – 26 sep | Sombrero charro tricolor, bigote y moño |
+| Día del Programador | día 256 (13 sep) | solo ese día | Lentes pixelados, `{ }` y `</>` flotando |
+| Halloween | 31 oct | 30 sep – 10 nov | **Gato oscuro** de ojos verdes, sombrero de bruja, murciélagos |
+| Día de Muertos | 2 nov | 23 oct – 12 nov | **Gato negro** con calaverita pintada y corona de cempasúchil |
+| Revolución | 20 nov | 10 – 30 nov | Sombrero de fieltro, bigote y paliacate |
+| Navidad | 25 dic | 25 nov – 4 ene | Gorro de Santa (pompón que se balancea) y barba blanca, nieve |
+
+Los colores oscuro y negro se generan con `scripts/vestuarios_mascota.py` (`assets/mascot/skins/`), que recolorea el pelaje conservando ojos, orejas, mejillas y teclado.
 
 ## Arquitectura
 

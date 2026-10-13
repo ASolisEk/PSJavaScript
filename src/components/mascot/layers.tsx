@@ -6,7 +6,8 @@ import React, { memo, useEffect } from 'react';
 import { Animated, Easing, Image, StyleSheet, View } from 'react-native';
 import { MONO } from '../../ui/theme';
 import { easeIn, easeOut, ND, orbit, to, useLoops, useValue, useValues, wait } from './anim';
-import { Decoration, ERROR, IDLE, origin, RUNNING } from './sprites';
+import { Outfit, Pose, useSprites } from './costumes';
+import { Decoration, ERROR, origin } from './sprites';
 
 export interface LayerProps {
   active: boolean;
@@ -21,16 +22,32 @@ export interface LayerProps {
 const fill = StyleSheet.absoluteFill;
 
 /** Cuerpo + cola de un estado, con la cola girando sobre su base. */
-function Cat({ sprite, s, tailAngle, children }: { sprite: { w: number; h: number; pivot: [number, number]; body: any; tail: any }; s: number; tailAngle: Animated.AnimatedInterpolation<string>; children?: React.ReactNode }) {
+function Cat({
+  sprite,
+  s,
+  tailAngle,
+  pose,
+  active,
+  children,
+}: {
+  sprite: { w: number; h: number; pivot: [number, number]; body: any; tail: any };
+  s: number;
+  tailAngle: Animated.AnimatedInterpolation<string>;
+  pose: Pose;
+  active: boolean;
+  children?: React.ReactNode;
+}) {
   const w = sprite.w * s;
   const h = sprite.h * s;
   return (
     <View style={{ width: w, height: h }}>
+      <Outfit pose={pose} part="back" s={s} w={sprite.w} h={sprite.h} active={active} />
       <Animated.View style={[fill, { transformOrigin: `${sprite.pivot[0] * s}px ${sprite.pivot[1] * s}px`, transform: [{ rotate: tailAngle }] }]}>
         <Image source={sprite.tail} style={{ width: w, height: h }} />
       </Animated.View>
       <Image source={sprite.body} style={[fill, { width: w, height: h }]} />
       {children}
+      <Outfit pose={pose} part="front" s={s} w={sprite.w} h={sprite.h} active={active} />
     </View>
   );
 }
@@ -56,6 +73,7 @@ function IdleLayerImpl({
   stretchKey = 0,
   chase = false,
 }: LayerProps & { sleeping: boolean; celebrate: string | null; squint?: boolean; stretchKey?: number; chase?: boolean }) {
+  const { IDLE } = useSprites();
   const stretch = useValue(0);
   const flyT = useValue(0);
   const lunge = useValue(0);
@@ -190,7 +208,7 @@ function IdleLayerImpl({
           ],
         }}
       >
-        <Cat sprite={IDLE} s={s} tailAngle={tail.interpolate({ inputRange: [0, 1], outputRange: ['-10deg', '8deg'] })}>
+        <Cat sprite={IDLE} s={s} pose="idle" active={active} tailAngle={tail.interpolate({ inputRange: [0, 1], outputRange: ['-10deg', '8deg'] })}>
           <Animated.Image source={IDLE.blinkHalf} style={[fill, { width: w, height: h, opacity: half }]} />
           <Animated.Image source={IDLE.blink} style={[fill, { width: w, height: h, opacity: closed }]} />
         </Cat>
@@ -219,9 +237,9 @@ function IdleLayerImpl({
         </Animated.Text>
       ))}
       <Animated.View
-        pointerEvents="none"
         style={{
           position: 'absolute',
+          pointerEvents: 'none',
           left: (o.left - ERROR.fly.w / 2) * s,
           top: (o.top - ERROR.fly.h / 2) * s,
           opacity: flyT.interpolate({ inputRange: [0, 0.03, 0.95, 1], outputRange: [0, 1, 1, 0] }),
@@ -248,6 +266,7 @@ const CHASE = {
 // ───────────────────────────── error ─────────────────────────────
 
 function ErrorLayerImpl({ active, s, intense = false, search = false }: LayerProps & { intense?: boolean; search?: boolean }) {
+  const { ERROR } = useSprites();
   const rain = useValues(3);
   const scan = useValue(0);
   const shake = useValue(0);
@@ -305,7 +324,7 @@ function ErrorLayerImpl({ active, s, intense = false, search = false }: LayerPro
           ],
         }}
       >
-        <Cat sprite={ERROR} s={s} tailAngle={tail.interpolate({ inputRange: [0, 1], outputRange: ['-16deg', '6deg'] })}>
+        <Cat sprite={ERROR} s={s} pose="error" active={active} tailAngle={tail.interpolate({ inputRange: [0, 1], outputRange: ['-16deg', '6deg'] })}>
           <Animated.Image source={ERROR.lookLeft} style={[fill, { width: w, height: h, opacity: left }]} />
           <Animated.Image source={ERROR.lookRight} style={[fill, { width: w, height: h, opacity: right }]} />
           {ERROR.questions.map((d, i) => (
@@ -373,7 +392,7 @@ function ErrorLayerImpl({ active, s, intense = false, search = false }: LayerPro
               })
             : null}
           {intense ? (
-            <View pointerEvents="none" style={{ position: 'absolute', left: 60 * s, top: -112 * s }}>
+            <View style={{ position: 'absolute', left: 60 * s, top: -112 * s, pointerEvents: 'none' }}>
               <Animated.Text style={{ fontSize: 64 * s, transform: [{ translateX: rock.interpolate({ inputRange: [-1, 1], outputRange: [-6 * s, 6 * s] }) }] }}>☁️</Animated.Text>
               {rain.map((v, i) => (
                 <Animated.View
@@ -395,9 +414,9 @@ function ErrorLayerImpl({ active, s, intense = false, search = false }: LayerPro
           ) : null}
           {search ? (
             <Animated.Text
-              pointerEvents="none"
               style={{
                 position: 'absolute',
+                pointerEvents: 'none',
                 left: 205 * s,
                 top: 175 * s,
                 fontSize: 54 * s,
@@ -428,6 +447,7 @@ const CODE_BITS = ['{ }', ';', '=>', '01', '( )'];
 const FLASH_KEYS = [0, 4, 9, 12, 15, 18, 6, 13];
 
 function RunningLayerImpl({ active, s, accent, muted, face }: LayerProps) {
+  const { RUNNING } = useSprites();
   const gallop = useValue(0);
   const tail = useValue(0);
   const keys = useValues(FLASH_KEYS.length);
@@ -500,7 +520,7 @@ function RunningLayerImpl({ active, s, accent, muted, face }: LayerProps) {
           ],
         }}
       >
-        <Cat sprite={RUNNING} s={s} tailAngle={tail.interpolate({ inputRange: [0, 1], outputRange: ['-16deg', '10deg'] })}>
+        <Cat sprite={RUNNING} s={s} pose="running" active={active} tailAngle={tail.interpolate({ inputRange: [0, 1], outputRange: ['-16deg', '10deg'] })}>
           {keys.map((v, i) => {
             const [kx, ky] = RUNNING.keys[FLASH_KEYS[i]];
             return (

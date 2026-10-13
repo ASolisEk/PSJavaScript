@@ -1608,7 +1608,7 @@ export function patternNames(p: N): string[] {
 
 type HOF = (this: Interpreter, arr: any[], args: any[], node: N) => G<any>;
 
-function checkFn(interp: Interpreter, fn: any, method: string, node: N) {
+function checkFn(fn: any, method: string, node: N) {
   if (typeof fn !== 'function') throw new ThrowSignal(new TypeError(`${method}: ${typeName(fn)} no es una función`), node, 'not-function');
 }
 
@@ -1618,55 +1618,55 @@ function* call(this: Interpreter, fn: any, thisArg: any, args: any[], node: N): 
 
 const ARRAY_HOF: Record<string, HOF> = {
   *forEach(arr, [fn, t], node) {
-    checkFn(this, fn, 'forEach', node);
+    checkFn(fn, 'forEach', node);
     for (let i = 0; i < arr.length; i++) if (i in arr) yield* call.call(this, fn, t, [arr[i], i, arr], node);
     return undefined;
   },
   *map(arr, [fn, t], node) {
-    checkFn(this, fn, 'map', node);
+    checkFn(fn, 'map', node);
     const out = new Array(arr.length);
     for (let i = 0; i < arr.length; i++) if (i in arr) out[i] = yield* call.call(this, fn, t, [arr[i], i, arr], node);
     return out;
   },
   *filter(arr, [fn, t], node) {
-    checkFn(this, fn, 'filter', node);
+    checkFn(fn, 'filter', node);
     const out: any[] = [];
     for (let i = 0; i < arr.length; i++) if (i in arr && (yield* call.call(this, fn, t, [arr[i], i, arr], node))) out.push(arr[i]);
     return out;
   },
   *find(arr, [fn, t], node) {
-    checkFn(this, fn, 'find', node);
+    checkFn(fn, 'find', node);
     for (let i = 0; i < arr.length; i++) if (yield* call.call(this, fn, t, [arr[i], i, arr], node)) return arr[i];
     return undefined;
   },
   *findIndex(arr, [fn, t], node) {
-    checkFn(this, fn, 'findIndex', node);
+    checkFn(fn, 'findIndex', node);
     for (let i = 0; i < arr.length; i++) if (yield* call.call(this, fn, t, [arr[i], i, arr], node)) return i;
     return -1;
   },
   *findLast(arr, [fn, t], node) {
-    checkFn(this, fn, 'findLast', node);
+    checkFn(fn, 'findLast', node);
     for (let i = arr.length - 1; i >= 0; i--) if (yield* call.call(this, fn, t, [arr[i], i, arr], node)) return arr[i];
     return undefined;
   },
   *findLastIndex(arr, [fn, t], node) {
-    checkFn(this, fn, 'findLastIndex', node);
+    checkFn(fn, 'findLastIndex', node);
     for (let i = arr.length - 1; i >= 0; i--) if (yield* call.call(this, fn, t, [arr[i], i, arr], node)) return i;
     return -1;
   },
   *some(arr, [fn, t], node) {
-    checkFn(this, fn, 'some', node);
+    checkFn(fn, 'some', node);
     for (let i = 0; i < arr.length; i++) if (i in arr && (yield* call.call(this, fn, t, [arr[i], i, arr], node))) return true;
     return false;
   },
   *every(arr, [fn, t], node) {
-    checkFn(this, fn, 'every', node);
+    checkFn(fn, 'every', node);
     for (let i = 0; i < arr.length; i++) if (i in arr && !(yield* call.call(this, fn, t, [arr[i], i, arr], node))) return false;
     return true;
   },
   *reduce(arr, args, node) {
     const fn = args[0];
-    checkFn(this, fn, 'reduce', node);
+    checkFn(fn, 'reduce', node);
     let i = 0;
     let acc: any;
     if (args.length > 1) acc = args[1];
@@ -1680,7 +1680,7 @@ const ARRAY_HOF: Record<string, HOF> = {
   },
   *reduceRight(arr, args, node) {
     const fn = args[0];
-    checkFn(this, fn, 'reduceRight', node);
+    checkFn(fn, 'reduceRight', node);
     let i = arr.length - 1;
     let acc: any;
     if (args.length > 1) acc = args[1];
@@ -1693,7 +1693,7 @@ const ARRAY_HOF: Record<string, HOF> = {
     return acc;
   },
   *flatMap(arr, [fn, t], node) {
-    checkFn(this, fn, 'flatMap', node);
+    checkFn(fn, 'flatMap', node);
     const out: any[] = [];
     for (let i = 0; i < arr.length; i++) {
       if (!(i in arr)) continue;
@@ -1705,14 +1705,14 @@ const ARRAY_HOF: Record<string, HOF> = {
   },
   *sort(arr, [cmp], node) {
     if (cmp === undefined) return arr.sort();
-    checkFn(this, cmp, 'sort', node);
+    checkFn(cmp, 'sort', node);
     const sorted = yield* mergeSort.call(this, arr.slice(), cmp, node);
     for (let i = 0; i < sorted.length; i++) arr[i] = sorted[i];
     return arr;
   },
   *toSorted(arr, [cmp], node) {
     if (cmp === undefined) return arr.slice().sort();
-    checkFn(this, cmp, 'toSorted', node);
+    checkFn(cmp, 'toSorted', node);
     return yield* mergeSort.call(this, arr.slice(), cmp, node);
   },
 };

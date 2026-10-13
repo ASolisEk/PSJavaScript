@@ -1,5 +1,5 @@
 /** Modo explicativo: describe en lenguaje natural lo que hace cada paso. */
-import React, { useRef } from 'react';
+import { useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useApp } from '../../store/app';
 import { MONO, useTheme } from '../../ui/theme';

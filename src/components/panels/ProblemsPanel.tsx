@@ -48,7 +48,8 @@ export default function ProblemsPanel() {
               {error.syntax ? 'Error de sintaxis' : 'Error de ejecución'} {error.line ? `· línea ${error.line}` : ''}
             </Text>
           </Pressable>
-          <Text style={{ color: t.text, marginTop: 4, fontSize: 14 }}>
+          {error.title ? <Text style={{ color: t.text, marginTop: 4, fontSize: 14, fontWeight: '700' }}>{error.title}</Text> : null}
+          <Text style={{ color: t.text, marginTop: 4, fontSize: error.title ? 13 : 14 }}>
             {error.name !== 'Error' && !error.syntax ? `${error.name}: ` : ''}
             {error.message}
           </Text>
@@ -71,11 +72,14 @@ export default function ProblemsPanel() {
           >
             <Ionicons name={icon(d.severity) as any} size={16} color={color(d.severity)} style={{ marginTop: 1 }} />
             <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={{ color: t.text, fontSize: 13 }}>{d.message}</Text>
+              {d.title ? <Text style={{ color: t.text, fontSize: 13, fontWeight: '700' }}>{d.title}</Text> : null}
+              <Text style={{ color: t.text, fontSize: 13, marginTop: d.title ? 2 : 0 }}>{d.message}</Text>
               <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 2 }}>
                 Línea {d.line}, columna {d.col + 1} · {d.rule}
+                {d.detectedLine ? ` (lo noté en la línea ${d.detectedLine})` : ''}
               </Text>
-              {expanded === i && d.hint ? <Hint hint={d.hint} /> : null}
+              {/* los errores de sintaxis muestran su explicación sin tener que tocarlos */}
+              {(expanded === i || d.rule === 'syntax') && d.hint ? <Hint hint={d.hint} /> : null}
             </View>
           </Pressable>
         ))

@@ -36,7 +36,7 @@ export type ProfileFlags = Omit<Profile, 'id' | 'name' | 'description'>;
 const base: ProfileFlags = {
   allowImplicitGlobals: false,
   forbidVar: false,
-  requireSemicolons: false,
+  requireSemicolons: true,
   strictEquality: false,
   requireBraces: false,
   strictTypes: false,
@@ -55,14 +55,16 @@ export const PROFILES: Profile[] = [
     ...base,
     allowImplicitGlobals: true,
     warnUnused: false,
+    requireSemicolons: false,
   },
   {
     id: 'estandar',
     name: 'Estándar (recomendado)',
-    description: 'Exige declarar variables y advierte sobre malas prácticas comunes.',
+    description: 'Exige punto y coma al final de cada instrucción, declarar variables y advierte sobre malas prácticas comunes.',
     ...base,
     strictEquality: true,
     forbidVar: true,
+    requireSemicolons: true,
   },
   {
     id: 'estructurado',

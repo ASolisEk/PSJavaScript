@@ -2,13 +2,14 @@
  * Estados extra de la mascota: mareado (posible ciclo infinito), acariciado y
  * el confeti de celebración al corregir un error.
  */
-import React, { memo, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { memo, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { MONO } from '../../ui/theme';
 import { easeIn, easeOut, ND, orbit, startNextFrame, to, useLoops, useValue, useValues, wait } from './anim';
 import type { LayerProps } from './layers';
-import { ERROR, IDLE, origin } from './sprites';
+import { Outfit, useSprites } from './costumes';
+import { origin } from './sprites';
 
 const fill = StyleSheet.absoluteFill;
 
@@ -31,6 +32,7 @@ const EYES = [
 ];
 
 function DizzyLayerImpl({ active, s }: LayerProps) {
+  const { ERROR } = useSprites();
   const wobble = useValue(0);
   const spin = useValue(0);
   const tail = useValue(0);
@@ -76,6 +78,7 @@ function DizzyLayerImpl({ active, s }: LayerProps) {
         }}
       >
         <View style={{ width: w, height: h }}>
+          <Outfit pose="error" part="back" s={s} w={ERROR.w} h={ERROR.h} active={active} />
           <Animated.View
             style={[fill, { transformOrigin: `${ERROR.pivot[0] * s}px ${ERROR.pivot[1] * s}px`, transform: [{ rotate: tail.interpolate({ inputRange: [0, 1], outputRange: ['4deg', '14deg'] }) }] }]}
           >
@@ -111,6 +114,7 @@ function DizzyLayerImpl({ active, s }: LayerProps) {
           >
             <Image source={ERROR.drop.src} style={{ width: ERROR.drop.w * s, height: ERROR.drop.h * s }} />
           </Animated.View>
+          <Outfit pose="error" part="front" s={s} w={ERROR.w} h={ERROR.h} active={active} />
         </View>
       </Animated.View>
       {starPos.map((p, i) => (
@@ -122,8 +126,13 @@ function DizzyLayerImpl({ active, s }: LayerProps) {
             top: (o.top + 8) * s,
             fontSize: 30 * s,
             color: '#f6c344',
-            textShadowColor: 'rgba(0,0,0,0.35)',
-            textShadowRadius: 2,
+            ...Platform.select({
+              web: { textShadow: '0 0 2px rgba(0,0,0,0.35)' },
+              default: {
+                textShadowColor: 'rgba(0,0,0,0.35)',
+                textShadowRadius: 2,
+              },
+            }),
             transform: [
               { translateX: stars.interpolate({ inputRange: path.input, outputRange: p.xs }) },
               { translateY: stars.interpolate({ inputRange: path.input, outputRange: p.ys }) },
@@ -139,6 +148,7 @@ function DizzyLayerImpl({ active, s }: LayerProps) {
 }
 
 function PetLayerImpl({ active, s }: LayerProps) {
+  const { IDLE } = useSprites();
   const purr = useValue(0);
   const breathe = useValue(0);
   const tail = useValue(0);
@@ -174,12 +184,14 @@ function PetLayerImpl({ active, s }: LayerProps) {
         }}
       >
         <View style={{ width: w, height: h }}>
+          <Outfit pose="idle" part="back" s={s} w={IDLE.w} h={IDLE.h} active={active} />
           <Animated.View
             style={[fill, { transformOrigin: `${IDLE.pivot[0] * s}px ${IDLE.pivot[1] * s}px`, transform: [{ rotate: tail.interpolate({ inputRange: [0, 1], outputRange: ['-4deg', '12deg'] }) }] }]}
           >
             <Image source={IDLE.tail} style={{ width: w, height: h }} />
           </Animated.View>
           <Image source={IDLE.blink} style={[fill, { width: w, height: h }]} />
+          <Outfit pose="idle" part="front" s={s} w={IDLE.w} h={IDLE.h} active={active} />
         </View>
       </Animated.View>
       {hearts.map((v, i) => (
@@ -228,7 +240,7 @@ function ConfettiImpl({ size }: { size: number }) {
   useEffect(() => startNextFrame(to(p, 1, 1500, Easing.linear)), [p]);
   const ts = [0, 0.2, 0.4, 0.6, 0.8, 1];
   return (
-    <View pointerEvents="none" style={[fill, { alignItems: 'center', justifyContent: 'center' }]}>
+    <View style={[fill, { alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }]}>
       {pieces.map((c, i) => (
         <Animated.View
           key={i}
@@ -257,6 +269,7 @@ function ConfettiImpl({ size }: { size: number }) {
 
 /** Esperando que la persona escriba un dato: mira hacia abajo y mueve la cola con impaciencia. */
 function WaitingLayerImpl({ active, s }: LayerProps) {
+  const { IDLE } = useSprites();
   const lean = useValue(0);
   const tap = useValue(0);
   const tail = useValue(0);
@@ -293,12 +306,14 @@ function WaitingLayerImpl({ active, s }: LayerProps) {
         }}
       >
         <View style={{ width: w, height: h }}>
+          <Outfit pose="idle" part="back" s={s} w={IDLE.w} h={IDLE.h} active={active} />
           <Animated.View
             style={[fill, { transformOrigin: `${IDLE.pivot[0] * s}px ${IDLE.pivot[1] * s}px`, transform: [{ rotate: tail.interpolate({ inputRange: [0, 1], outputRange: ['-18deg', '10deg'] }) }] }]}
           >
             <Image source={IDLE.tail} style={{ width: w, height: h }} />
           </Animated.View>
           <Image source={IDLE.blinkHalf} style={[fill, { width: w, height: h }]} />
+          <Outfit pose="idle" part="front" s={s} w={IDLE.w} h={IDLE.h} active={active} />
         </View>
       </Animated.View>
       {/* puntos suspensivos: "pensando en lo que vas a escribir" */}
@@ -352,8 +367,13 @@ function Stars({ value, s, cx, cy, rx = 78, ry = 16, count = 3 }: { value: Anima
               top: cy * s,
               fontSize: 30 * s,
               color: '#f6c344',
-              textShadowColor: 'rgba(0,0,0,0.35)',
-              textShadowRadius: 2,
+              ...Platform.select({
+                web: { textShadow: '0 0 2px rgba(0,0,0,0.35)' },
+                default: {
+                  textShadowColor: 'rgba(0,0,0,0.35)',
+                  textShadowRadius: 2,
+                },
+              }),
               transform: [
                 { translateX: value.interpolate({ inputRange: path.input, outputRange: path.xs.map((_, i) => path.xs[(i + sh) % n] * s) }) },
                 { translateY: value.interpolate({ inputRange: path.input, outputRange: path.ys.map((_, i) => path.ys[(i + sh) % n] * s) }) },
@@ -371,6 +391,7 @@ function Stars({ value, s, cx, cy, rx = 78, ry = 16, count = 3 }: { value: Anima
 
 /** Error de ejecución: se cae sentado, con estrellas; con `clones` (recursión sin fin) se multiplica. */
 function CrashLayerImpl({ active, s, clones = false }: LayerProps & { clones?: boolean }) {
+  const { ERROR } = useSprites();
   const impact = useValue(0);
   const stars = useValue(0);
   const tail = useValue(0);
@@ -436,12 +457,14 @@ function CrashLayerImpl({ active, s, clones = false }: LayerProps & { clones?: b
         }}
       >
         <View style={{ width: w, height: h }}>
+          <Outfit pose="error" part="back" s={s} w={ERROR.w} h={ERROR.h} active={active} />
           <Animated.View
             style={[fill, { transformOrigin: `${ERROR.pivot[0] * s}px ${ERROR.pivot[1] * s}px`, transform: [{ rotate: tail.interpolate({ inputRange: [0, 1], outputRange: ['30deg', '40deg'] }) }] }]}
           >
             <Image source={ERROR.tail} style={{ width: w, height: h }} />
           </Animated.View>
           <Image source={ERROR.body} style={[fill, { width: w, height: h }]} />
+          <Outfit pose="error" part="front" s={s} w={ERROR.w} h={ERROR.h} active={active} />
         </View>
       </Animated.View>
       <Stars value={stars} s={s} cx={o.left + 185} cy={o.top + 40} />
@@ -478,6 +501,7 @@ function CrashLayerImpl({ active, s, clones = false }: LayerProps & { clones?: b
 
 /** Pausa en un punto de interrupción: se congela y aparece un "!" sobre la cabeza. */
 function AlertLayerImpl({ active, s }: LayerProps) {
+  const { IDLE } = useSprites();
   const pop = useValue(0);
   const pulse = useValue(0);
   useEffect(() => {
@@ -506,8 +530,10 @@ function AlertLayerImpl({ active, s }: LayerProps) {
         }}
       >
         <View style={{ width: w, height: h }}>
+          <Outfit pose="idle" part="back" s={s} w={IDLE.w} h={IDLE.h} active={active} />
           <Image source={IDLE.tail} style={[fill, { width: w, height: h }]} />
           <Image source={IDLE.body} style={[fill, { width: w, height: h }]} />
+          <Outfit pose="idle" part="front" s={s} w={IDLE.w} h={IDLE.h} active={active} />
         </View>
       </Animated.View>
       <Animated.Text
@@ -580,7 +606,7 @@ function ReactionFxImpl({ kind, s, headX, headY, dir, color }: { kind: FxKind; s
   const def = FX[kind];
   useEffect(() => startNextFrame(to(p, 1, def.dur, Easing.linear)), [p, def.dur]);
   return (
-    <View pointerEvents="none" style={fill}>
+    <View style={[fill, { pointerEvents: 'none' }]}>
       {def.items.map((it, i) => {
         const d = it.delay ?? 0;
         // progreso local del elemento (con su retraso) expresado directamente sobre p:
@@ -662,11 +688,11 @@ function OutputParticleImpl({ text, dx, dy, onDone, bg, border, color }: { text:
   useEffect(() => startNextFrame(to(p, 1, 950, Easing.out(Easing.cubic)), () => done.current()), [p]);
   return (
     <Animated.View
-      pointerEvents="none"
       style={{
         position: 'absolute',
         alignSelf: 'center',
         top: 0,
+        pointerEvents: 'none',
         paddingHorizontal: 7,
         paddingVertical: 2,
         borderRadius: 10,

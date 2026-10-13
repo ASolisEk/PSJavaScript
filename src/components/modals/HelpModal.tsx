@@ -1,5 +1,5 @@
 /** Ayuda integrada: uso del entorno y referencia del lenguaje. */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { HELP } from '../../core/help';
 import { useApp } from '../../store/app';

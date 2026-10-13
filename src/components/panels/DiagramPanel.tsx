@@ -6,6 +6,7 @@ import { buildFlow, FlowDiagram } from '../../core/flowchart/model';
 import { FEl, layoutClassic, layoutNassi } from '../../core/flowchart/layout';
 import { arrowHead, shapeExtras, shapePath, textPositions, toSVG } from '../../core/flowchart/svg';
 import { translateSyntaxError } from '../../core/errors';
+import { explainSyntaxError } from '../../core/syntaxHelp';
 import { useActiveFile, useApp } from '../../store/app';
 import { copyText, saveTextFile } from '../../ui/platform';
 import { MONO, useTheme } from '../../ui/theme';
@@ -23,6 +24,7 @@ export default function DiagramPanel() {
   const code = file?.code ?? '';
   const execLine = useApp((s) => (s.run && (s.run.status === 'paused' || s.run.status === 'running' || s.run.status === 'input') ? s.run.line : null));
   const mode = useApp((s) => s.settings.diagramMode);
+  const showComments = useApp((s) => s.settings.diagramComments ?? true);
   const update = useApp((s) => s.updateSettings);
   const jump = useApp((s) => s.jumpToLine);
   const [debounced, setDebounced] = useState(code);
@@ -36,11 +38,13 @@ export default function DiagramPanel() {
 
   const result = useMemo((): { ok: true; list: FlowDiagram[] } | { ok: false; error: string } => {
     try {
-      return { ok: true, list: buildFlow(debounced) };
+      return { ok: true, list: buildFlow(debounced, { showComments }) };
     } catch (e: any) {
-      return { ok: false, error: `Línea ${e?.loc?.line ?? '?'}: ${translateSyntaxError(e?.message ?? String(e))}` };
+      if (!e?.loc) return { ok: false, error: translateSyntaxError(e?.message ?? String(e)) };
+      const x = explainSyntaxError(debounced, e);
+      return { ok: false, error: `Línea ${x.line}: ${x.title}. ${x.message}` };
     }
-  }, [debounced]);
+  }, [debounced, showComments]);
 
   const diagram = result.ok ? result.list.find((d) => d.name === selected) ?? result.list[0] : null;
   const layout = useMemo(() => (diagram ? (mode === 'classic' ? layoutClassic(diagram) : layoutNassi(diagram)) : null), [diagram, mode]);
@@ -60,22 +64,37 @@ export default function DiagramPanel() {
   const renderEl = (el: FEl, i: number) => {
     if (el.t === 'box') {
       const hl = execLine !== null && el.line === execLine && el.line > 0;
+      const isComment = el.shape === 'comment';
       const fill = el.shape === 'connector' ? pal.stroke : pal.fills[el.shape] ?? 'none';
+      const stroke = hl ? pal.highlight : isComment ? '#608b4e' : pal.stroke;
+      const strokeWidth = hl ? 3 : 1.2;
+      const dash = el.dashed || isComment ? '5,4' : undefined;
+      const textColor = isComment ? (t.dark ? '#85c391' : '#386e3a') : pal.text;
       return (
         <React.Fragment key={i}>
           <Path
             d={shapePath(el)}
             fill={fill}
-            stroke={hl ? pal.highlight : pal.stroke}
-            strokeWidth={hl ? 3 : 1.2}
-            strokeDasharray={el.dashed ? '5,4' : undefined}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+            strokeDasharray={dash}
             {...pressProps(el.line > 0 ? () => jump(el.line) : undefined)}
           />
           {shapeExtras(el).map((e, j) => (
-            <SvgLine key={j} x1={e[0]} y1={e[1]} x2={e[2]} y2={e[3]} stroke={pal.stroke} strokeWidth={1.2} />
+            <SvgLine key={j} x1={e[0]} y1={e[1]} x2={e[2]} y2={e[3]} stroke={stroke} strokeWidth={1.2} />
           ))}
           {textPositions(el).map((tp, j) => (
-            <SvgText key={j} x={tp.x} y={tp.y} textAnchor={tp.anchor} fill={pal.text} fontSize={12} fontFamily={MONO} fontWeight={hl ? 'bold' : 'normal'}>
+            <SvgText
+              key={j}
+              x={tp.x}
+              y={tp.y}
+              textAnchor={tp.anchor}
+              fill={textColor}
+              fontSize={12}
+              fontFamily={MONO}
+              fontWeight={hl ? 'bold' : 'normal'}
+              fontStyle={isComment ? 'italic' : 'normal'}
+            >
               {tp.text}
             </SvgText>
           ))}
@@ -105,6 +124,7 @@ export default function DiagramPanel() {
       <View style={[styles.toolbar, { borderBottomColor: t.border }]}>
         <Chip label="Flujo" active={mode === 'classic'} onPress={() => update({ diagramMode: 'classic' })} style={styles.chip} />
         <Chip label="Nassi-Shneiderman" active={mode === 'nassi'} onPress={() => update({ diagramMode: 'nassi' })} style={styles.chip} />
+        <Chip label="Comentarios" active={showComments} onPress={() => update({ diagramComments: !showComments })} style={styles.chip} />
         <View style={{ flex: 1 }} />
         <IconButton icon="remove" label="Alejar" onPress={() => setZoom((z) => Math.max(0.3, +(z - 0.15).toFixed(2)))} size={18} />
         <Text style={{ color: t.textMuted, fontSize: 12, width: 40, textAlign: 'center' }}>{Math.round(zoom * 100)}%</Text>

@@ -27,13 +27,11 @@ if (process.platform === 'darwin') {
   // 3. Generar favicon.ico nativo usando sips
   const icoPublic = path.join(publicDir, 'favicon.ico');
   execSync(`sips -s format ico -z 64 64 "${iconSrc}" --out "${icoPublic}"`, { stdio: 'pipe' });
-  fs.copyFileSync(icoPublic, path.join(assetsDir, 'favicon.ico'));
   console.log('[web-icons] favicon.ico nativo generado con éxito.');
 
   // Favicons en tamaños estándar para navegadores modernos
   execSync(`sips -z 32 32 "${iconSrc}" --out "${path.join(publicDir, 'favicon-32x32.png')}"`, { stdio: 'pipe' });
   execSync(`sips -z 16 16 "${iconSrc}" --out "${path.join(publicDir, 'favicon-16x16.png')}"`, { stdio: 'pipe' });
-  fs.copyFileSync(path.join(publicDir, 'favicon-32x32.png'), path.join(assetsDir, 'favicon-32x32.png'));
 } else {
   if (!fs.existsSync(appleTouchIcon)) {
     fs.copyFileSync(iconSrc, appleTouchIcon);

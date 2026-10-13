@@ -600,6 +600,107 @@ for (const letra in conteo) {
 }
 `,
   },
+  {
+    id: 'truthy',
+    title: 'Valores Truthy y Falsy',
+    level: 'Básico',
+    description: 'Comprueba cómo JavaScript clasifica distintos valores en contextos condicionales.',
+    code: `// Comprobación de valores truthy y falsy en JavaScript
+const valores = [0, "Hola", "", null, undefined, 42];
+
+for (let i = 0; i < valores.length; i++) {
+  const v = valores[i];
+  if (v) {
+    console.log("Elemento", i, "es TRUTHY");
+  } else {
+    console.log("Elemento", i, "es FALSY");
+  }
+}
+`,
+  },
+  {
+    id: 'this',
+    title: 'El contexto de this',
+    level: 'Intermedio',
+    description: 'Comportamiento de this en métodos de objetos y preservación léxica con funciones flecha.',
+    code: `const contador = {
+  valor: 10,
+  obtener() {
+    return this.valor;
+  },
+  crearSumador(delta) {
+    // La función flecha preserva el "this" léxico del método
+    return () => {
+      this.valor += delta;
+      return this.valor;
+    };
+  },
+};
+
+console.log("Valor inicial:", contador.obtener());
+const sumarCinco = contador.crearSumador(5);
+console.log("Nuevo valor:", sumarCinco());
+`,
+  },
+  {
+    id: 'map_set',
+    title: 'Colecciones con Map y Set',
+    level: 'Intermedio',
+    description: 'Eliminación de duplicados con Set y conteo de frecuencias con Map.',
+    code: `const frutas = ["manzana", "pera", "manzana", "platano", "pera", "manzana"];
+
+// 1. Eliminar duplicados con Set
+const unicas = new Set(frutas);
+console.log("Frutas unicas:", unicas.size);
+
+// 2. Contar frecuencias con Map
+const conteo = new Map();
+for (const fruta of frutas) {
+  const actual = conteo.get(fruta) ?? 0;
+  conteo.set(fruta, actual + 1);
+}
+
+for (const [nombre, total] of conteo) {
+  console.log(\`\${nombre}: \${total}\`);
+}
+`,
+  },
+  {
+    id: 'clase_estatica',
+    title: 'Campos privados y estáticos',
+    level: 'Avanzado',
+    description: 'Clase con campo privado (#id), método estático y bloque de inicialización static.',
+    code: `class ContadorUsuarios {
+  static #total = 0;
+  #id;
+
+  static {
+    // Inicialización dentro del bloque estático
+    ContadorUsuarios.#total = 100;
+  }
+
+  constructor(nombre) {
+    ContadorUsuarios.#total++;
+    this.#id = ContadorUsuarios.#total;
+    this.nombre = nombre;
+  }
+
+  get identificador() {
+    return \`Usuario #\${this.#id}: \${this.nombre}\`;
+  }
+
+  static obtenerTotal() {
+    return ContadorUsuarios.#total;
+  }
+}
+
+const u1 = new ContadorUsuarios("Carlos");
+const u2 = new ContadorUsuarios("Elena");
+console.log(u1.identificador);
+console.log(u2.identificador);
+console.log("Total registrados:", ContadorUsuarios.obtenerTotal());
+`,
+  },
 ];
 
 export const NEW_FILE_TEMPLATE = `// Escribe tu programa aquí

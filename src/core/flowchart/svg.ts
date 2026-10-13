@@ -32,6 +32,7 @@ export const LIGHT_PALETTE: FlowPalette = {
     frame: 'none',
     ns: '#ffffff',
     loop: '#ebf8ff',
+    comment: '#f0fdf4',
   },
 };
 
@@ -54,6 +55,7 @@ export const DARK_PALETTE: FlowPalette = {
     frame: 'none',
     ns: '#1a1d23',
     loop: '#2a4365',
+    comment: '#16281e',
   },
 };
 
@@ -78,15 +80,26 @@ export function shapePath(b: BoxEl): string {
       const r = w / 2;
       return `M${x},${y + r} A${r},${r} 0 1 0 ${x + w},${y + r} A${r},${r} 0 1 0 ${x},${y + r} Z`;
     }
+    case 'comment': {
+      const fold = 10;
+      const r = 4;
+      return `M${x + r},${y} L${x + w - fold},${y} L${x + w},${y + fold} L${x + w},${y + h - r} A${r},${r} 0 0 1 ${x + w - r},${y + h} L${x + r},${y + h} A${r},${r} 0 0 1 ${x},${y + h - r} L${x},${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
+    }
     default:
       return `M${x},${y} L${x + w},${y} L${x + w},${y + h} L${x},${y + h} Z`;
   }
 }
 
-/** Líneas extra de la figura (barras laterales de "llamada a subproceso"). */
+/** Líneas extra de la figura (barras laterales de llamada o doblez de comentario). */
 export function shapeExtras(b: BoxEl): number[][] {
   if (b.shape === 'call') return [[b.x + 9, b.y, b.x + 9, b.y + b.h], [b.x + b.w - 9, b.y, b.x + b.w - 9, b.y + b.h]];
-  if (b.shape === 'input') return [];
+  if (b.shape === 'comment') {
+    const fold = 10;
+    return [
+      [b.x + b.w - fold, b.y, b.x + b.w - fold, b.y + fold],
+      [b.x + b.w - fold, b.y + fold, b.x + b.w, b.y + fold],
+    ];
+  }
   return [];
 }
 
@@ -94,8 +107,8 @@ export function shapeExtras(b: BoxEl): number[][] {
 export function textPositions(b: BoxEl): { x: number; y: number; text: string; anchor: 'start' | 'middle' }[] {
   const n = b.lines.length;
   const startY = b.y + b.h / 2 - (n * LH) / 2 + LH - 3.5;
-  const left = b.align === 'left';
-  return b.lines.map((text, i) => ({ x: left ? b.x + 8 : b.x + b.w / 2, y: startY + i * LH, text, anchor: left ? 'start' : 'middle' }));
+  const left = b.align === 'left' || b.shape === 'comment';
+  return b.lines.map((text, i) => ({ x: left ? b.x + 10 : b.x + b.w / 2, y: startY + i * LH, text, anchor: left ? 'start' : 'middle' }));
 }
 
 export function arrowHead(pts: number[]): string | null {
@@ -123,10 +136,17 @@ export function toSVG(layout: FLayout, palette: FlowPalette = LIGHT_PALETTE, tit
   out.push(`<rect width="100%" height="100%" fill="${palette.background}"/>`);
   for (const el of layout.els) {
     if (el.t === 'box') {
+      const isComment = el.shape === 'comment';
       const fill = el.shape === 'connector' ? palette.stroke : palette.fills[el.shape] ?? 'none';
-      out.push(`<path d="${shapePath(el)}" fill="${fill}" stroke="${palette.stroke}" stroke-width="1.2"${el.dashed ? ' stroke-dasharray="5,4"' : ''}/>`);
-      for (const e of shapeExtras(el)) out.push(`<line x1="${e[0]}" y1="${e[1]}" x2="${e[2]}" y2="${e[3]}" stroke="${palette.stroke}"/>`);
-      for (const t of textPositions(el)) out.push(`<text x="${t.x}" y="${t.y}" text-anchor="${t.anchor}" fill="${palette.text}">${esc(t.text)}</text>`);
+      const stroke = isComment ? '#608b4e' : palette.stroke;
+      const dashed = el.dashed || isComment ? ' stroke-dasharray="5,4"' : '';
+      out.push(`<path d="${shapePath(el)}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"${dashed}/>`);
+      for (const e of shapeExtras(el)) out.push(`<line x1="${e[0]}" y1="${e[1]}" x2="${e[2]}" y2="${e[3]}" stroke="${stroke}" stroke-width="1.2"/>`);
+      for (const t of textPositions(el)) {
+        const textFill = isComment ? (palette === DARK_PALETTE ? '#85c391' : '#386e3a') : palette.text;
+        const fontStyle = isComment ? ' font-style="italic"' : '';
+        out.push(`<text x="${t.x}" y="${t.y}" text-anchor="${t.anchor}" fill="${textFill}"${fontStyle}>${esc(t.text)}</text>`);
+      }
     } else if (el.t === 'line') {
       const pts = [];
       for (let i = 0; i < el.pts.length; i += 2) pts.push(`${el.pts[i]},${el.pts[i + 1]}`);

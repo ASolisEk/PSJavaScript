@@ -88,7 +88,7 @@ console.log(r);`;
   assert.match(out('x = 5;'), /no ha sido declarada/);
   assert.equal(out('x = 5; console.log(x)', [], flex), '5');
   assert.match(out('function f(){ return f(); } f();'), /Desbordamiento de pila/);
-  assert.match(out('let a = ;'), /ERROR\(1\): Símbolo inesperado/);
+  assert.match(out('let a = ;'), /ERROR\(1\): Después del = va el valor/);
 });
 
 test('prompt y confirm con entradas', () => {

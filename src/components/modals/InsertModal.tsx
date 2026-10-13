@@ -1,5 +1,5 @@
 /** Paleta para insertar comandos, funciones, operadores y variables. */
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CatalogItem, COMMANDS, FUNCTIONS, OPERATORS } from '../../core/catalog';
 import { declaredNames } from '../../core/editor/tokenizer';

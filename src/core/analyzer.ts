@@ -3,7 +3,9 @@
  * malas prácticas y reglas del perfil mientras se escribe.
  */
 import * as acorn from 'acorn';
-import { ErrorHint, hintFor, translateSyntaxError } from './errors';
+import { ErrorHint, hintFor } from './errors';
+import { explainSyntaxError } from './syntaxHelp';
+import { closest } from './text';
 import type { Profile } from './profiles';
 
 type N = any;
@@ -19,6 +21,10 @@ export interface Diagnostic {
   message: string;
   rule: string;
   hint?: ErrorHint;
+  /** Título corto (errores de sintaxis explicados). */
+  title?: string;
+  /** Línea donde se detectó, si el problema real está en otra. */
+  detectedLine?: number;
 }
 
 /** Reglas cuyos errores impiden ejecutar (como en PSeInt). */
@@ -65,28 +71,6 @@ function loc(node: N) {
   return { line: node.loc.start.line, col: node.loc.start.column, endLine: node.loc.end.line, endCol: node.loc.end.column };
 }
 
-function levenshtein(a: string, b: string): number {
-  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
-  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
-  for (let i = 1; i <= a.length; i++)
-    for (let j = 1; j <= b.length; j++)
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-  return dp[a.length][b.length];
-}
-
-function closest(name: string, candidates: Iterable<string>): string | null {
-  let best: string | null = null;
-  let bestD = Infinity;
-  for (const c of candidates) {
-    const d = levenshtein(c.toLowerCase(), name.toLowerCase());
-    if (d < bestD && d <= Math.max(1, Math.floor(name.length / 3))) {
-      best = c;
-      bestD = d;
-    }
-  }
-  return best;
-}
-
 function patternIds(p: N, out: N[] = []): N[] {
   if (!p) return out;
   switch (p.type) {
@@ -118,9 +102,8 @@ export function analyze(code: string, profile: Profile): Diagnostic[] {
   try {
     ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'script', locations: true });
   } catch (e: any) {
-    const line = e?.loc?.line ?? 1;
-    const col = e?.loc?.column ?? 0;
-    diags.push({ line, col, endLine: line, endCol: col + 1, severity: 'error', message: translateSyntaxError(e.message), rule: 'syntax', hint: hintFor('syntax') });
+    const x = explainSyntaxError(code, e);
+    diags.push({ line: x.line, col: x.col, endLine: x.line, endCol: x.col + 1, severity: 'error', message: x.message, title: x.title, detectedLine: x.detectedLine, rule: 'syntax', hint: x.hint });
     return diags;
   }
 
@@ -368,7 +351,7 @@ export function analyze(code: string, profile: Profile): Diagnostic[] {
       push(test, 'warning', `Asignación (=) dentro de una condición. ¿Quisiste comparar con ===?`, 'assign-in-condition');
   };
 
-  const semicolonTypes = new Set(['ExpressionStatement', 'VariableDeclaration', 'ReturnStatement', 'BreakStatement', 'ContinueStatement', 'ThrowStatement', 'DoWhileStatement']);
+  const semicolonTypes = new Set(['ExpressionStatement', 'VariableDeclaration', 'ReturnStatement', 'BreakStatement', 'ContinueStatement', 'ThrowStatement', 'DoWhileStatement', 'DebuggerStatement']);
   const forHeads = new Set<N>();
 
   const basic = (node: N, what: string) => {
@@ -380,7 +363,7 @@ export function analyze(code: string, profile: Profile): Diagnostic[] {
     if (profile.requireSemicolons && semicolonTypes.has(node.type) && !forHeads.has(node)) {
       if (code[node.end - 1] !== ';') {
         const end = node.loc.end;
-        diags.push({ line: end.line, col: end.column, endLine: end.line, endCol: end.column + 1, severity: 'warning', message: "Falta ';' al final de la instrucción", rule: 'semicolon' });
+        diags.push({ line: end.line, col: end.column, endLine: end.line, endCol: end.column + 1, severity: 'error', message: "Falta ';' al final de la instrucción", rule: 'semicolon', hint: hintFor('semicolon') });
       }
     }
     switch (node.type) {
@@ -538,6 +521,15 @@ export function analyze(code: string, profile: Profile): Diagnostic[] {
       case 'BinaryExpression':
         if (profile.strictEquality && (node.operator === '==' || node.operator === '!=')) {
           push(node, 'warning', `Usa '${node.operator}=' en lugar de '${node.operator}' (comparación estricta, sin conversión de tipos)`, 'strict-equality');
+        } else if (node.operator === '==' || node.operator === '!=') {
+          const isNum = (x: N) => x.type === 'Literal' && typeof x.value === 'number';
+          const isStr = (x: N) => x.type === 'Literal' && typeof x.value === 'string';
+          const isBool = (x: N) => x.type === 'Literal' && typeof x.value === 'boolean';
+          if ((isNum(node.left) && isStr(node.right)) || (isStr(node.left) && isNum(node.right)) ||
+              (isBool(node.left) && (isNum(node.right) || isStr(node.right))) ||
+              (isBool(node.right) && (isNum(node.left) || isStr(node.left)))) {
+            push(node, 'info', `Comparación con conversión implícita: '${node.operator}' convierte tipos antes de evaluar. Usa '${node.operator}=' para evitar trampas de coerción`, 'coercion-trap');
+          }
         }
         if (['==', '===', '!=', '!=='].includes(node.operator) && [node.left, node.right].some((x: N) => x.type === 'Identifier' && x.name === 'NaN'))
           push(node, 'warning', 'Comparar con NaN siempre da false. Usa Number.isNaN(x)', 'nan-compare');
@@ -591,6 +583,14 @@ export function analyze(code: string, profile: Profile): Diagnostic[] {
         return;
       case 'WithStatement':
         push(node, 'error', 'with no está soportado', 'unsupported', hintFor('unsupported'));
+        return;
+      case 'CallExpression':
+        if (node.callee.type === 'MemberExpression' && !node.callee.computed &&
+            node.callee.property.type === 'Identifier' && node.callee.property.name === 'sort') {
+          push(node.callee.property, 'info', '.sort() modifica el arreglo original en su lugar. Si deseas conservar el orden original, considera usar .toSorted() o hacer una copia antes (...arr)', 'sort-mutates');
+        }
+        visit(node.callee, scope);
+        for (const arg of node.arguments) visit(arg, scope);
         return;
       case 'ExpressionStatement':
         if (node.expression.type === 'BinaryExpression' && ['==', '==='].includes(node.expression.operator))

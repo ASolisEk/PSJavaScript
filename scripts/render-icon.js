@@ -1,3 +1,10 @@
+/**
+ * Genera assets/icon.png (1024×1024) dibujando el logotipo "PSJS" con HTML en
+ * una ventana de Electron fuera de pantalla. Es la fuente del ícono: después
+ * se derivan los demás con generate-web-icons.js y generate-icns.js.
+ *
+ *   npx electron scripts/render-icon.js
+ */
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');

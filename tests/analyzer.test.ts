@@ -40,7 +40,7 @@ test('variables no definidas, const, tdz, sin usar', () => {
 test('reglas de perfil', () => {
   const m = msgs('var x = 1\nif (x == 1) console.log(x)\nconst f = () => 1;\nf();', 'estructurado');
   assert.ok(m.includes('1:error:forbid-var'));
-  assert.ok(m.includes('1:warning:semicolon'));
+  assert.ok(m.includes('1:error:semicolon'));
   assert.ok(m.includes('2:warning:strict-equality'));
   assert.ok(m.includes('2:warning:require-braces'));
   assert.ok(m.includes('3:error:basic-only'));
@@ -60,3 +60,21 @@ test('errores comunes de principiante', () => {
 test('código inalcanzable', () => {
   assert.ok(msgs('function f() { return 1;\n console.log(2); }\nf();').includes('2:warning:unreachable'));
 });
+
+test('diagnósticos pedagógicos web.dev (coerción y sort)', () => {
+  const m = msgs('const c = "" == 0;\nconst a = [3, 1];\na.sort();', 'flexible');
+  assert.ok(m.includes('1:info:coercion-trap'));
+  assert.ok(m.includes('3:info:sort-mutates'));
+});
+
+test('validación de punto y coma al final de cada línea', () => {
+  const code = 'let a = 1\nlet b = 2;\nconsole.log(a + b)';
+  const diags = analyze(code, getProfile('estandar'));
+  const errs = diags.filter((d) => d.rule === 'semicolon');
+  assert.equal(errs.length, 2);
+  assert.equal(errs[0].line, 1);
+  assert.equal(errs[0].severity, 'error');
+  assert.equal(errs[1].line, 3);
+  assert.equal(errs[1].severity, 'error');
+});
+

@@ -24,6 +24,7 @@ import type { Diagnostic } from '../core/analyzer';
 import { CatalogItem, lookupHelp, suggest } from '../core/catalog';
 import { dedentOnClose, INDENT, newlineWithIndent, toggleComment } from '../core/editor/indent';
 import { declaredNames, LineToken, matchBracket, tokenize, tokensByLine, wordBefore } from '../core/editor/tokenizer';
+import type { VarDetail } from '../core/runner';
 import { useApp } from '../store/app';
 import { MONO, Theme, useTheme } from '../ui/theme';
 
@@ -33,6 +34,9 @@ export interface EditorRequest {
   line?: number;
   text?: string;
 }
+
+/** Reglas con botón de corrección rápida en la barra de información. */
+const QUICK_FIXES: Record<string, string> = { semicolon: "Insertar ';'", 'forbid-var': "Cambiar 'var' por 'let'" };
 
 interface Props {
   code: string;
@@ -44,6 +48,8 @@ interface Props {
   diagnostics: Diagnostic[];
   fontSize: number;
   showSymbolBar: boolean;
+  varDetails?: Record<string, VarDetail>;
+  isDebugging?: boolean;
   currentVars?: Record<string, string>;
 }
 
@@ -88,6 +94,27 @@ interface Sel {
 
 // ───────────────────────────── líneas resaltadas ─────────────────────────────
 
+function getSyntaxColorForType(type: string, theme: Theme): string {
+  switch (type) {
+    case 'number':
+    case 'bigint':
+      return theme.syntax.number;
+    case 'string':
+      return theme.syntax.string;
+    case 'boolean':
+    case 'undefined':
+    case 'null':
+      return theme.syntax.keyword;
+    case 'function':
+      return theme.syntax.func;
+    case 'object':
+    case 'array':
+      return theme.syntax.property;
+    default:
+      return theme.syntax.ident;
+  }
+}
+
 interface LineProps {
   tokens: LineToken[];
   bg: string | undefined;
@@ -95,17 +122,64 @@ interface LineProps {
   theme: Theme;
   fontSize: number;
   lh: number;
-  currentVars?: Record<string, string>;
+  varDetails?: Record<string, VarDetail>;
+  isExec?: boolean;
+  isDebugging?: boolean;
+  sev?: 'error' | 'warning' | 'info';
 }
 
-const HLine = memo(function HLine({ tokens, bg, brackets, theme, fontSize, lh, currentVars }: LineProps) {
+const HLine = memo(function HLine({
+  tokens,
+  bg,
+  brackets,
+  theme,
+  fontSize,
+  lh,
+  varDetails,
+  isExec,
+  isDebugging,
+  sev,
+}: LineProps) {
   const bset = brackets ? new Set(brackets.split(',').map(Number)) : null;
+  const isErr = sev === 'error';
+  const isWarn = sev === 'warning';
+
+  const inlineVars = useMemo(() => {
+    if (!isDebugging || !varDetails) return [];
+    const seen = new Set<string>();
+    const res: VarDetail[] = [];
+
+    // Variables presentes en los tokens de esta línea
+    for (const t of tokens) {
+      if (t.type === 'ident' && varDetails[t.text] && !seen.has(t.text)) {
+        seen.add(t.text);
+        res.push(varDetails[t.text]);
+      }
+    }
+
+    // En la línea de ejecución activa, incluir también variables modificadas en el paso actual
+    if (isExec) {
+      for (const k of Object.keys(varDetails)) {
+        const v = varDetails[k];
+        if (v.changed && !seen.has(v.name)) {
+          seen.add(v.name);
+          res.push(v);
+        }
+      }
+    }
+
+    return res;
+  }, [isDebugging, isExec, varDetails, tokens]);
+
   return (
     <View style={{ height: lh, backgroundColor: bg }}>
       <Text style={[{ fontFamily: MONO, fontSize, lineHeight: lh, color: theme.syntax.ident }, WEB_PRE]}>
         {tokens.map((t, i) => {
-          const val = t.type === 'ident' && currentVars ? currentVars[t.text] : undefined;
-          const extraProps: any = val !== undefined ? Platform.select({ web: { title: `${t.text} = ${val}` }, default: {} }) : {};
+          const v = t.type === 'ident' && varDetails ? varDetails[t.text] : undefined;
+          const tooltip = v
+            ? `(variable) ${v.name}: ${v.type} = ${v.value}${v.changed ? ' • modificado en este paso' : ''}`
+            : undefined;
+          const extraProps: any = tooltip ? Platform.select({ web: { title: tooltip }, default: {} }) : {};
           return (
             <Text
               key={i}
@@ -115,13 +189,64 @@ const HLine = memo(function HLine({ tokens, bg, brackets, theme, fontSize, lh, c
                 t.type === 'comment' ? styles.italic : null,
                 t.type === 'keyword' ? styles.bold : null,
                 bset?.has(t.start) ? { backgroundColor: theme.bracket } : null,
-                val !== undefined ? { textDecorationLine: 'underline', textDecorationStyle: 'dotted', textDecorationColor: theme.textMuted } : null,
+                v !== undefined
+                  ? {
+                      textDecorationLine: 'underline',
+                      textDecorationStyle: 'dotted',
+                      textDecorationColor: v.changed ? theme.warning : (theme.dark ? '#818cf8' : '#4f46e5'),
+                    }
+                  : isErr
+                  ? { textDecorationLine: 'underline', textDecorationStyle: 'wavy', textDecorationColor: theme.danger }
+                  : isWarn
+                  ? { textDecorationLine: 'underline', textDecorationStyle: 'dotted', textDecorationColor: theme.warning }
+                  : null,
               ]}
             >
               {t.text}
             </Text>
           );
         })}
+        {inlineVars.length > 0 && (
+          <Text
+            style={[
+              {
+                fontFamily: MONO,
+                fontSize: Math.max(10, fontSize - 1),
+              },
+              isExec
+                ? {
+                    backgroundColor: theme.dark ? 'rgba(91, 140, 255, 0.20)' : 'rgba(47, 111, 237, 0.12)',
+                    color: theme.text,
+                    fontWeight: '600',
+                  }
+                : {
+                    color: theme.textMuted,
+                    opacity: 0.82,
+                  },
+            ]}
+          >
+            {isExec ? '   ▶ ' : '   // '}
+            {inlineVars.map((v, idx) => {
+              const valColor = getSyntaxColorForType(v.type, theme);
+              const shortVal = v.value.length > 30 ? v.value.slice(0, 28) + '…' : v.value;
+              return (
+                <React.Fragment key={v.name}>
+                  {idx > 0 ? (isExec ? '  •  ' : ', ') : ''}
+                  {v.changed ? (
+                    <Text style={{ color: theme.warning, fontWeight: '700' }}>● </Text>
+                  ) : null}
+                  <Text style={{ color: isExec ? (theme.dark ? '#cbd5e1' : '#334155') : theme.textMuted }}>
+                    {v.name}:{' '}
+                  </Text>
+                  <Text style={{ color: valColor, fontWeight: isExec || v.changed ? '700' : '500' }}>
+                    {shortVal}
+                  </Text>
+                </React.Fragment>
+              );
+            })}
+            {isExec ? ' ' : ''}
+          </Text>
+        )}
         {tokens.length === 0 ? ' ' : ''}
       </Text>
     </View>
@@ -141,15 +266,28 @@ interface GutterProps {
 }
 
 const GutterLine = memo(function GutterLine({ n, bp, exec, sev, width, lh, fontSize, theme, onPress }: GutterProps) {
+  const [hovered, setHovered] = useState(false);
   const color = sev === 'error' ? theme.danger : sev === 'warning' ? theme.warning : exec ? theme.text : theme.gutterText;
   return (
     <Pressable
       onPress={() => onPress(n)}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       accessibilityLabel={`Línea ${n}${bp ? ', punto de interrupción' : ''}`}
       style={{ height: lh, width, flexDirection: 'row', alignItems: 'center', backgroundColor: exec ? theme.execLine : undefined }}
     >
-      <View style={{ width: 16, alignItems: 'center' }}>
-        {bp ? <View style={[styles.bpDot, { backgroundColor: theme.danger }]} /> : exec ? <Text style={{ color: theme.warning, fontSize: fontSize - 2 }}>▶</Text> : null}
+      <View style={{ width: 16, alignItems: 'center', justifyContent: 'center' }}>
+        {bp ? (
+          <View style={[styles.bpDot, { backgroundColor: theme.danger }]} />
+        ) : exec ? (
+          <Text style={{ color: theme.warning, fontSize: fontSize - 2 }}>▶</Text>
+        ) : hovered ? (
+          <View style={[styles.bpDot, { backgroundColor: theme.danger, opacity: 0.45 }]} />
+        ) : sev === 'error' ? (
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.danger }} />
+        ) : sev === 'warning' ? (
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.warning }} />
+        ) : null}
       </View>
       <Text style={{ flex: 1, textAlign: 'right', paddingRight: 8, fontFamily: MONO, fontSize: fontSize - 2, color, fontWeight: sev || exec ? '700' : '400' }}>{n}</Text>
     </Pressable>
@@ -159,7 +297,20 @@ const GutterLine = memo(function GutterLine({ n, bp, exec, sev, width, lh, fontS
 // ───────────────────────────── editor ─────────────────────────────
 
 export default function CodeEditor(props: Props) {
-  const { code, onChange, breakpoints, onToggleBreakpoint, execLine, errorLine, diagnostics, fontSize, showSymbolBar } = props;
+  const {
+    code,
+    onChange,
+    breakpoints,
+    onToggleBreakpoint,
+    execLine,
+    errorLine,
+    diagnostics,
+    fontSize,
+    showSymbolBar,
+    varDetails: propVarDetails,
+    isDebugging = false,
+    currentVars,
+  } = props;
   const theme = useTheme();
   const lh = Math.round(fontSize * 1.55);
   const charW = fontSize * 0.61;
@@ -175,6 +326,16 @@ export default function CodeEditor(props: Props) {
   const [suggestions, setSuggestions] = useState<CatalogItem[]>([]);
   const history = useRef<{ stack: { code: string; cursor: number }[]; index: number; last: number }>({ stack: [{ code, cursor: 0 }], index: 0, last: 0 });
 
+  const varDetails = useMemo(() => {
+    if (propVarDetails) return propVarDetails;
+    if (!currentVars) return undefined;
+    const m: Record<string, VarDetail> = {};
+    for (const [k, v] of Object.entries(currentVars)) {
+      m[k] = { name: k, type: 'unknown', value: v };
+    }
+    return m;
+  }, [propVarDetails, currentVars]);
+
   useLayoutEffect(() => {
     codeRef.current = code;
   }, [code]);
@@ -189,7 +350,7 @@ export default function CodeEditor(props: Props) {
   }, [code]);
   const longest = useMemo(() => code.split('\n').reduce((m, l) => Math.max(m, l.length), 0), [code]);
   const gutterW = Math.max(3, String(lineCount).length) * fontSize * 0.62 + 30;
-  const contentW = Math.max(viewport.w - gutterW, longest * charW + PAD_LEFT * 2 + 80);
+  const contentW = Math.max(viewport.w - gutterW, longest * charW + PAD_LEFT * 2 + (isDebugging ? 320 : 80));
   const contentH = Math.max(viewport.h, lineCount * lh + PAD_TOP * 2 + lh * 4);
 
   const bracket = useMemo(() => matchBracket(toks, cursor), [toks, cursor]);
@@ -463,8 +624,10 @@ export default function CodeEditor(props: Props) {
 
   // ── barra de información: diagnóstico de la línea o ayuda de la palabra ──
   const info = useMemo(() => {
-    const d = diagnostics.find((x) => x.line === cursorLine);
-    if (d) return { kind: d.severity, text: d.message };
+    // en la línea del cursor: primero los errores, luego lo que tiene corrección rápida
+    const onLine = diagnostics.filter((x) => x.line === cursorLine);
+    const d = onLine.find((x) => x.severity === 'error') ?? onLine.find((x) => QUICK_FIXES[x.rule]) ?? onLine[0];
+    if (d) return { kind: d.severity, text: d.title ? `${d.title}. ${d.message}` : d.message, fix: QUICK_FIXES[d.rule], rule: d.rule, line: d.line };
     let s = cursor;
     let e = cursor;
     while (s > 0 && /[\w$.]/.test(code[s - 1])) s--;
@@ -474,6 +637,22 @@ export default function CodeEditor(props: Props) {
     if (item) return { kind: 'help' as const, text: `${item.signature ?? item.label} — ${item.doc}${item.pseint ? `  (PSeInt: ${item.pseint})` : ''}` };
     return null;
   }, [diagnostics, cursorLine, cursor, code]);
+
+  /** Corrección rápida de la barra de información (se aplica al tocar el botón). */
+  const applyFix = useCallback(
+    (rule: string, line: number) => {
+      const lines = codeRef.current.split('\n');
+      const i = line - 1;
+      if (i < 0 || i >= lines.length) return;
+      if (rule === 'semicolon') {
+        if (lines[i].trim().endsWith(';')) return;
+        lines[i] += ';';
+      } else if (rule === 'forbid-var') lines[i] = lines[i].replace(/\bvar\b/, 'let');
+      else return;
+      apply(lines.join('\n'), null, true);
+    },
+    [apply],
+  );
 
   const webInputStyle: any = Platform.OS === 'web' ? { outlineStyle: 'none', caretColor: theme.text, whiteSpace: 'pre', overflow: 'hidden', resize: 'none' } : null;
 
@@ -500,15 +679,37 @@ export default function CodeEditor(props: Props) {
             </View>
             <ScrollView ref={hScroll} horizontal onScroll={onHScroll} scrollEventThrottle={32} keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
               <View style={{ width: contentW, height: contentH }}>
-                <View pointerEvents="none" style={{ position: 'absolute', top: PAD_TOP, left: 0, right: 0 }}>
+                <View style={{ position: 'absolute', top: PAD_TOP, left: 0, right: 0, pointerEvents: 'none' }}>
                   {lines.map((toksOfLine, i) => {
                     const n = i + 1;
                     const sev = sevByLine.get(n);
+                    const isExec = execLine === n;
                     const bg =
-                      execLine === n ? theme.execLine : sev === 'error' ? theme.errorLine : sev === 'warning' ? theme.warnLine : undefined;
+                      isExec ? theme.execLine : sev === 'error' ? theme.errorLine : sev === 'warning' ? theme.warnLine : undefined;
                     return (
-                      <View key={i} style={{ paddingLeft: PAD_LEFT }}>
-                        <HLine tokens={toksOfLine} bg={bg} brackets={(bracketByLine.get(i) ?? []).join(',')} theme={theme} fontSize={fontSize} lh={lh} />
+                      <View key={i} style={{ height: lh, position: 'relative' }}>
+                        {sev === 'error' ? (
+                          <>
+                            <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: theme.danger }} />
+                            <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1.5, backgroundColor: theme.danger }} />
+                          </>
+                        ) : sev === 'warning' ? (
+                          <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, backgroundColor: theme.warning }} />
+                        ) : null}
+                        <View style={{ paddingLeft: PAD_LEFT }}>
+                          <HLine
+                            tokens={toksOfLine}
+                            bg={bg}
+                            sev={sev}
+                            isExec={isExec}
+                            brackets={(bracketByLine.get(i) ?? []).join(',')}
+                            theme={theme}
+                            fontSize={fontSize}
+                            lh={lh}
+                            varDetails={varDetails}
+                            isDebugging={isDebugging}
+                          />
+                        </View>
                       </View>
                     );
                   })}
@@ -570,6 +771,21 @@ export default function CodeEditor(props: Props) {
           <Text style={{ color: theme.text, fontSize: 12, flex: 1, marginLeft: 6 }} numberOfLines={2}>
             {info.text}
           </Text>
+          {info.fix && 'rule' in info ? (
+            <Pressable
+              onPress={() => applyFix(info.rule, info.line)}
+              style={({ pressed }) => [
+                styles.quickFixBtn,
+                { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
+              ]}
+              accessibilityLabel={info.fix}
+            >
+              <Ionicons name="sparkles" size={12} color="#fff" style={{ marginRight: 4 }} />
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700', fontFamily: MONO }}>
+                {info.fix}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -625,6 +841,7 @@ const styles = StyleSheet.create({
   bold: { fontWeight: '600' },
   bpDot: { width: 10, height: 10, borderRadius: 5 },
   infoBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderTopWidth: StyleSheet.hairlineWidth },
+  quickFixBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, marginLeft: 8 },
   bar: { flexGrow: 0, borderTopWidth: StyleSheet.hairlineWidth },
   barContent: { paddingHorizontal: 6, paddingVertical: 5, alignItems: 'center' },
   chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, marginRight: 6 },

@@ -4,7 +4,9 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { FLAG_LABELS, getProfile, PROFILES, ProfileFlags } from '../../core/profiles';
 import { SPEEDS, useApp, useProfile } from '../../store/app';
 import { useTheme } from '../../ui/theme';
-import { Chip, SectionTitle } from '../ui';
+import { checkForUpdate, CURRENT_VERSION, getPlatformLabel } from '../../core/updater';
+import { COSTUMES, costumeForDate } from '../../core/holidays';
+import { Button, Chip, SectionTitle } from '../ui';
 import ModalShell from './ModalShell';
 
 function Row({ label, value, onChange, hint }: { label: string; value: boolean; onChange(v: boolean): void; hint?: string }) {
@@ -27,7 +29,34 @@ export default function SettingsModal() {
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
   const setModal = useApp((s) => s.setModal);
+  const setUpdateInfo = useApp((s) => s.setUpdateInfo);
   const profile = useProfile();
+  const costume = settings.mascotCostume ?? 'auto';
+  const [autoCostume] = React.useState(() => costumeForDate(new Date()));
+
+  const [checkingUpdate, setCheckingUpdate] = React.useState(false);
+  const [updateStatusText, setUpdateStatusText] = React.useState<string | null>(null);
+  const [updateStatusColor, setUpdateStatusColor] = React.useState<string>(t.textMuted);
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    setUpdateStatusText(null);
+    try {
+      const res = await checkForUpdate({ allowWebCheck: true });
+      if (res.hasUpdate) {
+        setUpdateInfo(res);
+        setModal('update');
+      } else {
+        setUpdateStatusText(`¡PSJavaScript está al día con la versión más reciente (v${res.latestVersion})!`);
+        setUpdateStatusColor(t.success);
+      }
+    } catch {
+      setUpdateStatusText('No se pudo verificar la actualización en este momento.');
+      setUpdateStatusColor(t.danger);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const setFlag = (k: keyof ProfileFlags, v: boolean | number) => {
     const { id: _i, name: _n, description: _d, ...flags } = profile;
@@ -101,7 +130,44 @@ export default function SettingsModal() {
           ))}
         </View>
         <Row label="Mostrar mascota" hint="Gatito que reacciona a errores, ejecución y reposo. Tócalo para ver consejos." value={settings.mascot} onChange={(v) => update({ mascot: v })} />
+        {settings.mascot ? (
+          <View style={[styles.row, { borderBottomColor: t.border, flexDirection: 'column', alignItems: 'stretch' }]}>
+            <Text style={{ color: t.text, fontSize: 14 }}>Vestuario de la mascota</Text>
+            <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 2 }}>
+              En automático se disfraza un mes antes de cada fiesta (10 días antes si hay otra fiesta ese mes) y conserva el vestuario 10 días después{autoCostume ? `. Hoy: ${autoCostume.emoji} ${autoCostume.name}` : ''}.
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              <Chip label="Automático" active={costume === 'auto'} onPress={() => update({ mascotCostume: 'auto' })} />
+              <Chip label="Ninguno" active={costume === 'none'} onPress={() => update({ mascotCostume: 'none' })} />
+              {COSTUMES.map((c) => (
+                <Chip key={c.id} label={`${c.emoji} ${c.name}`} active={costume === c.id} onPress={() => update({ mascotCostume: c.id })} />
+              ))}
+            </View>
+          </View>
+        ) : null}
         <Row label="Barra de símbolos" hint="Teclas rápidas para { } ( ) ; = etc. (útil en el teléfono)." value={settings.symbolBar} onChange={(v) => update({ symbolBar: v })} />
+        <Row label="Comentarios en diagramas" hint="Mostrar las notas y comentarios del código dentro del diagrama de flujo." value={settings.diagramComments ?? true} onChange={(v) => update({ diagramComments: v })} />
+
+        <SectionTitle>Actualizaciones del programa</SectionTitle>
+        <View style={[styles.row, { borderBottomColor: t.border }]}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>Versión instalada</Text>
+            <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 2 }}>
+              v{CURRENT_VERSION} • {getPlatformLabel()}
+            </Text>
+            {updateStatusText ? (
+              <Text style={{ color: updateStatusColor, fontSize: 12, marginTop: 4, fontWeight: '500' }}>
+                {updateStatusText}
+              </Text>
+            ) : null}
+          </View>
+          <Button
+            label={checkingUpdate ? 'Buscando...' : 'Buscar actualizaciones'}
+            icon="cloud-download-outline"
+            disabled={checkingUpdate}
+            onPress={handleCheckUpdate}
+          />
+        </View>
       </ScrollView>
     </ModalShell>
   );

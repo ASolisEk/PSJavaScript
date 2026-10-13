@@ -5,6 +5,7 @@
  * superior izquierda del cuerpo de su estado.
  */
 import type { ImageSourcePropType } from 'react-native';
+import type { Skin } from '../../core/holidays';
 
 export interface Decoration {
   src: ImageSourcePropType;
@@ -12,15 +13,6 @@ export interface Decoration {
   y: number;
   w: number;
   h: number;
-}
-
-export interface StateSprites {
-  w: number;
-  h: number;
-  /** Base de la cola (centro de rotación). */
-  pivot: [number, number];
-  body: ImageSourcePropType;
-  tail: ImageSourcePropType;
 }
 
 /** Caja común: todos los estados se apoyan en la misma línea de suelo. */
@@ -71,3 +63,62 @@ export const RUNNING = {
 export function origin(s: { w: number; h: number }) {
   return { left: (BOX - s.w) / 2, top: BOX - s.h - 4 };
 }
+
+// ───────────────────────────── pieles de temporada ─────────────────────────────
+
+const DARK = {
+  idle: {
+    body: require('../../../assets/mascot/skins/dark/idle_body.png'),
+    tail: require('../../../assets/mascot/skins/dark/idle_tail.png'),
+    blinkHalf: require('../../../assets/mascot/skins/dark/idle_blink_half.png'),
+    blink: require('../../../assets/mascot/skins/dark/idle_blink.png'),
+  },
+  error: {
+    body: require('../../../assets/mascot/skins/dark/confused_body.png'),
+    tail: require('../../../assets/mascot/skins/dark/confused_tail.png'),
+    lookLeft: require('../../../assets/mascot/skins/dark/confused_look_left.png'),
+    lookRight: require('../../../assets/mascot/skins/dark/confused_look_right.png'),
+  },
+  running: {
+    body: require('../../../assets/mascot/skins/dark/running_body.png'),
+    tail: require('../../../assets/mascot/skins/dark/running_tail.png'),
+  },
+};
+
+const BLACK = {
+  idle: {
+    body: require('../../../assets/mascot/skins/black/idle_body.png'),
+    tail: require('../../../assets/mascot/skins/black/idle_tail.png'),
+    blinkHalf: require('../../../assets/mascot/skins/black/idle_blink_half.png'),
+    blink: require('../../../assets/mascot/skins/black/idle_blink.png'),
+  },
+  error: {
+    body: require('../../../assets/mascot/skins/black/confused_body.png'),
+    tail: require('../../../assets/mascot/skins/black/confused_tail.png'),
+    lookLeft: require('../../../assets/mascot/skins/black/confused_look_left.png'),
+    lookRight: require('../../../assets/mascot/skins/black/confused_look_right.png'),
+  },
+  running: {
+    body: require('../../../assets/mascot/skins/black/running_body.png'),
+    tail: require('../../../assets/mascot/skins/black/running_tail.png'),
+  },
+};
+
+export interface SpriteSet {
+  IDLE: typeof IDLE;
+  ERROR: typeof ERROR;
+  RUNNING: typeof RUNNING;
+}
+
+const withSkin = (p: typeof DARK): SpriteSet => ({
+  IDLE: { ...IDLE, ...p.idle },
+  ERROR: { ...ERROR, ...p.error },
+  RUNNING: { ...RUNNING, ...p.running },
+});
+
+/** Sprites de cada piel (objetos estables: se crean una sola vez). */
+export const SKINS: Record<Skin, SpriteSet> = {
+  normal: { IDLE, ERROR, RUNNING },
+  dark: withSkin(DARK),
+  black: withSkin(BLACK),
+};

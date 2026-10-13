@@ -42,8 +42,20 @@ for (const ex of EXAMPLES) {
   });
 }
 
-const pyAvailable = has('python3');
-test('el código Python exportado se ejecuta igual que el original', { skip: !pyAvailable }, () => {
+/** El código exportado usa match/case: busca un Python 3.10 o superior. */
+function findPython(): string | null {
+  for (const cmd of ['python3', 'python3.13', 'python3.12', 'python3.11', 'python3.10']) {
+    if (!has(cmd)) continue;
+    try {
+      const ok = execFileSync(cmd, ['-c', 'import sys; print(sys.version_info >= (3, 10))'], { encoding: 'utf8' }).trim();
+      if (ok === 'True') return cmd;
+    } catch {}
+  }
+  return null;
+}
+const python = findPython();
+
+test('el código Python exportado se ejecuta igual que el original', { skip: python ? false : 'se necesita Python 3.10 o superior (match/case)' }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'psjs-py-'));
   const ids = ['hola', 'suma', 'par', 'mayor', 'dia', 'tabla', 'factorial', 'fibonacci', 'primos', 'binaria', 'hanoi', 'palindromo', 'vocales', 'burbuja', 'calculadora', 'cuenta'];
   for (const id of ids) {
@@ -54,7 +66,7 @@ test('el código Python exportado se ejecuta igual que el original', { skip: !py
     const input = (ex.sampleInputs ?? []).map(String).join('\n') + '\n';
     let stdout = "";
     try {
-      stdout = execFileSync('python3', [file], { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+      stdout = execFileSync(python!, [file], { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (e: any) {
       assert.fail(`${id}: Python falló\n${e.stderr}\n---\n${py}`);
     }

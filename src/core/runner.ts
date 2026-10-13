@@ -8,6 +8,7 @@
  */
 import { ErrorHint, hintFor, translateSyntaxError, ErrorCode } from './errors';
 import { formatValue } from './format';
+import { explainSyntaxError } from './syntaxHelp';
 import {
   Explanation,
   FatalError,
@@ -40,6 +41,8 @@ export interface RuntimeErrorInfo {
   code?: ErrorCode;
   hint?: ErrorHint;
   syntax?: boolean;
+  /** Título corto del error de sintaxis explicado. */
+  title?: string;
 }
 
 export interface DesktopRow {
@@ -53,6 +56,14 @@ export interface WatchValue {
   expr: string;
   ok: boolean;
   value: string;
+}
+
+export interface VarDetail {
+  name: string;
+  kind?: string;
+  type: string;
+  value: string;
+  changed?: boolean;
 }
 
 export interface RunnerSnapshot {
@@ -305,16 +316,18 @@ export class Runner {
       return true;
     } catch (e: any) {
       this.status = 'error';
+      const x = e?.loc ? explainSyntaxError(this.opts.code, e) : null;
       this.error = {
         name: 'SyntaxError',
-        message: translateSyntaxError(e?.message ?? String(e)),
-        line: e?.loc?.line ?? null,
-        col: e?.loc?.column ?? null,
+        message: x?.message ?? translateSyntaxError(e?.message ?? String(e)),
+        title: x?.title,
+        line: x?.line ?? e?.loc?.line ?? null,
+        col: x?.col ?? e?.loc?.column ?? null,
         code: 'syntax',
-        hint: hintFor('syntax'),
+        hint: x?.hint ?? hintFor('syntax'),
         syntax: true,
       };
-      this.write('error', `Error de sintaxis${this.error.line ? ` en la línea ${this.error.line}` : ''}: ${this.error.message}`);
+      this.write('error', `Error de sintaxis${this.error.line ? ` en la línea ${this.error.line}` : ''}: ${x ? `${x.title}. ${x.message}` : this.error.message}`);
       this.publish();
       return false;
     }

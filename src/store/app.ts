@@ -10,6 +10,7 @@ import { analyze, Diagnostic, hasBlockingErrors } from '../core/analyzer';
 import { EXAMPLES, NEW_FILE_TEMPLATE } from '../core/examples';
 import { DEFAULT_PROFILE_ID, getProfile, Profile, ProfileFlags } from '../core/profiles';
 import { InputValue, Runner, RunMode, RunnerSnapshot } from '../core/runner';
+import type { UpdateCheckResult } from '../core/updater';
 
 export interface FileDoc {
   id: string;
@@ -20,7 +21,7 @@ export interface FileDoc {
 }
 
 export type PanelId = 'editor' | 'console' | 'variables' | 'desktop' | 'diagram' | 'explain' | 'problems';
-export type ModalId = null | 'files' | 'export' | 'settings' | 'help' | 'insert';
+export type ModalId = null | 'files' | 'export' | 'settings' | 'help' | 'insert' | 'update';
 
 export interface Settings {
   profileId: string;
@@ -31,11 +32,14 @@ export interface Settings {
   fontSize: number;
   theme: 'system' | 'light' | 'dark';
   diagramMode: 'classic' | 'nassi';
+  diagramComments: boolean;
   showFunctions: boolean;
   symbolBar: boolean;
   mascot: boolean;
   /** Posición elegida al arrastrar la mascota (distancia a la esquina inferior derecha). */
   mascotPos: { right: number; bottom: number } | null;
+  /** Vestuario de la mascota: 'auto' (según la fecha), 'none' o el id de un vestuario. */
+  mascotCostume: string;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -47,10 +51,12 @@ const DEFAULT_SETTINGS: Settings = {
   fontSize: 14,
   theme: 'system',
   diagramMode: 'classic',
+  diagramComments: true,
   showFunctions: false,
   symbolBar: true,
   mascot: true,
   mascotPos: null,
+  mascotCostume: 'auto',
 };
 
 export const SPEEDS = [1200, 700, 400, 200, 80, 20];
@@ -78,6 +84,8 @@ interface AppState {
   modal: ModalId;
   editorRequest: EditorRequest | null;
   notice: string | null;
+  updateInfo: UpdateCheckResult | null;
+  setUpdateInfo(info: UpdateCheckResult | null): void;
 
   hydrate(): Promise<void>;
   activeFile(): FileDoc;
@@ -209,6 +217,7 @@ export const useApp = create<AppState>((set, get) => {
     modal: null,
     editorRequest: null,
     notice: null,
+    updateInfo: null,
 
     async hydrate() {
       let data: any = null;
@@ -403,6 +412,9 @@ export const useApp = create<AppState>((set, get) => {
     },
     setNotice(notice) {
       set({ notice });
+    },
+    setUpdateInfo(updateInfo) {
+      set({ updateInfo });
     },
 
     runProgram(mode) {
