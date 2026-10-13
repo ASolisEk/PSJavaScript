@@ -8,15 +8,31 @@ import { cloneExam, createExam, parseExam, sampleExam } from '../core/exam/confi
 import { gradePaper } from '../core/exam/grading';
 import { ExamHost } from '../core/exam/host';
 import { roomCode } from '../core/exam/random';
-import { createRoom, RoomState } from '../core/exam/room';
+import { compactRoom, createRoom, RoomState } from '../core/exam/room';
 import { createHostTransport, TransportError, TransportSpec } from '../core/exam/transport';
 import type { ExamConfig } from '../core/exam/types';
 
 export type TeacherTab = 'library' | 'editor' | 'room' | 'results';
 
-const LIB_KEY = 'psjs.teacher.v1';
+/** Versión anterior: exámenes e historial en una sola clave (se migra al abrir). */
+const LEGACY_KEY = 'psjs.teacher.v1';
+const EXAMS_KEY = 'psjs.teacher.exams.v2';
+const HISTORY_INDEX_KEY = 'psjs.teacher.history.v2';
+const historyItemKey = (key: string) => `${HISTORY_INDEX_KEY}:${key}`;
 const ROOM_KEY = 'psjs.teacher.room.v1';
-const MAX_HISTORY = 25;
+const MAX_HISTORY = 30;
+/** Cada cuánto se guarda la sala activa mientras cambia (la interfaz se actualiza más seguido). */
+const ROOM_SAVE_MS = 2000;
+
+/** Guarda sin lanzar errores; devuelve false si no se pudo (p. ej. sin espacio). */
+async function safeSet(key: string, value: string): Promise<boolean> {
+  try {
+    await AsyncStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 interface TeacherState {
   hydrated: boolean;
@@ -33,6 +49,8 @@ interface TeacherState {
   history: RoomState[];
   /** Sala del historial que se está consultando en «Resultados» (ver roomKey). */
   viewingKey: string | null;
+  /** Problema al guardar en el dispositivo (sin espacio). */
+  storageWarning: string | null;
 
   hydrate(): Promise<void>;
   setTab(t: TeacherTab): void;
@@ -52,10 +70,13 @@ interface TeacherState {
   forceSubmit(studentId: string): void;
   adjust(studentId: string, questionId: string, points: number | null): void;
   removeStudent(studentId: string): void;
+  setLocked(locked: boolean): void;
+  reopenStudent(studentId: string, minutes?: number): void;
   /** Sale de la sala (si está cerrada pasa al historial). */
   leaveRoom(): void;
   viewHistory(key: string | null): void;
   deleteHistory(key: string): void;
+  dismissStorageWarning(): void;
 }
 
 /** Identificador de una sala del historial. */
@@ -64,20 +85,59 @@ export const roomKey = (r: Pick<RoomState, 'code' | 'openedAt'>) => `${r.code}@$
 let host: ExamHost | null = null;
 let roomTimer: any = null;
 let pendingRoom: RoomState | null = null;
-let libTimer: any = null;
+let examsTimer: any = null;
+let saveRoomTimer: any = null;
+let lastRoomSave = 0;
 
 export const useTeacher = create<TeacherState>((set, get) => {
-  const persistLib = () => {
-    clearTimeout(libTimer);
-    libTimer = setTimeout(() => {
-      const { exams, history } = get();
-      AsyncStorage.setItem(LIB_KEY, JSON.stringify({ exams, history })).catch(() => {});
+  const NO_SPACE = 'El dispositivo se quedó sin espacio para guardar. Exporta tus exámenes y borra resultados antiguos del historial.';
+
+  const persistExams = () => {
+    clearTimeout(examsTimer);
+    examsTimer = setTimeout(async () => {
+      if (!(await safeSet(EXAMS_KEY, JSON.stringify(get().exams)))) set({ storageWarning: NO_SPACE });
     }, 300);
   };
 
-  const persistRoom = (room: RoomState | null) => {
-    if (room) AsyncStorage.setItem(ROOM_KEY, JSON.stringify(room)).catch(() => {});
+  /** Guarda el índice y las salas del historial; si no hay espacio, descarta las más antiguas. */
+  const persistHistory = async (changed?: RoomState) => {
+    let history = get().history;
+    if (changed && !(await safeSet(historyItemKey(roomKey(changed)), JSON.stringify(changed)))) {
+      // libera espacio borrando las salas más antiguas (nunca la que se acaba de guardar)
+      let dropped = 0;
+      let saved = false;
+      while (!saved && history.length > 1) {
+        const old = history[history.length - 1];
+        if (roomKey(old) === roomKey(changed)) break;
+        history = history.slice(0, -1);
+        dropped++;
+        await AsyncStorage.removeItem(historyItemKey(roomKey(old))).catch(() => {});
+        saved = await safeSet(historyItemKey(roomKey(changed)), JSON.stringify(changed));
+      }
+      set({
+        history,
+        storageWarning: saved
+          ? `No había espacio: se borraron ${dropped} resultado(s) antiguo(s) del historial. Exporta los resultados que quieras conservar.`
+          : NO_SPACE,
+      });
+    }
+    if (!(await safeSet(HISTORY_INDEX_KEY, JSON.stringify(history.map(roomKey))))) set({ storageWarning: NO_SPACE });
+  };
+
+  const writeRoom = (room: RoomState | null) => {
+    clearTimeout(saveRoomTimer);
+    saveRoomTimer = null;
+    lastRoomSave = Date.now();
+    if (room) safeSet(ROOM_KEY, JSON.stringify(room)).then((ok) => ok || set({ storageWarning: NO_SPACE }));
     else AsyncStorage.removeItem(ROOM_KEY).catch(() => {});
+  };
+
+  /** La sala activa cambia muy seguido: se guarda a lo más cada ROOM_SAVE_MS. */
+  const persistRoom = (room: RoomState | null, now = false) => {
+    if (now || !room) return writeRoom(room);
+    if (saveRoomTimer) return;
+    const wait = Math.max(0, ROOM_SAVE_MS - (Date.now() - lastRoomSave));
+    saveRoomTimer = setTimeout(() => writeRoom(host?.state ?? get().room), wait);
   };
 
   /** El anfitrión cambia muy seguido (avance de cada alumno): se agrupan las actualizaciones. */
@@ -93,6 +153,13 @@ export const useTeacher = create<TeacherState>((set, get) => {
       persistRoom(r);
     }, 250);
   };
+
+  // al cerrar o recargar la pestaña se guarda lo último
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('pagehide', () => {
+      if (host) writeRoom(host.state);
+    });
+  }
 
   const startHost = async (room: RoomState): Promise<boolean> => {
     host?.dispose();
@@ -120,7 +187,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
     }
     host = h;
     set({ room: h.state, live: true, opening: false, network: { online: true }, tab: 'room' });
-    persistRoom(h.state);
+    persistRoom(h.state, true);
     return true;
   };
 
@@ -130,7 +197,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
     roomTimer = null;
     pendingRoom = null;
     set({ room: host.state });
-    persistRoom(host.state);
+    persistRoom(host.state, true);
   };
 
   return {
@@ -145,28 +212,46 @@ export const useTeacher = create<TeacherState>((set, get) => {
     openError: null,
     history: [],
     viewingKey: null,
+    storageWarning: null,
 
     async hydrate() {
       if (get().hydrated) return;
-      let lib: any = null;
-      let room: RoomState | null = null;
-      try {
-        const raw = await AsyncStorage.getItem(LIB_KEY);
-        lib = raw ? JSON.parse(raw) : null;
-        const rr = await AsyncStorage.getItem(ROOM_KEY);
-        room = rr ? JSON.parse(rr) : null;
-      } catch {
-        /* datos dañados: se empieza de cero */
+      const read = async (key: string) => {
+        try {
+          const raw = await AsyncStorage.getItem(key);
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      };
+      let rawExams: any[] = (await read(EXAMS_KEY)) ?? [];
+      let history: RoomState[] = [];
+      const index: string[] = (await read(HISTORY_INDEX_KEY)) ?? [];
+      for (const k of index) {
+        const r = await read(historyItemKey(k));
+        if (r) history.push(r);
+      }
+      // migración desde la versión con una sola clave
+      const legacy = await read(LEGACY_KEY);
+      if (legacy) {
+        rawExams = [...rawExams, ...(legacy.exams ?? []).filter((e: any) => !rawExams.some((x) => x?.id === e?.id))];
+        const keys = new Set(history.map(roomKey));
+        history = [...history, ...(Array.isArray(legacy.history) ? legacy.history : []).filter((h: RoomState) => !keys.has(roomKey(h))).map((h: RoomState) => compactRoom(h))];
       }
       const exams: ExamConfig[] = [];
-      for (const e of lib?.exams ?? []) {
+      for (const e of rawExams) {
         try {
           exams.push(parseExam(JSON.stringify(e)));
         } catch {
           /* se omite */
         }
       }
-      set({ exams, history: Array.isArray(lib?.history) ? lib.history : [], room, hydrated: true });
+      set({ exams, history: history.slice(0, MAX_HISTORY), room: await read(ROOM_KEY), hydrated: true });
+      if (legacy) {
+        const ok = await safeSet(EXAMS_KEY, JSON.stringify(exams));
+        for (const h of get().history) await persistHistory(h);
+        if (ok) await AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
+      }
     },
 
     setTab(tab) {
@@ -180,19 +265,19 @@ export const useTeacher = create<TeacherState>((set, get) => {
     newExam(sample = false) {
       const e = sample ? sampleExam() : createExam();
       set((s) => ({ exams: [e, ...s.exams], editingId: e.id, tab: 'editor' }));
-      persistLib();
+      persistExams();
       return e;
     },
 
     saveExam(e) {
       const exam = { ...e, updatedAt: Date.now() };
       set((s) => ({ exams: s.exams.some((x) => x.id === e.id) ? s.exams.map((x) => (x.id === e.id ? exam : x)) : [exam, ...s.exams] }));
-      persistLib();
+      persistExams();
     },
 
     deleteExam(id) {
       set((s) => ({ exams: s.exams.filter((x) => x.id !== id), editingId: s.editingId === id ? null : s.editingId }));
-      persistLib();
+      persistExams();
     },
 
     duplicateExam(id) {
@@ -200,7 +285,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
       if (!e) return;
       const c = cloneExam(e);
       set((s) => ({ exams: [c, ...s.exams] }));
-      persistLib();
+      persistExams();
     },
 
     importExam(text) {
@@ -208,7 +293,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
       // si ya existe uno con el mismo id se importa como copia
       const exam = get().exams.some((x) => x.id === e.id) ? cloneExam(e, e.title) : e;
       set((s) => ({ exams: [exam, ...s.exams] }));
-      persistLib();
+      persistExams();
       return exam;
     },
 
@@ -277,10 +362,18 @@ export const useTeacher = create<TeacherState>((set, get) => {
       const result = gradePaper(room.exam, st.key, st.answers, overrides);
       const updated: RoomState = { ...room, students: { ...room.students, [studentId]: { ...st, overrides, result } } };
       set((s) => ({ history: s.history.map((h) => (roomKey(h) === key ? updated : h)) }));
-      persistLib();
+      persistHistory(updated);
     },
     removeStudent(studentId) {
       host?.remove(studentId);
+      sync();
+    },
+    setLocked(locked) {
+      host?.setLocked(locked);
+      sync();
+    },
+    reopenStudent(studentId, minutes) {
+      host?.reopen(studentId, minutes);
       sync();
     },
 
@@ -291,8 +384,11 @@ export const useTeacher = create<TeacherState>((set, get) => {
       clearTimeout(roomTimer);
       roomTimer = null;
       if (room && room.status === 'closed') {
-        set((s) => ({ history: [room, ...s.history.filter((h) => roomKey(h) !== roomKey(room))].slice(0, MAX_HISTORY), viewingKey: s.tab === 'results' ? roomKey(room) : s.viewingKey }));
-        persistLib();
+        const compact = compactRoom(room);
+        const kept = [compact, ...get().history.filter((h) => roomKey(h) !== roomKey(room))];
+        for (const old of kept.slice(MAX_HISTORY)) AsyncStorage.removeItem(historyItemKey(roomKey(old))).catch(() => {});
+        set((s) => ({ history: kept.slice(0, MAX_HISTORY), viewingKey: s.tab === 'results' ? roomKey(room) : s.viewingKey }));
+        persistHistory(compact);
       }
       set({ room: null, live: false, openError: null });
       persistRoom(null);
@@ -303,8 +399,13 @@ export const useTeacher = create<TeacherState>((set, get) => {
     },
 
     deleteHistory(key) {
-      set((s) => ({ history: s.history.filter((h) => roomKey(h) !== key), viewingKey: s.viewingKey === key ? null : s.viewingKey }));
-      persistLib();
+      set((s) => ({ history: s.history.filter((h) => roomKey(h) !== key), viewingKey: s.viewingKey === key ? null : s.viewingKey, storageWarning: null }));
+      AsyncStorage.removeItem(historyItemKey(key)).catch(() => {});
+      persistHistory();
+    },
+
+    dismissStorageWarning() {
+      set({ storageWarning: null });
     },
   };
 });

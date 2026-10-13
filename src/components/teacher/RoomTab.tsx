@@ -11,7 +11,8 @@ import { buildExamLink } from '../../ui/examLink';
 import { confirmDialog, copyText } from '../../ui/platform';
 import { MONO, useTheme } from '../../ui/theme';
 import { Button, Chip } from '../ui';
-import { Banner, BigChoice, Card, Field, formatDuration, formatSince, IconName, Pill, ProgressBar, Stat, TextField } from '../exam/kit';
+import { Banner, BigChoice, Card, Field, formatDuration, formatSince, IconName, Pill, ProgressBar, Stat, TextField, Toggle } from '../exam/kit';
+import QrCode from '../exam/QrCode';
 import StudentDetailModal, { PHASE_INFO } from './StudentDetailModal';
 
 const ACTIVITY_ICON: Record<Activity, IconName> = {
@@ -152,6 +153,7 @@ function LiveRoom({ room }: { room: RoomState }) {
   const [detail, setDetail] = useState<string | null>(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [projector, setProjector] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const h = setInterval(() => setNow(Date.now()), 1000);
@@ -171,6 +173,14 @@ function LiveRoom({ room }: { room: RoomState }) {
       avg: graded.length ? Math.round((graded.reduce((a, s) => a + s.result!.grade, 0) / graded.length) * 10) / 10 : null,
     };
   }, [students, room]);
+
+  // nombres repetidos (alguien entró dos veces o con el nombre de otro)
+  const nameCount = new Map<string, number>();
+  for (const s of students) {
+    const k = s.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    nameCount.set(k, (nameCount.get(k) ?? 0) + 1);
+  }
+  const isDuplicate = (s: StudentRecord) => (nameCount.get(s.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()) ?? 0) > 1;
 
   const shown = students
     .filter((s) => {
@@ -226,13 +236,21 @@ function LiveRoom({ room }: { room: RoomState }) {
               Los alumnos abren PSJavaScript → <Text style={{ fontWeight: '700', color: t.text }}>Examen</Text> → <Text style={{ fontWeight: '700', color: t.text }}>Soy alumno</Text> y escriben este código.
             </Text>
             {link ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, flexWrap: 'wrap', gap: 8 }}>
-                <Text style={{ color: t.primary, fontSize: 12, fontFamily: MONO, flexShrink: 1 }} numberOfLines={1}>
-                  {link}
-                </Text>
-                <Button label="Copiar enlace" icon="link-outline" onPress={() => copyText(link)} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, flexWrap: 'wrap', gap: 12 }}>
+                {room.transport.kind !== 'device' ? <QrCode value={link} size={112} /> : null}
+                <View style={{ flex: 1, minWidth: 180, gap: 8 }}>
+                  <Text style={{ color: t.primary, fontSize: 12, fontFamily: MONO }} numberOfLines={2}>
+                    {link}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    <Button label="Copiar enlace" icon="link-outline" onPress={() => copyText(link)} />
+                    <Button label="Proyectar" icon="tv-outline" onPress={() => setProjector(true)} />
+                  </View>
+                </View>
               </View>
-            ) : null}
+            ) : (
+              <Button label="Proyectar código" icon="tv-outline" onPress={() => setProjector(true)} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
+            )}
             {localhost && room.transport.kind !== 'device' ? <Text style={{ color: t.warning, fontSize: 12, marginTop: 6 }}>Abriste la aplicación como «localhost»: comparte con tus alumnos la dirección IP de tu equipo (la muestra «npm run sala»).</Text> : null}
           </Card>
 
@@ -254,6 +272,17 @@ function LiveRoom({ room }: { room: RoomState }) {
               </View>
             ) : null}
             {room.status === 'lobby' ? <Button label="Cancelar sala" icon="close-circle-outline" onPress={close} /> : null}
+            {room.status !== 'closed' ? (
+              <View style={{ marginTop: 8 }}>
+                <Toggle
+                  icon={room.locked ? 'lock-closed-outline' : 'lock-open-outline'}
+                  label="Aceptar alumnos nuevos"
+                  description={room.locked ? 'Ingreso cerrado: solo pueden reconectarse quienes ya entraron.' : 'Cualquiera con el código puede entrar. Ciérralo cuando estén todos.'}
+                  value={!room.locked}
+                  onChange={(open) => useTeacher.getState().setLocked(!open)}
+                />
+              </View>
+            ) : null}
             {room.status === 'closed' ? (
               <View style={{ gap: 8 }}>
                 <Text style={{ color: t.textMuted, fontSize: 13 }}>El examen terminó. Revisa el concentrado de calificaciones o abre una sala nueva.</Text>
@@ -308,7 +337,7 @@ function LiveRoom({ room }: { room: RoomState }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 }}>
             {shown.map((s) => (
               <View key={s.id} style={{ width: `${100 / cols}%`, paddingHorizontal: 5 }}>
-                <StudentCard s={s} room={room} now={now} onPress={() => setDetail(s.id)} />
+                <StudentCard s={s} room={room} now={now} duplicate={isDuplicate(s)} onPress={() => setDetail(s.id)} />
               </View>
             ))}
           </View>
@@ -316,11 +345,12 @@ function LiveRoom({ room }: { room: RoomState }) {
       </ScrollView>
       {detail && room.students[detail] ? <StudentDetailModal room={room} studentId={detail} live onClose={() => setDetail(null)} /> : null}
       {noticeOpen ? <NoticeDialog onClose={() => setNoticeOpen(false)} /> : null}
+      {projector ? <ProjectorView room={room} link={link} stats={stats} onClose={() => setProjector(false)} /> : null}
     </View>
   );
 }
 
-function StudentCard({ s, room, now, onPress }: { s: StudentRecord; room: RoomState; now: number; onPress(): void }) {
+function StudentCard({ s, room, now, duplicate, onPress }: { s: StudentRecord; room: RoomState; now: number; duplicate: boolean; onPress(): void }) {
   const t = useTheme();
   const phase = studentPhase(s, room);
   const pi = PHASE_INFO[phase];
@@ -385,13 +415,52 @@ function StudentCard({ s, room, now, onPress }: { s: StudentRecord; room: RoomSt
         </View>
       ) : null}
 
-      {s.focusLost || s.pasteBlocked ? (
+      {s.focusLost || s.pasteBlocked || duplicate ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {duplicate ? <Pill icon="people-outline" color={t.danger} text="Nombre repetido" /> : null}
           {s.focusLost ? <Pill icon="eye-off-outline" color={t.warning} text={`Salió ${s.focusLost}× · ${formatSince(s.awayMs)}`} /> : null}
           {s.pasteBlocked ? <Pill icon="clipboard-outline" color={t.danger} text={`Pegar ${s.pasteBlocked}×`} /> : null}
         </View>
       ) : null}
     </Pressable>
+  );
+}
+
+/** Pantalla completa para proyectar en el salón: código grande, QR y avance general. */
+function ProjectorView({ room, link, stats, onClose }: { room: RoomState; link: string | null; stats: { connected: number; working: number; submitted: number }; onClose(): void }) {
+  const { width, height } = useWindowDimensions();
+  const big = Math.min(width, height);
+  const total = Object.keys(room.students).length;
+  return (
+    <Modal visible animationType="fade" onRequestClose={onClose} supportedOrientations={['portrait', 'landscape']}>
+      <View style={styles.projector}>
+        <Pressable onPress={onClose} style={styles.projectorClose} accessibilityLabel="Cerrar vista para proyectar">
+          <Ionicons name="close" size={28} color="#fff" />
+        </Pressable>
+        <Text style={{ color: '#cfd6e4', fontSize: Math.max(18, big * 0.03), fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
+          {room.exam.title}
+        </Text>
+        <View style={{ flexDirection: width > height ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: big * 0.06, marginVertical: big * 0.04 }}>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ color: '#8b95a7', fontSize: Math.max(14, big * 0.025), fontWeight: '800', letterSpacing: 2 }}>CÓDIGO DE LA SALA</Text>
+            <Text style={{ color: '#fff', fontSize: big * 0.13, fontWeight: '900', letterSpacing: big * 0.02, fontFamily: MONO }}>{room.code}</Text>
+            <Text style={{ color: '#cfd6e4', fontSize: Math.max(14, big * 0.024), textAlign: 'center', marginTop: 8 }}>
+              PSJavaScript → Examen → Soy alumno
+            </Text>
+          </View>
+          {link && room.transport.kind !== 'device' ? (
+            <View style={{ alignItems: 'center' }}>
+              <QrCode value={link} size={Math.round(big * 0.34)} />
+              <Text style={{ color: '#8b95a7', fontSize: Math.max(12, big * 0.018), marginTop: 8 }}>o escanea con la cámara</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={{ color: '#fff', fontSize: Math.max(16, big * 0.03), fontWeight: '700' }}>
+          {total} en la sala · {stats.working} trabajando · {stats.submitted} entregados
+        </Text>
+        {room.locked ? <Text style={{ color: '#f0b44c', fontSize: Math.max(14, big * 0.022), marginTop: 8 }}>Ingreso cerrado</Text> : null}
+      </View>
+    </Modal>
   );
 }
 
@@ -436,5 +505,7 @@ const styles = StyleSheet.create({
   conn: { position: 'absolute', right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
   activity: { flexDirection: 'row', alignItems: 'center', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, marginTop: 10 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  projector: { flex: 1, backgroundColor: '#10131a', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  projectorClose: { position: 'absolute', top: 18, right: 18, padding: 8, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.12)' },
   dialog: { width: '100%', maxWidth: 520, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 18 },
 });

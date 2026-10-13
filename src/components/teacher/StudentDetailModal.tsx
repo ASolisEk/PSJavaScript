@@ -122,6 +122,16 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
                   }}
                 />
               ) : null}
+              {s.submittedAt && room.status !== 'closed' ? (
+                <Button
+                  label={room.exam.durationMin ? 'Reabrir examen (+10 min)' : 'Reabrir examen'}
+                  icon="lock-open-outline"
+                  onPress={async () => {
+                    if (await confirmDialog('¿Reabrir el examen?', `${s.name} podrá seguir respondiendo con sus respuestas actuales y deberá volver a enviarlo. Su calificación actual se descarta.`, 'Reabrir'))
+                      st.reopenStudent(s.id, 10);
+                  }}
+                />
+              ) : null}
               <Button
                 label="Quitar de la sala"
                 icon="person-remove-outline"

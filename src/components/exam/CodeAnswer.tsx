@@ -28,9 +28,10 @@ interface Props {
   onRun?(detail: string): void;
   onTest?(detail: string): void;
   onBusy?(kind: 'running' | 'testing' | null): void;
+  fontSize?: number;
 }
 
-export default function CodeAnswer({ q, value, onChange, settings, readOnly, onRun, onTest, onBusy }: Props) {
+export default function CodeAnswer({ q, value, onChange, settings, readOnly, onRun, onTest, onBusy, fontSize = 14 }: Props) {
   const t = useTheme();
   const profile = useMemo(() => getProfile(settings.profileId), [settings.profileId]);
   const [diags, setDiags] = useState<Diagnostic[]>([]);
@@ -76,6 +77,26 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
   };
 
   const stop = () => runner.current?.stop();
+
+  // Ctrl+Enter (o ⌘+Enter) ejecuta el programa
+  const executeRef = useRef(execute);
+  useEffect(() => {
+    executeRef.current = execute;
+  });
+  const canRun = settings.allowRun && !readOnly;
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !canRun || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        // en captura: antes de que el editor o un botón enfocado usen la tecla Enter
+        e.preventDefault();
+        e.stopPropagation();
+        executeRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [canRun]);
 
   const test = () => {
     runner.current?.stop();
@@ -128,7 +149,7 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
           execLine={null}
           errorLine={run?.status === 'error' ? run.error?.line ?? null : null}
           diagnostics={settings.showDiagnostics ? diags : []}
-          fontSize={14}
+          fontSize={fontSize}
           showSymbolBar={Platform.OS !== 'web'}
           assist={settings.allowAssist}
           blockPaste={settings.blockPaste}
@@ -142,7 +163,7 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
             running ? (
               <Button label="Detener" icon="stop" kind="danger" onPress={stop} />
             ) : (
-              <Button label="Ejecutar" icon="play" kind="primary" onPress={execute} />
+              <Button label={Platform.OS === 'web' ? 'Ejecutar (Ctrl+Enter)' : 'Ejecutar'} icon="play" kind="primary" onPress={execute} />
             )
           ) : null}
           {settings.allowRun && q.tests?.length ? <Button label="Probar con los ejemplos" icon="flask-outline" onPress={test} disabled={running} /> : null}

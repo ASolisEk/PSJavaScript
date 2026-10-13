@@ -7,7 +7,7 @@ import { useApp } from '../../store/app';
 import { TeacherTab, useTeacher } from '../../store/teacher';
 import { useTheme } from '../../ui/theme';
 import { Button, Tab } from '../ui';
-import { ScreenHeader } from '../exam/kit';
+import { Banner, ScreenHeader } from '../exam/kit';
 import BuilderTab from './BuilderTab';
 import LibraryTab from './LibraryTab';
 import ResultsTab from './ResultsTab';
@@ -20,6 +20,7 @@ export default function TeacherScreen() {
   const tab = useTeacher((s) => s.tab);
   const room = useTeacher((s) => s.room);
   const live = useTeacher((s) => s.live);
+  const storageWarning = useTeacher((s) => s.storageWarning);
   const working = useTeacher((s) => (s.room ? Object.values(s.room.students).filter((x) => studentPhase(x, s.room!) === 'working').length : 0));
 
   useEffect(() => {
@@ -48,6 +49,11 @@ export default function TeacherScreen() {
             <Tab key={x.id} label={x.label} icon={x.icon} active={tab === x.id} onPress={() => useTeacher.getState().setTab(x.id)} badge={x.badge} />
           ))}
         </ScrollView>
+        {storageWarning ? (
+          <View style={{ paddingHorizontal: 12, paddingTop: 10 }}>
+            <Banner icon="warning-outline" color={t.warning} text={storageWarning} onClose={() => useTeacher.getState().dismissStorageWarning()} />
+          </View>
+        ) : null}
         <View style={{ flex: 1 }}>
           {!hydrated ? (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>

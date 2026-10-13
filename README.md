@@ -87,16 +87,17 @@ Botón **Examen** de la barra de herramientas → **Soy maestro** o **Soy alumno
   En las preguntas de programación el maestro escribe su **solución de referencia** (nunca se envía al alumno): **Calcular salidas con la solución** llena los casos y **Verificar solución** confirma que obtiene el 100 %. La comparación de salidas puede ser *flexible*, *exacta*, *solo números* o *contiene*.
 - **Ajustes**: duración (o sin límite), banco de preguntas (cada alumno recibe *N* al azar), mezclar preguntas y opciones, escala 0–10 / 0–100, porcentaje aprobatorio, qué ve el alumno al enviar (nada, calificación o detalle), perfil del lenguaje, permitir ejecutar/probar código, autocompletado, errores en tiempo real, **bloquear pegar** y **detectar salidas de la ventana**.
 - **Vista previa**: presenta el examen como alumno (otra versión mezclada cada vez) y lo califica.
-- **Sala en vivo**: al abrirla se genera un **código de 6 caracteres** (y un enlace `?sala=CODIGO`). Se ve a cada alumno en tiempo real: conectado o no, avance (respondidas/total), pregunta actual, **qué está haciendo** (leyendo, escribiendo código, ejecutando, probando casos, inactivo, fuera de la ventana), tiempo restante, salidas de la ventana, intentos de pegar y calificación al entregar. Al tocar un alumno se ven sus respuestas en vivo (incluido su código), la bitácora de actividad y se pueden **ajustar puntos a mano**, darle más tiempo, recoger su examen o quitarlo de la sala. También: avisos a todos, +5 minutos a todos y **Cerrar examen** (recoge y califica lo pendiente).
-- **Resultados (concentrado)**: alumnos, promedio, mediana, máxima, mínima, % de aprobados, tiempo promedio, distribución de calificaciones, **análisis por pregunta** (aciertos y dificultad) y tabla por alumno (calificación, puntos, tiempo, respondidas, salidas, pegados, cómo entregó). Exporta a **CSV** (Excel) y respaldo **JSON**. Queda un historial de exámenes aplicados.
+- **Sala en vivo**: al abrirla se genera un **código de 6 caracteres**, un enlace `?sala=CODIGO` y su **código QR**; **Proyectar** muestra el código y el QR en pantalla completa para el salón. **Aceptar alumnos nuevos** se puede apagar cuando ya entraron todos (los que están pueden reconectarse). Se marcan los **nombres repetidos** y la pantalla del maestro no se apaga mientras la sala está abierta. Se ve a cada alumno en tiempo real: conectado o no, avance (respondidas/total), pregunta actual, **qué está haciendo** (leyendo, escribiendo código, ejecutando, probando casos, inactivo, fuera de la ventana), tiempo restante, salidas de la ventana, intentos de pegar y calificación al entregar. Al tocar un alumno se ven sus respuestas en vivo (incluido su código), la bitácora de actividad y se pueden **ajustar puntos a mano**, darle más tiempo, recoger su examen, **reabrirlo** si lo envió por error (+10 min) o quitarlo de la sala. También: avisos a todos, +5 minutos a todos y **Cerrar examen** (recoge y califica lo pendiente).
+- **Resultados (concentrado)**: alumnos, promedio, mediana, máxima, mínima, % de aprobados, tiempo promedio, distribución de calificaciones, **análisis por pregunta** (aciertos y dificultad) y tabla por alumno (calificación, puntos, tiempo, respondidas, salidas, pegados, cómo entregó). Exporta a **CSV** (Excel) y respaldo **JSON**. Queda un historial de exámenes aplicados (guardado de forma compacta; si el dispositivo se queda sin espacio se borran los más antiguos y se avisa).
 
 ### Modo Examen (alumno)
 
 - Entra con el **código**, su nombre y grupo/matrícula. Lee las instrucciones y el tiempo empieza al presionar **Comenzar**.
 - Durante el examen **no existen** la ayuda, la mascota, insertar comandos, archivos/ejemplos ni exportar (el entorno normal no se monta). Las preguntas y opciones aparecen **en orden aleatorio** (distinto por alumno, generado con una semilla).
-- Navegador de preguntas, «revisar después», editor con resaltado para programar, **Ejecutar** (con `prompt()`) y **Probar con los ejemplos**, si el maestro lo permite.
+- Navegador de preguntas, «revisar después», editor con resaltado para programar, **Ejecutar** (también con **Ctrl+Enter**, con `prompt()`) y **Probar con los ejemplos**, si el maestro lo permite.
+- Botones **A− / A+** para el tamaño de letra, indicador **guardado ✓ / guardando… / guardado en este dispositivo** y avisos cuando quedan **10, 5 y 1 minutos** (con vibración en el teléfono).
 - **Enviar a calificar** muestra cuántas faltan; al agotarse el tiempo o cerrar el maestro, se envía solo. La calificación se calcula en el equipo del maestro (el alumno nunca recibe respuestas ni casos ocultos).
-- Las respuestas se guardan en el dispositivo: si se recarga la página o se cae la red, el alumno vuelve a su examen y lo pendiente se reenvía al reconectar.
+- Las respuestas se guardan en el dispositivo: si se recarga la página o se cae la red, el alumno vuelve a su examen y lo pendiente se reenvía al reconectar. El nombre del alumno no se guarda de forma permanente (computadoras compartidas).
 
 ### Conexión de la sala
 
@@ -146,7 +147,7 @@ npm install
 npm run web          # navegador
 npm run ios          # simulador iOS (requiere Xcode) o Expo Go
 npm run android      # emulador/dispositivo Android o Expo Go
-npm test             # pruebas del núcleo
+npm test             # pruebas del núcleo (también corren en cada PR: .github/workflows/ci.yml)
 npm run typecheck    # TypeScript (app y pruebas)
 npx expo lint        # ESLint
 npm run export:web   # sitio estático en dist/

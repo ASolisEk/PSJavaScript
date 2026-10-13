@@ -3,6 +3,7 @@
  * examen. Se avisa al maestro si el alumno sale de la ventana o intenta pegar.
  */
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,30 +13,12 @@ import { defaultTransport, transportOptions, TransportSpec } from '../../core/ex
 import type { Activity, PaperQuestion, StudentResultView } from '../../core/exam/types';
 import { useApp } from '../../store/app';
 import { idleMs, serverNow, useStudent } from '../../store/student';
-import { clearExamLink, readExamLink } from '../../ui/examLink';
+import { clearExamLink, readExamLink, rememberedStudent, rememberStudent } from '../../ui/examLink';
 import { confirmDialog } from '../../ui/platform';
 import { MONO, useTheme } from '../../ui/theme';
 import { Button } from '../ui';
 import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, TextField } from './kit';
 import QuestionView from './QuestionView';
-
-const NAME_KEY = 'psjs.student.lastName';
-
-function loadLast(): { name: string; group: string } {
-  try {
-    if (Platform.OS === 'web') return JSON.parse(window.localStorage.getItem(NAME_KEY) ?? 'null') ?? { name: '', group: '' };
-  } catch {
-    /* sin almacenamiento */
-  }
-  return { name: '', group: '' };
-}
-function saveLast(v: { name: string; group: string }) {
-  try {
-    if (Platform.OS === 'web') window.localStorage.setItem(NAME_KEY, JSON.stringify(v));
-  } catch {
-    /* sin almacenamiento */
-  }
-}
 
 export default function StudentScreen() {
   const t = useTheme();
@@ -82,7 +65,7 @@ function Narrow({ children }: { children: React.ReactNode }) {
 function JoinView() {
   const t = useTheme();
   const [link] = useState(() => readExamLink());
-  const [last] = useState(() => loadLast());
+  const [last] = useState(() => rememberedStudent());
   const joining = useStudent((s) => s.joining);
   const error = useStudent((s) => s.joinError);
   const [code, setCode] = useState(link?.code ?? '');
@@ -95,7 +78,7 @@ function JoinView() {
 
   const join = async () => {
     if (!valid) return;
-    saveLast({ name: name.trim(), group: group.trim() });
+    rememberStudent({ name: name.trim(), group: group.trim() });
     const ok = await useStudent.getState().join({ code, name: name.trim(), group: group.trim(), transport: spec });
     if (ok) clearExamLink();
   };
@@ -189,6 +172,7 @@ function WaitingView() {
   const s = useStudent((x) => x.session)!;
   const room = s.room;
   const ready = s.phase === 'ready';
+  if (s.roomClosed) return <EndedView />;
   return (
     <View style={{ flex: 1 }}>
       <ScreenHeader icon="school-outline" title={room?.title ?? 'Examen'} subtitle={`Sala ${s.code} · ${s.identity.name}`} color={t.success} right={<Button label="Salir" icon="exit-outline" onPress={confirmLeave} />} />
@@ -232,6 +216,31 @@ function WaitingView() {
             <Button label="Comenzar examen" icon="play" kind="primary" onPress={() => useStudent.getState().begin()} disabled={!ready} style={{ height: 50 }} />
           </>
         )}
+      </Narrow>
+    </View>
+  );
+}
+
+/** La sala se cerró antes de que el alumno comenzara. */
+function EndedView() {
+  const t = useTheme();
+  const s = useStudent((x) => x.session)!;
+  const exit = () => {
+    useStudent.getState().leave();
+    useApp.getState().setAppMode('ide');
+  };
+  return (
+    <View style={{ flex: 1 }}>
+      <ScreenHeader icon="school-outline" title={s.room?.title ?? 'Examen'} subtitle={`Sala ${s.code} · ${s.identity.name}`} color={t.success} />
+      <Narrow>
+        <Card accent={t.textMuted} style={{ alignItems: 'center', paddingVertical: 24 }}>
+          <Ionicons name="lock-closed-outline" size={44} color={t.textMuted} />
+          <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginTop: 8 }}>El examen terminó</Text>
+          <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
+            El maestro cerró la sala antes de que comenzaras tu examen. Si crees que es un error, avísale.
+          </Text>
+        </Card>
+        <Button label="Salir del modo examen" icon="exit-outline" kind="primary" onPress={exit} style={{ height: 46 }} />
       </Narrow>
     </View>
   );
@@ -319,10 +328,14 @@ function useExamGuards(trackFocus: boolean, blockPaste: boolean, onPasteBlocked:
   }, [trackFocus, blockPaste, onPasteBlocked]);
 }
 
-function Timer({ deadline, onExpire }: { deadline: number | null; onExpire(): void }) {
+/** Minutos restantes en los que se avisa al alumno. */
+const TIME_WARNINGS = [10, 5, 1];
+
+function Timer({ deadline, onExpire, onWarn }: { deadline: number | null; onExpire(): void; onWarn(minutes: number): void }) {
   const t = useTheme();
   const [now, setNow] = useState(serverNow);
   const fired = useRef(false);
+  const prevLeft = useRef<number | null>(null);
   useEffect(() => {
     const h = setInterval(() => setNow(serverNow()), 1000);
     return () => clearInterval(h);
@@ -336,6 +349,15 @@ function Timer({ deadline, onExpire }: { deadline: number | null; onExpire(): vo
       onExpire();
     }
   }, [expired, onExpire]);
+  // avisa al cruzar 10, 5 y 1 minuto (no al abrir si ya pasó ese momento)
+  useEffect(() => {
+    if (!Number.isFinite(left)) return;
+    const prev = prevLeft.current;
+    prevLeft.current = left;
+    if (prev === null) return;
+    const crossed = TIME_WARNINGS.find((m) => prev > m * 60_000 && left <= m * 60_000 && left > 0);
+    if (crossed) onWarn(crossed);
+  }, [left, onWarn]);
   if (deadline === null) return <Pill icon="infinite-outline" text="Sin límite" color={t.textMuted} />;
   const color = left < 60_000 ? t.danger : left < 5 * 60_000 ? t.warning : t.success;
   return (
@@ -353,7 +375,9 @@ function ExamView() {
   const s = useStudent((x) => x.session)!;
   const banner = useStudent((x) => x.banner);
   const net = useStudent((x) => x.net);
+  const pendingSync = useStudent((x) => x.pendingSync);
   const paper = s.paper!;
+  const fontSize = s.fontSize ?? 14;
   const st = useStudent.getState();
   const q = paper.questions[s.current] ?? paper.questions[0];
   const [confirm, setConfirm] = useState(false);
@@ -380,6 +404,19 @@ function ExamView() {
   useEffect(() => {
     scroll.current?.scrollTo({ y: 0, animated: false });
   }, [currentIndex]);
+
+  const [timeWarning, setTimeWarning] = useState<string | null>(null);
+  const onWarn = useCallback((minutes: number) => {
+    setTimeWarning(minutes === 1 ? '¡Queda 1 minuto! Al terminarse, tu examen se enviará solo.' : `Quedan ${minutes} minutos.`);
+    setTimeout(() => setTimeWarning(null), 10_000);
+    if (Platform.OS === 'web') {
+      try {
+        navigator.vibrate?.(minutes === 1 ? [200, 100, 200] : 200);
+      } catch {
+        /* sin vibración */
+      }
+    } else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+  }, [setTimeWarning]);
 
   const timeUp = useCallback(() => {
     if (useStudent.getState().session?.phase === 'exam') useStudent.getState().submit('timeout');
@@ -417,12 +454,23 @@ function ExamView() {
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
             <View style={[styles.dot, { backgroundColor: net === 'online' ? t.success : net === 'connecting' ? t.info : t.warning }]} />
-            <Text style={{ color: t.textMuted, fontSize: 12 }} numberOfLines={1}>
-              {s.identity.name} · {answered}/{paper.questions.length} respondidas
+            <Text style={{ color: t.textMuted, fontSize: 12, flexShrink: 1 }} numberOfLines={1}>
+              {s.identity.name} · {answered}/{paper.questions.length} respondidas ·{' '}
+              <Text style={{ color: net !== 'online' ? t.warning : pendingSync ? t.textMuted : t.success }}>
+                {net !== 'online' ? 'guardado en este dispositivo' : pendingSync ? 'guardando…' : 'guardado ✓'}
+              </Text>
             </Text>
           </View>
         </View>
-        <Timer deadline={s.deadline} onExpire={timeUp} />
+        <View style={[styles.fontBox, { borderColor: t.border }]}>
+          <Pressable onPress={() => st.setFontSize(fontSize - 2)} hitSlop={6} accessibilityLabel="Letra más pequeña" style={styles.fontBtn}>
+            <Text style={{ color: t.text, fontSize: 12, fontWeight: '800' }}>A−</Text>
+          </Pressable>
+          <Pressable onPress={() => st.setFontSize(fontSize + 2)} hitSlop={6} accessibilityLabel="Letra más grande" style={styles.fontBtn}>
+            <Text style={{ color: t.text, fontSize: 16, fontWeight: '800' }}>A+</Text>
+          </Pressable>
+        </View>
+        <Timer deadline={s.deadline} onExpire={timeUp} onWarn={onWarn} />
         <Button
           label={width < 520 ? 'Enviar' : 'Enviar a calificar'}
           icon="paper-plane-outline"
@@ -455,6 +503,7 @@ function ExamView() {
           <View style={{ width: '100%', maxWidth: 900 }}>
             <NetBanner />
             {banner ? <Banner icon="megaphone-outline" color={t.accent} text={`Aviso del maestro: ${banner}`} onClose={() => st.dismissBanner()} /> : null}
+            {timeWarning ? <Banner icon="alarm-outline" color={t.danger} text={timeWarning} onClose={() => setTimeWarning(null)} /> : null}
             {toast ? <Banner icon="hand-left-outline" color={t.danger} text={toast} /> : null}
             <Card>
               <QuestionView
@@ -472,6 +521,7 @@ function ExamView() {
                 onRun={(d) => st.report('run', d)}
                 onTest={(d) => st.report('test', d)}
                 onBusy={(k) => touch(k ?? 'coding')}
+                fontSize={fontSize}
               />
             </Card>
             <View style={styles.footerNav}>
@@ -660,6 +710,8 @@ function ResultView() {
 const styles = StyleSheet.create({
   examHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  fontBox: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, marginRight: 4 },
+  fontBtn: { paddingHorizontal: 8, height: 32, alignItems: 'center', justifyContent: 'center' },
   timer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 18, paddingHorizontal: 10, paddingVertical: 5 },
   side: { width: 210, padding: 14, borderRightWidth: StyleSheet.hairlineWidth },
   navGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
