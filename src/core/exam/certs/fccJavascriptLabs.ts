@@ -35,7 +35,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-celsius-to-fahrenheit-converter',
     module: 'javascript-functions',
-    title: 'Celsius to Fahrenheit Converter',
+    title: 'Convertidor de Celsius a Fahrenheit',
     prompt: 'Escribe la función `convertCtoF(celsius)` que convierta una temperatura de grados Celsius a Fahrenheit y devuelva un número.\n\nFórmula: `fahrenheit = celsius * (9/5) + 32`',
     starter: stub('convertCtoF(celsius)'),
     solution: 'function convertCtoF(celsius) {\n  return celsius * (9 / 5) + 32;\n}\n',
@@ -50,7 +50,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-leap-year-calculator',
     module: 'javascript-functions',
-    title: 'Leap Year Calculator',
+    title: 'Calculadora de años bisiestos',
     prompt:
       'Escribe la función `isLeapYear(year)`. Un año es bisiesto si es divisible entre `4`, excepto los divisibles entre `100` que no son divisibles entre `400`.\n\nDebe devolver `"[year] is a leap year."` o `"[year] is not a leap year."` (reemplaza `[year]` por el año).',
     starter: stub('isLeapYear(year)'),
@@ -66,7 +66,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-truncate-string',
     module: 'javascript-functions',
-    title: 'Truncate a String',
+    title: 'Recortar una cadena',
     prompt: 'Escribe la función `truncateString(str, num)`. Si el texto es más largo que `num`, córtalo a `num` caracteres y agrega `...` al final; si no, devuélvelo sin cambios.',
     starter: stub('truncateString(str, num)'),
     solution: 'function truncateString(str, num) {\n  return str.length > num ? str.slice(0, num) + "..." : str;\n}\n',
@@ -81,7 +81,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-string-ending-checker',
     module: 'javascript-functions',
-    title: 'String Ending Checker',
+    title: 'Revisar el final de una cadena',
     prompt: 'Escribe la función `confirmEnding(str, target)` que devuelva `true` si `str` termina con `target` y `false` si no.\n\nNo uses `.endsWith()`: resuélvelo con un método para obtener subcadenas.',
     starter: stub('confirmEnding(str, target)'),
     solution: 'function confirmEnding(str, target) {\n  return str.slice(str.length - target.length) === target;\n}\n',
@@ -97,7 +97,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-email-masker',
     module: 'javascript-functions',
-    title: 'Email Masker',
+    title: 'Ocultar un correo electrónico',
     prompt: 'Escribe la función `maskEmail(email)` que oculte con asteriscos el nombre de usuario de un correo, dejando visibles su primera y su última letra, y conserve el dominio.\n\nEjemplo: `maskEmail("apple.pie@example.com")` devuelve `"a*******e@example.com"`.',
     starter: stub('maskEmail(email)'),
     solution:
@@ -112,7 +112,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-golf-score-translator',
     module: 'javascript-arrays',
-    title: 'Golf Score Translator',
+    title: 'Traductor de puntajes de golf',
     prompt:
       'Escribe la función `golfScore(par, strokes)` que devuelva el apodo del resultado:\n\n- `strokes` es `1`: `"Hole-in-one!"`\n- `strokes <= par - 2`: `"Eagle"`\n- `strokes === par - 1`: `"Birdie"`\n- `strokes === par`: `"Par"`\n- `strokes === par + 1`: `"Bogey"`\n- `strokes === par + 2`: `"Double Bogey"`\n- `strokes >= par + 3`: `"Go Home!"`',
     starter: stub('golfScore(par, strokes)'),
@@ -131,7 +131,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-factorial-calculator',
     module: 'javascript-loops',
-    title: 'Factorial Calculator',
+    title: 'Calculadora de factorial',
     prompt: 'Escribe la función `factorialCalculator(num)` que devuelva el factorial de `num` usando un ciclo (`for`, `while` o `do...while`). Por ejemplo, el factorial de `5` es `5 * 4 * 3 * 2 * 1 = 120`.',
     starter: stub('factorialCalculator(num)'),
     solution: 'function factorialCalculator(num) {\n  let result = 1;\n  for (let i = 1; i <= num; i++) {\n    result *= i;\n  }\n  return result;\n}\n',
@@ -145,7 +145,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-repeat-a-string',
     module: 'javascript-loops',
-    title: 'Repeat a String',
+    title: 'Repetir una cadena',
     prompt: 'Escribe la función `repeatStringNumTimes(str, num)` que devuelva `str` repetido `num` veces. Si `num` es menor o igual que cero, devuelve `""`.\n\nNo uses el método `.repeat()`.',
     starter: stub('repeatStringNumTimes(str, num)'),
     solution: 'function repeatStringNumTimes(str, num) {\n  let result = "";\n  for (let i = 0; i < num; i++) {\n    result += str;\n  }\n  return result;\n}\n',
@@ -161,7 +161,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-longest-word-in-a-string',
     module: 'javascript-loops',
-    title: 'Longest Word Finder',
+    title: 'Buscar la palabra más larga',
     prompt: 'Escribe la función `findLongestWordLength(str)` que devuelva la longitud de la palabra más larga de la oración.',
     starter: stub('findLongestWordLength(str)'),
     solution: 'function findLongestWordLength(str) {\n  let longest = 0;\n  for (const word of str.split(" ")) {\n    if (word.length > longest) longest = word.length;\n  }\n  return longest;\n}\n',
@@ -175,7 +175,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-mutations',
     module: 'javascript-loops',
-    title: 'Mutations',
+    title: 'Mutaciones',
     prompt: 'Escribe la función `mutation(arr)` que devuelva `true` si el texto del primer elemento contiene todas las letras del texto del segundo elemento (sin importar mayúsculas) y `false` si no.',
     starter: stub('mutation(arr)'),
     solution:
@@ -191,7 +191,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-chunky-monkey',
     module: 'javascript-loops',
-    title: 'Chunky Monkey',
+    title: 'Dividir en grupos (Chunky Monkey)',
     prompt: 'Escribe la función `chunkArrayInGroups(arr, size)` que divida el arreglo en grupos de tamaño `size` y los devuelva como un arreglo bidimensional.',
     starter: stub('chunkArrayInGroups(arr, size)'),
     solution: 'function chunkArrayInGroups(arr, size) {\n  const result = [];\n  for (let i = 0; i < arr.length; i += size) {\n    result.push(arr.slice(i, i + size));\n  }\n  return result;\n}\n',
@@ -205,7 +205,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-missing-letter-detector',
     module: 'javascript-loops',
-    title: 'Missing Letter Detector',
+    title: 'Detectar la letra faltante',
     prompt: 'Escribe la función `fearNotLetter(str)` que reciba un rango de letras en orden alfabético y devuelva la letra que falta. Si no falta ninguna, devuelve `undefined`.',
     starter: stub('fearNotLetter(str)'),
     solution:
@@ -221,7 +221,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-reverse-a-string',
     module: 'review-javascript-fundamentals',
-    title: 'Reverse a String',
+    title: 'Invertir una cadena',
     prompt: 'Escribe la función `reverseString(str)` que devuelva el texto al revés. Por ejemplo, `"hello"` se convierte en `"olleh"`.',
     starter: stub('reverseString(str)'),
     solution: 'function reverseString(str) {\n  let result = "";\n  for (let i = str.length - 1; i >= 0; i--) {\n    result += str[i];\n  }\n  return result;\n}\n',
@@ -234,7 +234,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-largest-number-finder',
     module: 'review-javascript-fundamentals',
-    title: 'Largest Number Finder',
+    title: 'Buscar los números más grandes',
     prompt: 'Escribe la función `largestOfAll(arr)` que reciba un arreglo de arreglos de números y devuelva un arreglo con el número mayor de cada subarreglo.',
     starter: stub('largestOfAll(arr)'),
     solution:
@@ -248,7 +248,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-title-case-converter',
     module: 'review-javascript-fundamentals',
-    title: 'Title Case Converter',
+    title: 'Mayúscula inicial en cada palabra',
     prompt: 'Escribe la función `titleCase(str)` que devuelva el texto con la primera letra de cada palabra en mayúscula y el resto en minúsculas.\n\nEjemplo: `titleCase("javaScript is fun")` devuelve `"Javascript Is Fun"`.',
     starter: stub('titleCase(str)'),
     solution: 'function titleCase(str) {\n  return str\n    .split(" ")\n    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())\n    .join(" ");\n}\n',
@@ -262,7 +262,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-falsy-remover',
     module: 'review-javascript-fundamentals',
-    title: 'Falsy Remover',
+    title: 'Quitar valores falsy',
     prompt: 'Escribe la función `bouncer(arr)` que devuelva un arreglo nuevo sin los valores falsy (`false`, `null`, `0`, `""`, `undefined` y `NaN`). No modifiques el arreglo original.',
     starter: stub('bouncer(arr)'),
     solution: 'function bouncer(arr) {\n  return arr.filter((x) => Boolean(x));\n}\n',
@@ -276,7 +276,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-unique-sorted-union',
     module: 'review-javascript-fundamentals',
-    title: 'Unique Sorted Union',
+    title: 'Unión ordenada sin repetidos',
     prompt: 'Escribe la función `uniteUnique(...arrays)` que reciba dos o más arreglos y devuelva un arreglo nuevo con los valores sin repetir, en el orden en que aparecen por primera vez.\n\nEjemplo: `uniteUnique([1, 2, 4], [2, 3, 5])` devuelve `[1, 2, 4, 3, 5]`.',
     starter: stub('uniteUnique(...arrays)'),
     solution: 'function uniteUnique(...arrays) {\n  const result = [];\n  for (const arr of arrays) {\n    for (const x of arr) {\n      if (!result.includes(x)) result.push(x);\n    }\n  }\n  return result;\n}\n',
@@ -289,7 +289,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-sum-all-numbers-algorithm',
     module: 'review-javascript-fundamentals',
-    title: 'Sum All Numbers Algorithm',
+    title: 'Sumar todos los números de un rango',
     prompt: 'Escribe la función `sumAll(arr)` que reciba un arreglo con dos números y devuelva la suma de ambos y de todos los números entre ellos. El menor no siempre viene primero.\n\nEjemplo: `sumAll([4, 1])` devuelve `10`.',
     starter: stub('sumAll(arr)'),
     solution: 'function sumAll(arr) {\n  const min = Math.min(arr[0], arr[1]);\n  const max = Math.max(arr[0], arr[1]);\n  let sum = 0;\n  for (let i = min; i <= max; i++) sum += i;\n  return sum;\n}\n',
@@ -303,7 +303,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-dna-pair-generator',
     module: 'review-javascript-fundamentals',
-    title: 'DNA Pair Generator',
+    title: 'Generador de pares de ADN',
     prompt: 'Escribe la función `pairElement(str)` que, para cada base de la cadena de ADN, devuelva su par: `A` con `T`, `T` con `A`, `C` con `G` y `G` con `C`. El resultado es un arreglo de pares.\n\nEjemplo: `pairElement("ATCG")` devuelve `[["A","T"],["T","A"],["C","G"],["G","C"]]`.',
     starter: stub('pairElement(str)'),
     solution: 'function pairElement(str) {\n  const pairs = { A: "T", T: "A", C: "G", G: "C" };\n  return str.split("").map((b) => [b, pairs[b]]);\n}\n',
@@ -316,7 +316,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-odd-fibonacci-sum-calculator',
     module: 'review-javascript-fundamentals',
-    title: 'Odd Fibonacci Sum Calculator',
+    title: 'Suma de Fibonacci impares',
     prompt: 'Escribe la función `sumFibs(num)` que devuelva la suma de todos los números impares de la sucesión de Fibonacci (0, 1, 1, 2, 3, 5, 8…) que sean menores o iguales que `num`.',
     starter: stub('sumFibs(num)'),
     solution: 'function sumFibs(num) {\n  let a = 0;\n  let b = 1;\n  let sum = 0;\n  while (b <= num) {\n    if (b % 2 !== 0) sum += b;\n    const next = a + b;\n    a = b;\n    b = next;\n  }\n  return sum;\n}\n',
@@ -330,7 +330,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-symmetric-difference',
     module: 'higher-order-functions-and-callbacks',
-    title: 'Symmetric Difference',
+    title: 'Diferencia simétrica',
     prompt: 'Escribe la función `diffArray(arr1, arr2)` que devuelva un arreglo con los elementos que están solo en uno de los dos arreglos. Primero los del primer arreglo y después los del segundo, en su orden original. Usa el método `filter`.',
     starter: stub('diffArray(arr1, arr2)'),
     solution: 'function diffArray(arr1, arr2) {\n  return arr1.filter((x) => !arr2.includes(x)).concat(arr2.filter((x) => !arr1.includes(x)));\n}\n',
@@ -345,7 +345,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-value-remover-function',
     module: 'higher-order-functions-and-callbacks',
-    title: 'Value Remover Function',
+    title: 'Función para quitar valores',
     prompt: 'Escribe la función `destroyer(arr, ...values)` que devuelva un arreglo nuevo sin los elementos de `arr` que sean iguales a cualquiera de los demás argumentos.',
     starter: stub('destroyer(arr, ...values)'),
     solution: 'function destroyer(arr, ...values) {\n  return arr.filter((x) => !values.includes(x));\n}\n',
@@ -359,7 +359,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-sorted-index-finder',
     module: 'higher-order-functions-and-callbacks',
-    title: 'Sorted Index Finder',
+    title: 'Buscar el índice en orden',
     prompt: 'Escribe la función `getIndexToIns(arr, num)` que devuelva el menor índice en el que se debe insertar `num` una vez que el arreglo esté ordenado de menor a mayor. Usa `sort` y `findIndex`.',
     starter: stub('getIndexToIns(arr, num)'),
     solution: 'function getIndexToIns(arr, num) {\n  const sorted = [...arr].sort((a, b) => a - b);\n  const i = sorted.findIndex((x) => x >= num);\n  return i === -1 ? sorted.length : i;\n}\n',
@@ -375,7 +375,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-deep-flattening-tool',
     module: 'higher-order-functions-and-callbacks',
-    title: 'Deep Flattening Tool',
+    title: 'Aplanar arreglos anidados',
     prompt: 'Escribe la función `steamrollArray(arr)` que aplane un arreglo anidado a cualquier profundidad. No uses `flat()` ni `flatMap()`.\n\nEjemplo: `steamrollArray([[1], [], [2, [3]]])` devuelve `[1, 2, 3]`.',
     starter: stub('steamrollArray(arr)'),
     solution: 'function steamrollArray(arr) {\n  const result = [];\n  for (const x of arr) {\n    if (Array.isArray(x)) result.push(...steamrollArray(x));\n    else result.push(x);\n  }\n  return result;\n}\n',
@@ -393,7 +393,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-spinal-case-converter',
     module: 'basic-regex',
-    title: 'Spinal Case Converter',
+    title: 'Convertir a spinal-case',
     prompt: 'Escribe la función `spinalCase(str)` que convierta el texto a spinal case: todo en minúsculas y las palabras separadas por guiones.\n\nEjemplo: `spinalCase("ProductLanding page")` devuelve `"product-landing-page"`.',
     starter: stub('spinalCase(str)'),
     solution: 'function spinalCase(str) {\n  return str\n    .replace(/([a-z])([A-Z])/g, "$1 $2")\n    .split(/[\\s_-]+/)\n    .join("-")\n    .toLowerCase();\n}\n',
@@ -424,7 +424,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-palindrome-checker',
     module: 'basic-regex',
-    title: 'Palindrome Checker',
+    title: 'Revisar palíndromos',
     prompt: 'Escribe la función `palindrome(str)` que devuelva `true` si el texto se lee igual al derecho y al revés, ignorando mayúsculas, espacios, signos de puntuación y símbolos (solo cuentan letras y números).',
     starter: stub('palindrome(str)'),
     solution: 'function palindrome(str) {\n  const clean = str.toLowerCase().replace(/[^a-z0-9]/g, "");\n  return clean === clean.split("").reverse().join("");\n}\n',
@@ -440,7 +440,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-voting-system',
     module: 'lab-voting-system',
-    title: 'Voting System (proyecto de certificación)',
+    title: 'Sistema de votación (proyecto de certificación)',
     prompt:
       'Crea un sistema de votación con `Map` y `Set`:\n\n- `poll` es un `Map` (ya declarado).\n- `addOption(option)`: si está vacía devuelve `"Option cannot be empty."`; si ya existe, `Option "<option>" already exists.`; si no, la agrega con un `Set` vacío de votantes y devuelve `Option "<option>" added to the poll.`\n- `vote(option, voterId)`: si la opción no existe, `Option "<option>" does not exist.`; si ese votante ya votó por ella, `Voter <voterId> has already voted for "<option>".`; si no, registra el voto y devuelve `Voter <voterId> voted for "<option>".`',
     starter: 'const poll = new Map();\n\nfunction addOption(option) {\n  // Escribe tu código aquí\n\n}\n\nfunction vote(option, voterId) {\n  // Escribe tu código aquí\n\n}\n',
@@ -462,7 +462,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-bank-account-manager',
     module: 'lab-bank-account-manager',
-    title: 'Bank Account Manager (proyecto de certificación)',
+    title: 'Administrador de cuenta bancaria (proyecto de certificación)',
     prompt:
       'Define la clase `BankAccount`:\n\n- El constructor inicia `balance` en `0` y `transactions` como arreglo vacío. Cada transacción es un objeto `{ type, amount }` con `type` igual a `"deposit"` o `"withdraw"`.\n- `deposit(amount)`: si `amount > 0` registra la transacción, actualiza el saldo y devuelve `"Successfully deposited $[amount]. New balance: $[balance]"`; si no, `"Deposit amount must be greater than zero."`\n- `withdraw(amount)`: si `amount > 0` y no excede el saldo, registra y devuelve `"Successfully withdrew $[amount]. New balance: $[balance]"`; si no, `"Insufficient balance or invalid amount."`\n- `checkBalance()` devuelve `"Current balance: $[balance]"`.\n- `listAllDeposits()` devuelve `"Deposits: amount,amount,..."` y `listAllWithdrawals()` devuelve `"Withdrawals: amount,amount,..."`.',
     starter: 'class BankAccount {\n  // Escribe tu código aquí\n\n}\n',
@@ -482,7 +482,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-range-of-numbers',
     module: 'recursion',
-    title: 'Range of Numbers',
+    title: 'Rango de números',
     prompt: 'Escribe la función recursiva `rangeOfNumbers(startNum, endNum)` que devuelva un arreglo con los enteros de `startNum` a `endNum` (inclusive). Debe llamarse a sí misma y no usar ciclos (`for`, `while`) ni `map`, `filter`, `reduce` o `forEach`.',
     starter: stub('rangeOfNumbers(startNum, endNum)'),
     solution: 'function rangeOfNumbers(startNum, endNum) {\n  if (startNum === endNum) return [startNum];\n  const rest = rangeOfNumbers(startNum, endNum - 1);\n  rest.push(endNum);\n  return rest;\n}\n',
@@ -499,7 +499,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-implement-a-stack',
     module: 'data-structures',
-    title: 'Implement a Stack',
+    title: 'Implementar una pila',
     prompt:
       'Implementa una pila con funciones. `collection` es un arreglo cuyo último elemento es la cima:\n\n- `initStack()` devuelve `{ collection: [] }`.\n- `push(stack, el)` agrega a la cima.\n- `pop(stack)` quita y devuelve la cima (o `undefined`).\n- `peek(stack)` devuelve la cima sin quitarla (o `undefined`).\n- `isEmpty(stack)` y `clear(stack)`.',
     starter: 'function initStack() {\n\n}\n\nfunction push(stack, el) {\n\n}\n\nfunction pop(stack) {\n\n}\n\nfunction peek(stack) {\n\n}\n\nfunction isEmpty(stack) {\n\n}\n\nfunction clear(stack) {\n\n}\n',
@@ -516,7 +516,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-bubble-sort-algorithm',
     module: 'algorithms',
-    title: 'Bubble Sort',
+    title: 'Ordenamiento de burbuja',
     prompt: 'Escribe la función `bubbleSort(arr)` que ordene un arreglo de enteros de menor a mayor con el algoritmo de la burbuja: compara elementos vecinos y los intercambia si están en desorden, hasta que no haya intercambios. No uses `sort()`.',
     starter: stub('bubbleSort(arr)'),
     solution:
@@ -532,7 +532,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-nth-fibonacci-number-js',
     module: 'dynamic-programming',
-    title: 'Nth Fibonacci Number',
+    title: 'El n-ésimo número de Fibonacci',
     prompt: 'Escribe la función `fibonacci(n)` que devuelva el número de Fibonacci en la posición `n` (empezando en `fibonacci(0) = 0`, `fibonacci(1) = 1`) con programación dinámica: guarda los valores calculados en un arreglo `sequence` que empieza como `[0, 1]`.',
     starter: stub('fibonacci(n)'),
     solution: 'function fibonacci(n) {\n  const sequence = [0, 1];\n  for (let i = 2; i <= n; i++) {\n    sequence.push(sequence[i - 1] + sequence[i - 2]);\n  }\n  return sequence[n];\n}\n',
@@ -547,7 +547,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-prime-number-sum-calculator',
     module: 'dynamic-programming',
-    title: 'Prime Number Sum Calculator',
+    title: 'Suma de números primos',
     prompt: 'Escribe la función `sumPrimes(num)` que devuelva la suma de todos los números primos menores o iguales que `num`. Si `num` es menor que `2`, devuelve `0`.',
     starter: stub('sumPrimes(num)'),
     solution:
@@ -561,7 +561,7 @@ export const FCC_JAVASCRIPT_LABS: FccLab[] = [
   {
     block: 'lab-optional-arguments-sum-function',
     module: 'functional-programming',
-    title: 'Optional Arguments Sum Function',
+    title: 'Suma con argumentos opcionales',
     prompt: 'Escribe la función `addTogether(a, b)`: con dos números devuelve su suma; con un solo número devuelve una función que espera el segundo y devuelve la suma. Si algún argumento no es un número, devuelve `undefined`.\n\nEjemplo: `addTogether(2)(3)` devuelve `5`.',
     starter: stub('addTogether(...args)'),
     solution:

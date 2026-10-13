@@ -4,6 +4,7 @@ import { createExam, parseExam, questionsPerStudent, serializeExam, validateExam
 import { fccJavascriptBank, fccJavascriptPractica, fccJavascriptSimulacro, fccJavascriptTopicPractice, fccJavascriptTopics, LAB_TOPIC, practiceExam, practiceOptions, SIMULACRO } from '../src/core/exam/certs/fccJavascript';
 import { FCC_JAVASCRIPT_LABS } from '../src/core/exam/certs/fccJavascriptLabs';
 import { FCC_JAVASCRIPT_QUIZZES } from '../src/core/exam/certs/fccJavascriptQuizzes';
+import { FCC_JAVASCRIPT_QUIZZES_ES } from '../src/core/exam/certs/fccJavascriptQuizzesEs';
 import { ExamClient } from '../src/core/exam/client';
 import { gradePaper, gradeQuestion, runTests, studentView } from '../src/core/exam/grading';
 import { ExamHost } from '../src/core/exam/host';
@@ -34,6 +35,25 @@ test('banco de freeCodeCamp: cuestionarios completos y una sola respuesta correc
   assert.ok(singles.every((q) => q.options.every((o) => /^o[0-9a-z]+$/.test(o.id))));
   // los temas del banco coinciden con los del currículo
   assert.deepEqual(fccJavascriptTopics().map((x) => x.topic), FCC_JAVASCRIPT_QUIZZES.map((z) => z.topic));
+});
+
+test('traducción al español: completa y con el mismo código que el original', () => {
+  const code = (s: string) => (s.match(/```[\s\S]*?```|``[^`][\s\S]*?``|`[^`\n]+`/g) ?? []).sort();
+  for (const z of FCC_JAVASCRIPT_QUIZZES) {
+    const es = FCC_JAVASCRIPT_QUIZZES_ES[z.block];
+    assert.ok(es, `falta la traducción de ${z.block}`);
+    assert.equal(es.length, z.questions.length, z.block);
+    z.questions.forEach((en, i) => {
+      const tr = es[i];
+      assert.equal(tr.d.length, en.d.length, `${z.block} #${i + 1}`);
+      [[en.q, tr.q], [en.a, tr.a], ...en.d.map((d, k) => [d, tr.d[k]])].forEach(([a, b]) => assert.deepEqual(code(b), code(a), `${z.block} #${i + 1}: ${b}`));
+    });
+  }
+  assert.equal(Object.keys(FCC_JAVASCRIPT_QUIZZES_ES).length, FCC_JAVASCRIPT_QUIZZES.length);
+  // el banco usa la traducción
+  const first = fccJavascriptBank()[0] as SingleQuestion;
+  assert.equal(first.prompt, FCC_JAVASCRIPT_QUIZZES_ES[FCC_JAVASCRIPT_QUIZZES[0].block][0].q);
+  assert.equal(first.options.find((o) => o.correct)?.text, FCC_JAVASCRIPT_QUIZZES_ES[FCC_JAVASCRIPT_QUIZZES[0].block][0].a);
 });
 
 test('laboratorios: la solución pasa todas las pruebas y el código inicial no', () => {

@@ -10,6 +10,10 @@
  * Uso:  node scripts/importar-fcc-javascript.js
  *       node scripts/importar-fcc-javascript.js --dir ./copia-local
  *
+ * El archivo generado tiene el texto original en inglés. La traducción al español
+ * está en src/core/exam/certs/fccJavascriptQuizzesEs.ts: si cambian las
+ * preguntas, actualízala (las pruebas revisan que coincidan).
+ *
  * Con --dir se lee una copia local con la misma estructura que el repositorio
  * (curriculum/structure/... y curriculum/challenges/english/blocks/...).
  */

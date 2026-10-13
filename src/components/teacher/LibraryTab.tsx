@@ -91,7 +91,7 @@ function CertCard({ onAdded }: { onAdded(text: string): void }) {
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', flex: 1 }}>Certificación JavaScript de freeCodeCamp</Text>
       </View>
       <Text style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }}>
-        Simulacro con los {topics.length} temas del currículo JavaScript v9: {questions} preguntas de sus cuestionarios (en inglés, como en la certificación) y {FCC_JAVASCRIPT_LABS.length} laboratorios de programación. Cada alumno
+        Simulacro con los {topics.length} temas del currículo JavaScript v9: {questions} preguntas de sus cuestionarios (traducidas al español) y {FCC_JAVASCRIPT_LABS.length} laboratorios de programación. Cada alumno
         recibe {SIMULACRO.perTopic} preguntas por tema y {SIMULACRO.labs} laboratorios ({per} en total), tiene {SIMULACRO.durationMin} minutos y aprueba con {FCC_PASS_PERCENT} %, como los cuestionarios de freeCodeCamp. También se crea una copia de
         práctica sin tiempo que muestra las respuestas correctas. Los alumnos pueden practicar por su cuenta desde «Soy alumno».
       </Text>

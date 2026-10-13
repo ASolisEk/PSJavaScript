@@ -164,7 +164,7 @@ function PracticeCard({ name }: { name: string }) {
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', flex: 1 }}>Practicar por mi cuenta</Text>
       </View>
       <Text style={{ color: t.textMuted, fontSize: 13, lineHeight: 19, marginBottom: 10 }}>
-        Prepárate para la certificación «JavaScript» de freeCodeCamp con las preguntas de sus cuestionarios (en inglés) y sus laboratorios. No necesitas código de sala; al terminar verás la respuesta correcta de cada pregunta.
+        Prepárate para la certificación «JavaScript» de freeCodeCamp con las preguntas de sus cuestionarios (traducidas al español) y sus laboratorios. No necesitas código de sala; al terminar verás la respuesta correcta de cada pregunta.
       </Text>
       {full.map((o) => (
         <BigChoice key={o.key} icon={o.key === 'simulacro' ? 'timer-outline' : 'barbell-outline'} color={t.accent} title={o.title} description={o.description} onPress={() => go(o.key)} disabled={joining} />

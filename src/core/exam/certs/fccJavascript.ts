@@ -4,7 +4,7 @@
  * El examen real se presenta en la aplicación de exámenes de freeCodeCamp y sus
  * preguntas no son públicas. El simulacro usa los mismos temas y los mismos
  * ejercicios del currículo: las preguntas de los 27 cuestionarios (una respuesta
- * correcta y tres distractores, sin traducir, como en la certificación) y los
+ * correcta y tres distractores, traducidas al español con el mismo código) y los
  * laboratorios que se pueden resolver sin el DOM ni la red.
  *
  * Criterios tomados del currículo:
@@ -16,6 +16,7 @@ import { hashString, randomId } from '../random';
 import type { CodeQuestion, ExamConfig, Question, SingleQuestion } from '../types';
 import { FCC_JAVASCRIPT_LABS, FccLab } from './fccJavascriptLabs';
 import { FCC_JAVASCRIPT_QUIZZES, FccQuiz } from './fccJavascriptQuizzes';
+import { FCC_JAVASCRIPT_QUIZZES_ES } from './fccJavascriptQuizzesEs';
 
 export const FCC_JAVASCRIPT_URL = 'https://www.freecodecamp.org/learn/javascript-v9/';
 /** Tema de las preguntas de programación (laboratorios). */
@@ -32,8 +33,11 @@ const CREDIT = `Basado en el currículo «JavaScript» de freeCodeCamp (${FCC_JA
 const optionId = (qid: string, i: number) => 'o' + hashString(`${qid}|${i}`).toString(36);
 const shortBlock = (block: string) => block.replace(/^(quiz|lab)-/, '').replace(/-js$/, '');
 
+/** Preguntas del cuestionario en español (o en el original si falta la traducción). */
 function quizQuestions(quiz: FccQuiz): SingleQuestion[] {
-  return quiz.questions.map((q, i) => {
+  const es = FCC_JAVASCRIPT_QUIZZES_ES[quiz.block];
+  const source = es?.length === quiz.questions.length ? es : quiz.questions;
+  return source.map((q, i) => {
     const id = `fccjs-${shortBlock(quiz.block)}-${i + 1}`;
     return {
       id,
@@ -94,7 +98,7 @@ export function fccJavascriptSimulacro(): ExamConfig {
     author: 'freeCodeCamp (adaptación PSJavaScript)',
     description:
       `Simulacro del examen de la certificación «JavaScript» de freeCodeCamp. Recibes ${SIMULACRO.perTopic} preguntas al azar de cada uno de los ${FCC_JAVASCRIPT_QUIZZES.length} temas del currículo ` +
-      `y ${SIMULACRO.labs} laboratorios de programación (${perStudent()} en total). Las preguntas están en inglés, como en la certificación. ` +
+      `y ${SIMULACRO.labs} laboratorios de programación (${perStudent()} en total). Las preguntas están traducidas al español; el código se deja igual que en freeCodeCamp. ` +
       `Para aprobar necesitas ${FCC_PASS_PERCENT} %, el mismo criterio de los cuestionarios de freeCodeCamp (18 de 20). ` +
       `En los laboratorios escribe la función que se pide: cada prueba la llama y compara lo que devuelve. ${CREDIT}`,
     durationMin: SIMULACRO.durationMin,
@@ -152,7 +156,7 @@ export function fccJavascriptTopicPractice(topic: string): ExamConfig {
     ...base,
     title: `Práctica: ${quiz.topic}`,
     description:
-      `Cuestionario «${quiz.title}» de freeCodeCamp (${quiz.questions.length} preguntas${labs.length ? ` y ${labs.length} laboratorio${labs.length > 1 ? 's' : ''}` : ''}). ` +
+      `Cuestionario de «${quiz.topic}» de freeCodeCamp (${quiz.questions.length} preguntas${labs.length ? ` y ${labs.length} laboratorio${labs.length > 1 ? 's' : ''}` : ''}). ` +
       `En freeCodeCamp se aprueba con ${need} de ${of}. Al terminar verás la respuesta correcta de cada pregunta. ${CREDIT}`,
     topicPicks: {},
     questions: [...quizQuestions(quiz), ...labs],
