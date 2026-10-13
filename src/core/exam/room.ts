@@ -1,0 +1,104 @@
+/** Estado de una sala de examen (lo guarda el maestro). */
+import type { RoomStatus, SubmitReason } from './protocol';
+import type { TransportSpec } from './transport/types';
+import type { Activity, Answers, ExamConfig, GradeResult, PaperKey } from './types';
+
+export type StudentEventKind =
+  | 'join'
+  | 'reconnect'
+  | 'disconnect'
+  | 'start'
+  | 'question'
+  | 'blur'
+  | 'focus'
+  | 'paste'
+  | 'run'
+  | 'test'
+  | 'submit'
+  | 'leave'
+  | 'teacher';
+
+export interface StudentEvent {
+  at: number;
+  kind: StudentEventKind;
+  text: string;
+}
+
+export interface StudentRecord {
+  id: string;
+  token: string;
+  name: string;
+  group: string;
+  peer: string | null;
+  connected: boolean;
+  lastSeen: number;
+  joinedAt: number;
+  startedAt: number | null;
+  deadline: number | null;
+  submittedAt: number | null;
+  submitReason: SubmitReason | null;
+  key: PaperKey | null;
+  answers: Answers;
+  /** Índice de la pregunta que está viendo. */
+  current: number;
+  activity: Activity;
+  activitySince: number;
+  focused: boolean;
+  focusLost: number;
+  awayMs: number;
+  pasteBlocked: number;
+  runs: number;
+  tests: number;
+  events: StudentEvent[];
+  result: GradeResult | null;
+  /** Puntos asignados a mano por el maestro (por pregunta). */
+  overrides: Record<string, number>;
+}
+
+export interface RoomState {
+  code: string;
+  transport: TransportSpec;
+  exam: ExamConfig;
+  status: RoomStatus;
+  openedAt: number;
+  startedAt: number | null;
+  closedAt: number | null;
+  students: Record<string, StudentRecord>;
+  notices: { at: number; text: string }[];
+}
+
+export type StudentPhase = 'lobby' | 'ready' | 'working' | 'submitted';
+
+export function studentPhase(s: StudentRecord, room: Pick<RoomState, 'status'>): StudentPhase {
+  if (s.submittedAt) return 'submitted';
+  if (s.startedAt) return 'working';
+  return room.status === 'running' ? 'ready' : 'lobby';
+}
+
+export function createRoom(code: string, exam: ExamConfig, transport: TransportSpec, now = Date.now()): RoomState {
+  return { code, transport, exam, status: 'lobby', openedAt: now, startedAt: null, closedAt: null, students: {}, notices: [] };
+}
+
+export function answeredCount(s: StudentRecord, room: RoomState): number {
+  const ids = s.key?.questionIds ?? [];
+  const byId = new Map(room.exam.questions.map((q) => [q.id, q]));
+  return ids.filter((id) => {
+    const a = s.answers[id];
+    const q = byId.get(id);
+    if (a === undefined || a === null) return false;
+    if (typeof a === 'string') return a.trim() !== '' && !(q?.type === 'code' && a.trim() === q.starter.trim());
+    if (Array.isArray(a)) return a.length > 0;
+    return true;
+  }).length;
+}
+
+export const ACTIVITY_LABEL: Record<Activity, string> = {
+  reading: 'Leyendo la pregunta',
+  answering: 'Respondiendo',
+  coding: 'Escribiendo código',
+  running: 'Ejecutando su programa',
+  testing: 'Probando con los casos de ejemplo',
+  reviewing: 'Revisando antes de enviar',
+  idle: 'Sin actividad',
+  away: 'Fuera de la ventana del examen',
+};
