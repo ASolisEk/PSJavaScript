@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { questionTypeInfo } from '../../core/exam/config';
+import { plainText } from '../../core/exam/richText';
 import type { RoomState } from '../../core/exam/room';
 import { summarizeRoom, summaryCsv } from '../../core/exam/summary';
 import { roomKey, useResultsRoom, useTeacher } from '../../store/teacher';
@@ -109,21 +110,47 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
       </View>
 
       <View style={styles.cols}>
-        <Card style={{ flex: 1, minWidth: 280 }}>
-          <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 10 }}>Distribución de calificaciones</Text>
-          <View style={styles.histo}>
-            {sum.histogram.map((v, i) => (
-              <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={{ color: t.textMuted, fontSize: 10, marginBottom: 2 }}>{v || ''}</Text>
-                <View style={{ width: '70%', height: Math.max(2, (v / maxBar) * 110), backgroundColor: (i + 1) * 10 > sum.passPercent ? t.success : t.danger, borderRadius: 4, opacity: v ? 1 : 0.25 }} />
-                <Text style={{ color: t.textMuted, fontSize: 9, marginTop: 4 }} numberOfLines={1}>
-                  {Math.round((i * sum.scale) / 10)}–{Math.round(((i + 1) * sum.scale) / 10)}
-                </Text>
-              </View>
-            ))}
-          </View>
-          <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 6, textAlign: 'center' }}>Calificación (sobre {sum.scale})</Text>
-        </Card>
+        <View style={{ flex: 1, minWidth: 280 }}>
+          <Card>
+            <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 10 }}>Distribución de calificaciones</Text>
+            <View style={styles.histo}>
+              {sum.histogram.map((v, i) => (
+                <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={{ color: t.textMuted, fontSize: 10, marginBottom: 2 }}>{v || ''}</Text>
+                  <View style={{ width: '70%', height: Math.max(2, (v / maxBar) * 110), backgroundColor: (i + 1) * 10 > sum.passPercent ? t.success : t.danger, borderRadius: 4, opacity: v ? 1 : 0.25 }} />
+                  <Text style={{ color: t.textMuted, fontSize: 9, marginTop: 4 }} numberOfLines={1}>
+                    {Math.round((i * sum.scale) / 10)}–{Math.round(((i + 1) * sum.scale) / 10)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 6, textAlign: 'center' }}>Calificación (sobre {sum.scale})</Text>
+          </Card>
+          {sum.topics.length ? (
+            <Card>
+              <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 4 }}>Análisis por tema</Text>
+              <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 10 }}>Aciertos del grupo en cada tema; los más bajos aparecen primero.</Text>
+              {[...sum.topics]
+                .sort((a, b) => a.avgPercent - b.avgPercent)
+                .map((x) => {
+                  const c = x.avgPercent >= sum.passPercent ? t.success : x.avgPercent >= 50 ? t.warning : t.danger;
+                  return (
+                    <View key={x.topic} style={{ marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', marginBottom: 3 }}>
+                        <Text style={{ color: t.text, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                          {x.topic}
+                        </Text>
+                        <Text style={{ color: c, fontSize: 12, fontWeight: '800' }}>
+                          {x.avgPercent}% · {x.correct}/{x.attempts}
+                        </Text>
+                      </View>
+                      <ProgressBar value={x.avgPercent / 100} color={c} />
+                    </View>
+                  );
+                })}
+            </Card>
+          ) : null}
+        </View>
 
         <Card style={{ flex: 1.3, minWidth: 300 }}>
           <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 10 }}>Análisis por pregunta</Text>
@@ -134,7 +161,7 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                   <Ionicons name={questionTypeInfo(q.type).icon as IconName} size={14} color={t.textMuted} />
                   <Text style={{ color: t.text, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                    <Text style={{ fontWeight: '800' }}>P{q.index + 1}.</Text> {q.prompt}
+                    <Text style={{ fontWeight: '800' }}>P{q.index + 1}.</Text> {plainText(q.prompt)}
                   </Text>
                   {diff ? <Pill text={diff.l} color={diff.c} /> : null}
                 </View>

@@ -81,14 +81,15 @@ Botón **Examen** de la barra de herramientas → **Soy maestro** o **Soy alumno
   | Respuesta corta | Lista de respuestas aceptadas (ignora espacios, acentos y mayúsculas, salvo que se pida) |
   | Respuesta numérica | Valor con tolerancia ± |
   | ¿Qué imprime? | Se ejecuta el programa del maestro y se compara con lo que escribe el alumno |
-  | Escribir un programa | Casos de prueba (datos para `prompt()` → salida esperada), visibles u **ocultos**, y requisitos («debe usar `for`», «no debe usar `sort`») |
+  | Escribir un programa | Casos de prueba (datos para `prompt()` → salida esperada, o una **llamada** como `reverseString("hola")` → valor devuelto en JSON), visibles u **ocultos**, y requisitos («debe usar `for`», «no debe usar `sort`») |
   | Ordenar líneas | Problema de Parsons; puntos parciales por la secuencia correcta más larga |
 
   En las preguntas de programación el maestro escribe su **solución de referencia** (nunca se envía al alumno): **Calcular salidas con la solución** llena los casos y **Verificar solución** confirma que obtiene el 100 %. La comparación de salidas puede ser *flexible*, *exacta*, *solo números* o *contiene*.
-- **Ajustes**: duración (o sin límite), banco de preguntas (cada alumno recibe *N* al azar), mezclar preguntas y opciones, escala 0–10 / 0–100, porcentaje aprobatorio, qué ve el alumno al enviar (nada, calificación o detalle), perfil del lenguaje, permitir ejecutar/probar código, autocompletado, errores en tiempo real, **bloquear pegar** y **detectar salidas de la ventana**.
+- Cada pregunta puede tener un **tema**; los enunciados y opciones admiten `código en línea`, bloques con ```` ``` ```` y **negritas**.
+- **Ajustes**: duración (o sin límite), banco de preguntas (cada alumno recibe *N* al azar, o *N* **por tema**), mezclar preguntas y opciones, escala 0–10 / 0–100, porcentaje aprobatorio, qué ve el alumno al enviar (nada, calificación, detalle o **todo con respuestas** para practicar; con temas, también su resultado por tema), perfil del lenguaje, permitir ejecutar/probar código, autocompletado, errores en tiempo real, **bloquear pegar** y **detectar salidas de la ventana**.
 - **Vista previa**: presenta el examen como alumno (otra versión mezclada cada vez) y lo califica.
 - **Sala en vivo**: al abrirla se genera un **código de 6 caracteres**, un enlace `?sala=CODIGO` y su **código QR**; **Proyectar** muestra el código y el QR en pantalla completa para el salón. **Aceptar alumnos nuevos** se puede apagar cuando ya entraron todos (los que están pueden reconectarse). Se marcan los **nombres repetidos** y la pantalla del maestro no se apaga mientras la sala está abierta. Se ve a cada alumno en tiempo real: conectado o no, avance (respondidas/total), pregunta actual, **qué está haciendo** (leyendo, escribiendo código, ejecutando, probando casos, inactivo, fuera de la ventana), tiempo restante, salidas de la ventana, intentos de pegar y calificación al entregar. Al tocar un alumno se ven sus respuestas en vivo (incluido su código), la bitácora de actividad y se pueden **ajustar puntos a mano**, darle más tiempo, recoger su examen, **reabrirlo** si lo envió por error (+10 min) o quitarlo de la sala. También: avisos a todos, +5 minutos a todos y **Cerrar examen** (recoge y califica lo pendiente).
-- **Resultados (concentrado)**: alumnos, promedio, mediana, máxima, mínima, % de aprobados, tiempo promedio, distribución de calificaciones, **análisis por pregunta** (aciertos y dificultad) y tabla por alumno (calificación, puntos, tiempo, respondidas, salidas, pegados, cómo entregó). Exporta a **CSV** (Excel) y respaldo **JSON**. Queda un historial de exámenes aplicados (guardado de forma compacta; si el dispositivo se queda sin espacio se borran los más antiguos y se avisa).
+- **Resultados (concentrado)**: alumnos, promedio, mediana, máxima, mínima, % de aprobados, tiempo promedio, distribución de calificaciones, **análisis por pregunta** (aciertos y dificultad; con un banco solo las preguntas que se usaron), **análisis por tema** y tabla por alumno (calificación, puntos, tiempo, respondidas, salidas, pegados, cómo entregó). Exporta a **CSV** (Excel) y respaldo **JSON**. Queda un historial de exámenes aplicados (guardado de forma compacta; si el dispositivo se queda sin espacio se borran los más antiguos y se avisa).
 
 ### Modo Examen (alumno)
 
@@ -98,6 +99,18 @@ Botón **Examen** de la barra de herramientas → **Soy maestro** o **Soy alumno
 - Botones **A− / A+** para el tamaño de letra, indicador **guardado ✓ / guardando… / guardado en este dispositivo** y avisos cuando quedan **10, 5 y 1 minutos** (con vibración en el teléfono).
 - **Enviar a calificar** muestra cuántas faltan; al agotarse el tiempo o cerrar el maestro, se envía solo. La calificación se calcula en el equipo del maestro (el alumno nunca recibe respuestas ni casos ocultos).
 - Las respuestas se guardan en el dispositivo: si se recarga la página o se cae la red, el alumno vuelve a su examen y lo pendiente se reenvía al reconectar. El nombre del alumno no se guarda de forma permanente (computadoras compartidas).
+
+### Certificación JavaScript de freeCodeCamp (simulacro y práctica)
+
+Simulacro del examen de la certificación [JavaScript de freeCodeCamp](https://www.freecodecamp.org/learn/javascript-v9/) (currículo v9). Ese examen se presenta en la aplicación de exámenes de freeCodeCamp y sus preguntas no son públicas, así que el simulacro usa **los mismos temas y los mismos ejercicios** del currículo:
+
+- **480 preguntas** de los 27 cuestionarios de cada módulo (variables, strings, números, condicionales, funciones, arreglos, objetos, ciclos, orden superior, DOM, accesibilidad, depuración, regex, formularios, fechas, audio/video, Map/Set, localStorage, clases, recursión, estructuras de datos, búsqueda y ordenamiento, grafos, programación dinámica, programación funcional y asíncrono). Se dejan **en inglés**, como en la certificación: una respuesta correcta y tres distractores.
+- **35 laboratorios** del currículo que no necesitan el DOM ni la red (p. ej. *Reverse a String*, *Title Case Converter*, *Pig Latin*, *Bank Account Manager* y *Voting System*, dos de los proyectos de certificación). Se conserva el nombre de la función y cada prueba **llama a la función y compara lo que devuelve**, como las pruebas de freeCodeCamp; hay casos visibles y ocultos y requisitos como «no uses `.repeat()`».
+- **Criterios**: cada alumno recibe **2 preguntas por tema y 3 laboratorios** (57), tiene **90 minutos** y aprueba con **90 %**, el mismo criterio de los cuestionarios de freeCodeCamp (18 de 20). Perfil del lenguaje *Flexible* (JavaScript tal cual).
+
+En **Mis exámenes → Agregar simulacro y práctica** se crean dos configuraciones editables: el **Simulacro** (con tiempo, sin ayudas, bloqueo de pegar) y una **copia de Práctica** (sin tiempo, con ayudas y mostrando al final la respuesta correcta de cada pregunta y el resultado por tema). Los alumnos también pueden **practicar por su cuenta** desde **Soy alumno → Practicar por mi cuenta**, sin código de sala: simulacro completo, práctica sin tiempo o un solo tema (el cuestionario completo del módulo y sus laboratorios). La práctica corre en el propio dispositivo y se retoma si se recarga la página.
+
+El banco se genera con `node scripts/importar-fcc-javascript.js` (descarga los cuestionarios del repositorio de freeCodeCamp y escribe `src/core/exam/certs/fccJavascriptQuizzes.ts`); los laboratorios están en `src/core/exam/certs/fccJavascriptLabs.ts` y `tests/certification.test.ts` comprueba que cada solución pasa sus pruebas. Contenido © freeCodeCamp.org, licencia CC BY-SA 4.0.
 
 ### Conexión de la sala
 
@@ -111,8 +124,9 @@ El equipo del maestro es el anfitrión: recibe, guarda y califica. Hay tres form
   ```
   El servidor muestra la dirección (`http://192.168.x.x:8787`) que abren maestro y alumnos en la misma red Wi-Fi; la conexión se configura sola. Opciones: `npm run sala -- --puerto 9000 --dir ./dist`.
 - **Este dispositivo**: pestañas del mismo navegador (para probar un examen sin red).
+- **Práctica individual**: el alumno practica solo; la sala corre dentro de su propia aplicación.
 
-Código: `src/core/exam/` (tipos, generación del examen por alumno, calificación, protocolo, anfitrión, cliente, transportes y concentrado; probado en `tests/exam.test.ts`), `src/store/teacher.ts`, `src/store/student.ts`, `src/components/teacher/`, `src/components/exam/` y `scripts/sala-servidor.js`.
+Código: `src/core/exam/` (tipos, generación del examen por alumno, calificación, protocolo, anfitrión, cliente, transportes y concentrado; probado en `tests/exam.test.ts` y `tests/certification.test.ts`), `src/core/exam/certs/` (certificación de freeCodeCamp), `src/store/teacher.ts`, `src/store/student.ts`, `src/store/practice.ts`, `src/components/teacher/`, `src/components/exam/` y `scripts/sala-servidor.js`.
 
 ## Arquitectura
 

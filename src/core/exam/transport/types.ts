@@ -5,9 +5,10 @@
  * - internet: WebRTC punto a punto con PeerJS (sin instalar nada; requiere Internet).
  * - lan: servidor del aula (`npm run sala`) por WebSocket; funciona sin Internet.
  * - device: misma computadora/navegador (otra pestaña), útil para probar.
+ * - practice: el alumno practica solo; la sala corre en su propio dispositivo.
  */
 
-export type TransportKind = 'internet' | 'lan' | 'device' | 'memory';
+export type TransportKind = 'internet' | 'lan' | 'device' | 'memory' | 'practice';
 
 export interface TransportSpec {
   kind: TransportKind;

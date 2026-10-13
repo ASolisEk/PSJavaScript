@@ -53,12 +53,17 @@ export default function QuestionEditor({ q, index, count, profileId, issues, onC
       ))}
 
       <Card>
-        <Field label="Enunciado" hint="Lo que verá el alumno. Sé claro y específico.">
+        <Field label="Enunciado" hint="Lo que verá el alumno. Puedes marcar `código` entre comillas invertidas y bloques con ```.">
           <TextField value={q.prompt} onChangeText={(prompt) => up({ prompt })} multiline minHeight={80} placeholder="Escribe la pregunta…" />
         </Field>
-        <Field label="Valor">
-          <NumberStepper value={q.points} onChange={(points) => up({ points })} min={0.5} max={100} step={q.points < 2 ? 0.5 : 1} suffix={q.points === 1 ? 'punto' : 'puntos'} />
-        </Field>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          <Field label="Valor">
+            <NumberStepper value={q.points} onChange={(points) => up({ points })} min={0.5} max={100} step={q.points < 2 ? 0.5 : 1} suffix={q.points === 1 ? 'punto' : 'puntos'} />
+          </Field>
+          <Field label="Tema (opcional)" hint="Para elegir preguntas por tema y ver resultados por tema." style={{ flex: 1, minWidth: 220 }}>
+            <TextField value={q.topic ?? ''} onChangeText={(topic) => up({ topic: topic.trim() ? topic : undefined })} placeholder="Ej. Arreglos" />
+          </Field>
+        </View>
         {q.type !== 'code' && q.type !== 'output' && q.type !== 'order' ? (
           <Field label="Código de apoyo (opcional)" hint="Se muestra debajo del enunciado, con colores.">
             <TextField value={q.code ?? ''} onChangeText={(code) => up({ code: code || undefined })} mono multiline minHeight={70} placeholder="// por ejemplo: let x = 5;" />
@@ -293,13 +298,17 @@ function CodeEditorForm({ q, up, profileId }: { q: CodeQuestion; up(p: Partial<Q
               </Pressable>
               <IconButton icon="trash-outline" label="Quitar caso" color={t.danger} onPress={() => up({ tests: q.tests.filter((_, j) => j !== i) } as any)} />
             </View>
+            <View style={{ marginBottom: 8 }}>
+              <Text style={styles.small(t.textMuted)}>Llamada a evaluar (opcional)</Text>
+              <TextField value={x.call ?? ''} onChangeText={(call) => setTest(i, { call: call.trim() ? call : undefined })} mono placeholder='Ej. reverseString("hola") — se compara lo que devuelve, en JSON' style={{ backgroundColor: t.surface }} />
+            </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               <View style={{ flex: 1, minWidth: 180 }}>
                 <Text style={styles.small(t.textMuted)}>Datos (uno por renglón)</Text>
                 <TextField value={lines(x.inputs)} onChangeText={(v) => setTest(i, { inputs: split(v) })} mono multiline minHeight={60} style={{ backgroundColor: t.surface }} />
               </View>
               <View style={{ flex: 1.4, minWidth: 200 }}>
-                <Text style={styles.small(t.textMuted)}>Salida esperada</Text>
+                <Text style={styles.small(t.textMuted)}>{x.call ? 'Valor esperado (JSON, p. ej. "aloh" o [1,2])' : 'Salida esperada'}</Text>
                 <TextField value={x.expected} onChangeText={(expected) => setTest(i, { expected })} mono multiline minHeight={60} style={{ backgroundColor: t.surface }} />
               </View>
             </View>

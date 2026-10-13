@@ -3,6 +3,8 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { examFileName, hasExamErrors, questionsPerStudent, questionTypeInfo, serializeExam, totalPoints } from '../../core/exam/config';
+import { FCC_PASS_PERCENT, fccJavascriptTopics, SIMULACRO } from '../../core/exam/certs/fccJavascript';
+import { FCC_JAVASCRIPT_LABS } from '../../core/exam/certs/fccJavascriptLabs';
 import type { ExamConfig } from '../../core/exam/types';
 import { useTeacher } from '../../store/teacher';
 import { confirmDialog, pickTextFileWeb, saveTextFile } from '../../ui/platform';
@@ -46,6 +48,8 @@ export default function LibraryTab() {
           </View>
         </Card>
 
+        <CertCard onAdded={(text) => setMsg({ ok: true, text })} />
+
         {msg ? <Banner icon={msg.ok ? 'checkmark-circle' : 'alert-circle'} color={msg.ok ? t.success : t.danger} text={msg.text} onClose={() => setMsg(null)} /> : null}
 
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', marginVertical: 10 }}>Mis exámenes ({exams.length})</Text>
@@ -71,6 +75,38 @@ export default function LibraryTab() {
         />
       ) : null}
     </ScrollView>
+  );
+}
+
+/** Simulacro de la certificación JavaScript de freeCodeCamp. */
+function CertCard({ onAdded }: { onAdded(text: string): void }) {
+  const t = useTheme();
+  const topics = fccJavascriptTopics();
+  const questions = topics.reduce((s, x) => s + x.questions, 0);
+  const per = topics.length * SIMULACRO.perTopic + SIMULACRO.labs;
+  return (
+    <Card accent={t.success}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <Ionicons name="ribbon-outline" size={24} color={t.success} />
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', flex: 1 }}>Certificación JavaScript de freeCodeCamp</Text>
+      </View>
+      <Text style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }}>
+        Simulacro con los {topics.length} temas del currículo JavaScript v9: {questions} preguntas de sus cuestionarios (en inglés, como en la certificación) y {FCC_JAVASCRIPT_LABS.length} laboratorios de programación. Cada alumno
+        recibe {SIMULACRO.perTopic} preguntas por tema y {SIMULACRO.labs} laboratorios ({per} en total), tiene {SIMULACRO.durationMin} minutos y aprueba con {FCC_PASS_PERCENT} %, como los cuestionarios de freeCodeCamp. También se crea una copia de
+        práctica sin tiempo que muestra las respuestas correctas. Los alumnos pueden practicar por su cuenta desde «Soy alumno».
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+        <Button
+          label="Agregar simulacro y práctica"
+          icon="add-circle-outline"
+          kind="primary"
+          onPress={() => {
+            const [sim, pra] = useTeacher.getState().addFccJavascript();
+            onAdded(`Se agregaron «${sim.title}» y «${pra.title}» (${sim.questions.length} preguntas en el banco). Revisa sus ajustes antes de aplicarlos.`);
+          }}
+        />
+      </View>
+    </Card>
   );
 }
 
@@ -110,7 +146,7 @@ function ExamCard({ e }: { e: ExamConfig }) {
         {bad ? <Pill icon="alert-circle" text="Incompleto" color={t.danger} /> : <Pill icon="checkmark-circle" text="Listo" color={t.success} />}
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 10 }}>
-        <Pill icon="help-circle-outline" text={`${e.questions.length} preguntas${e.pickCount ? ` (${questionsPerStudent(e)} por alumno)` : ''}`} color={t.primary} />
+        <Pill icon="help-circle-outline" text={`${e.questions.length} preguntas${questionsPerStudent(e) < e.questions.length ? ` (${questionsPerStudent(e)} por alumno)` : ''}`} color={t.primary} />
         <Pill icon="star-outline" text={`${totalPoints(e)} pts`} color={t.accent} />
         <Pill icon="time-outline" text={e.durationMin ? `${e.durationMin} min` : 'Sin límite'} />
       </View>
