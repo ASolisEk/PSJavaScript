@@ -11,6 +11,7 @@ import { EXAMPLES, NEW_FILE_TEMPLATE } from '../core/examples';
 import { DEFAULT_PROFILE_ID, getProfile, Profile, ProfileFlags } from '../core/profiles';
 import { InputValue, Runner, RunMode, RunnerSnapshot } from '../core/runner';
 import type { UpdateCheckResult } from '../core/updater';
+import { rememberMode } from '../ui/examLink';
 
 export interface FileDoc {
   id: string;
@@ -21,7 +22,9 @@ export interface FileDoc {
 }
 
 export type PanelId = 'editor' | 'console' | 'variables' | 'desktop' | 'diagram' | 'explain' | 'problems';
-export type ModalId = null | 'files' | 'export' | 'settings' | 'help' | 'insert' | 'update';
+export type ModalId = null | 'files' | 'export' | 'settings' | 'help' | 'insert' | 'update' | 'exam';
+/** Pantalla activa: el entorno normal, el modo Maestro o el modo Examen (alumno). */
+export type AppMode = 'ide' | 'teacher' | 'student';
 
 export interface Settings {
   profileId: string;
@@ -86,6 +89,8 @@ interface AppState {
   notice: string | null;
   updateInfo: UpdateCheckResult | null;
   setUpdateInfo(info: UpdateCheckResult | null): void;
+  appMode: AppMode;
+  setAppMode(mode: AppMode): void;
 
   hydrate(): Promise<void>;
   activeFile(): FileDoc;
@@ -218,8 +223,17 @@ export const useApp = create<AppState>((set, get) => {
     editorRequest: null,
     notice: null,
     updateInfo: null,
+    appMode: 'ide',
+
+    setAppMode(appMode) {
+      // al salir del IDE se detiene cualquier ejecución en curso
+      if (appMode !== 'ide') runner?.stop();
+      rememberMode(appMode);
+      set({ appMode, modal: null });
+    },
 
     async hydrate() {
+      if (get().hydrated) return;
       let data: any = null;
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);

@@ -47,6 +47,8 @@ export class BroadcastHost implements HostTransport {
       throw new TransportError('Ese código de sala ya está abierto en otra pestaña.');
     }
     this.ch = ch;
+    // al recargar o cerrar la pestaña del maestro, los alumnos se enteran de inmediato y se reconectan
+    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('pagehide', this.unload);
     ch.onmessage = (e) => {
       const p = e.data as Packet;
       if (!p || typeof p !== 'object') return;
@@ -66,7 +68,10 @@ export class BroadcastHost implements HostTransport {
     this.ch?.postMessage({ k: 'msg', to: peer, data: JSON.stringify(msg) } satisfies Packet);
   }
 
+  private unload = () => this.close();
+
   close() {
+    if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('pagehide', this.unload);
     if (!this.ch) return;
     this.ch.postMessage({ k: 'host-closed' } satisfies Packet);
     this.ch.close();

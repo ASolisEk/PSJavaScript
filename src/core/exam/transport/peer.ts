@@ -3,7 +3,7 @@
  * maestro usando PeerJS. El servidor público de PeerJS solo presenta a los
  * equipos; los mensajes del examen viajan directo entre ellos.
  */
-import type { DataConnection, Peer as PeerType } from 'peerjs';
+import type { DataConnection, Peer as PeerType, PeerOptions } from 'peerjs';
 import { ClientTransport, HostTransport, TransportError } from './types';
 
 const hostPeerId = (code: string) => `psjavascript-sala-${code.toLowerCase()}`;
@@ -16,6 +16,15 @@ export function peerAvailable(): boolean {
 function PeerClass(): typeof PeerType {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('peerjs').Peer;
+}
+
+/**
+ * Opciones de PeerJS. Por omisión se usa el servidor de enlace público; una
+ * escuela puede usar el suyo definiendo window.__PSJS_PEER__ = { host, port, path, secure }.
+ */
+function peerOptions(): PeerOptions {
+  const custom = (globalThis as any).__PSJS_PEER__;
+  return { debug: 0, ...(custom && typeof custom === 'object' ? custom : {}) };
 }
 
 function describe(err: any): string {
@@ -56,7 +65,7 @@ export class PeerHost implements HostTransport {
   async open(code: string) {
     if (!peerAvailable()) throw new TransportError('Esta plataforma no permite salas por Internet. Usa la conexión por red local.');
     const Peer = PeerClass();
-    const peer = new Peer(hostPeerId(code), { debug: 0 });
+    const peer = new Peer(hostPeerId(code), peerOptions());
     this.peer = peer;
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => {
@@ -125,7 +134,7 @@ export class PeerClient implements ClientTransport {
   async connect(code: string) {
     if (!peerAvailable()) throw new TransportError('Esta plataforma no permite salas por Internet. Usa la conexión por red local.');
     const Peer = PeerClass();
-    const peer = new Peer({ debug: 0 });
+    const peer = new Peer(peerOptions());
     this.peer = peer;
     const conn = await new Promise<DataConnection>((resolve, reject) => {
       let done = false;
