@@ -15,6 +15,8 @@ import HelpModal from './modals/HelpModal';
 import InsertModal from './modals/InsertModal';
 import SettingsModal from './modals/SettingsModal';
 import UpdateModal from './modals/UpdateModal';
+import ExamChooserModal from './exam/ExamChooserModal';
+import { useTeacher } from '../store/teacher';
 import { checkForUpdate, isNonWeb } from '../core/updater';
 import ConsolePanel, { InputBar } from './panels/ConsolePanel';
 import DesktopPanel from './panels/DesktopPanel';
@@ -151,6 +153,8 @@ function Toolbar({ compact }: { compact: boolean }) {
         }}
       />
       <IconButton icon="swap-horizontal" label="Exportar" tooltip="Exportar a otros lenguajes" onPress={() => setModal('export')} showLabel={label} />
+      <View style={[styles.sep, { backgroundColor: t.border }]} />
+      <IconButton icon="school-outline" label="Examen" tooltip="Modo Maestro (crear y aplicar exámenes) o presentar un examen" color={t.accent} onPress={() => setModal('exam')} showLabel={label} />
       <IconButton icon="settings-outline" label="Configuración y perfil" tooltip="Configuración y perfil del lenguaje" onPress={() => setModal('settings')} />
       <IconButton icon="help-circle-outline" label="Ayuda" tooltip="Ayuda y documentación del lenguaje" onPress={() => setModal('help')} />
     </ScrollView>
@@ -192,6 +196,23 @@ function StatusBar() {
         </Text>
       </Pressable>
     </View>
+  );
+}
+
+/** Aviso en el encabezado cuando el maestro tiene una sala abierta y está en el editor. */
+function LiveRoomPill() {
+  const t = useTheme();
+  const room = useTeacher((s) => (s.live && s.room && s.room.status !== 'closed' ? s.room : null));
+  if (!room) return null;
+  return (
+    <Pressable
+      onPress={() => useApp.getState().setAppMode('teacher')}
+      accessibilityLabel="Volver a la sala del examen"
+      style={({ pressed }) => [styles.repoLink, { borderColor: t.accent, backgroundColor: pressed ? t.surfaceAlt : t.accent + '18' }]}
+    >
+      <Ionicons name="radio-outline" size={15} color={t.accent} />
+      <Text style={{ color: t.accent, fontSize: 12, fontWeight: '800', marginLeft: 5 }}>Sala {room.code}</Text>
+    </Pressable>
   );
 }
 
@@ -545,6 +566,7 @@ export default function IDE() {
           <View style={{ flex: 1 }}>
             <FileTabs />
           </View>
+          <LiveRoomPill />
           {Platform.OS === 'web' && (
             <>
               <a href="PSJavaScript.dmg" download="PSJavaScript.dmg" style={{ textDecoration: 'none', marginRight: 8 }}>
@@ -633,6 +655,7 @@ export default function IDE() {
       {modal === 'help' ? <HelpModal /> : null}
       {modal === 'insert' ? <InsertModal /> : null}
       {modal === 'update' ? <UpdateModal /> : null}
+      {modal === 'exam' ? <ExamChooserModal /> : null}
     </KeyboardAvoidingView>
   );
 }

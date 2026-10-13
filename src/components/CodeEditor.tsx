@@ -51,6 +51,12 @@ interface Props {
   varDetails?: Record<string, VarDetail>;
   isDebugging?: boolean;
   currentVars?: Record<string, string>;
+  /** Autocompletado, ayuda contextual y correcciones rápidas (se desactivan en el modo examen). */
+  assist?: boolean;
+  /** Oculta el menú contextual de copiar/pegar (móvil; en web se bloquea el evento paste). */
+  blockPaste?: boolean;
+  /** Atiende los pedidos globales del IDE (insertar, saltar a línea…). */
+  listenRequests?: boolean;
 }
 
 /** Último pedido externo atendido (compartido entre montajes del editor). */
@@ -310,6 +316,9 @@ export default function CodeEditor(props: Props) {
     varDetails: propVarDetails,
     isDebugging = false,
     currentVars,
+    assist = true,
+    blockPaste = false,
+    listenRequests = true,
   } = props;
   const theme = useTheme();
   const lh = Math.round(fontSize * 1.55);
@@ -492,7 +501,7 @@ export default function CodeEditor(props: Props) {
           }
           // sugerencias de autocompletado
           const { word } = wordBefore(text, p + 1);
-          if (/^[A-Za-z_$][\w$.]*$/.test(word) && (word.length >= 2 || word.endsWith('.'))) {
+          if (assist && /^[A-Za-z_$][\w$.]*$/.test(word) && (word.length >= 2 || word.endsWith('.'))) {
             setSuggestions(suggest(word, declaredNames(text)));
           } else setSuggestions([]);
           apply(text, null);
@@ -502,7 +511,7 @@ export default function CodeEditor(props: Props) {
       setSuggestions([]);
       apply(text, null, text.length !== prev.length + 1 && text.length !== prev.length - 1);
     },
-    [apply],
+    [apply, assist],
   );
 
   const ensureVisible = useCallback(
@@ -590,6 +599,7 @@ export default function CodeEditor(props: Props) {
   );
 
   useEffect(() => {
+    if (!listenRequests) return;
     // pedido hecho justo antes de montar el editor (p. ej. al cambiar de panel)
     const pending = setTimeout(() => handleRequest(useApp.getState().editorRequest), 0);
     const unsubscribe = useApp.subscribe((s, prev) => {
@@ -599,7 +609,7 @@ export default function CodeEditor(props: Props) {
       clearTimeout(pending);
       unsubscribe();
     };
-  }, [handleRequest]);
+  }, [handleRequest, listenRequests]);
 
   // ── seguir la línea en ejecución ──
   useEffect(() => {
@@ -627,7 +637,8 @@ export default function CodeEditor(props: Props) {
     // en la línea del cursor: primero los errores, luego lo que tiene corrección rápida
     const onLine = diagnostics.filter((x) => x.line === cursorLine);
     const d = onLine.find((x) => x.severity === 'error') ?? onLine.find((x) => QUICK_FIXES[x.rule]) ?? onLine[0];
-    if (d) return { kind: d.severity, text: d.title ? `${d.title}. ${d.message}` : d.message, fix: QUICK_FIXES[d.rule], rule: d.rule, line: d.line };
+    if (d) return { kind: d.severity, text: d.title ? `${d.title}. ${d.message}` : d.message, fix: assist ? QUICK_FIXES[d.rule] : undefined, rule: d.rule, line: d.line };
+    if (!assist) return null;
     let s = cursor;
     let e = cursor;
     while (s > 0 && /[\w$.]/.test(code[s - 1])) s--;
@@ -636,7 +647,7 @@ export default function CodeEditor(props: Props) {
     const item = lookupHelp(word) ?? lookupHelp(word.slice(word.lastIndexOf('.')));
     if (item) return { kind: 'help' as const, text: `${item.signature ?? item.label} — ${item.doc}${item.pseint ? `  (PSeInt: ${item.pseint})` : ''}` };
     return null;
-  }, [diagnostics, cursorLine, cursor, code]);
+  }, [diagnostics, cursorLine, cursor, code, assist]);
 
   /** Corrección rápida de la barra de información (se aplica al tocar el botón). */
   const applyFix = useCallback(
@@ -732,6 +743,7 @@ export default function CodeEditor(props: Props) {
                   selectionColor={theme.primary}
                   cursorColor={theme.text}
                   smartInsertDelete={false}
+                  contextMenuHidden={blockPaste}
                   accessibilityLabel="Editor de código"
                   style={[
                     {

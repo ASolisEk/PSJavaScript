@@ -64,6 +64,55 @@ Michi se disfraza solo según la fecha (`src/core/holidays.ts`): se pone el vest
 
 Los colores oscuro y negro se generan con `scripts/vestuarios_mascota.py` (`assets/mascot/skins/`), que recolorea el pelaje conservando ojos, orejas, mejillas y teclado.
 
+## Modo Maestro y Modo Examen
+
+Botón **Examen** de la barra de herramientas → **Soy maestro** o **Soy alumno**.
+
+### Modo Maestro (diseñar y aplicar)
+
+- **Mis exámenes**: crear desde cero o a partir del examen de ejemplo, duplicar, eliminar, **exportar** la configuración (`.examen.json`) e **importarla** en otro equipo.
+- **Editor** con 8 tipos de ejercicio:
+
+  | Tipo | Cómo se califica |
+  | --- | --- |
+  | Opción múltiple | Una opción correcta |
+  | Varias respuestas | Todas las correctas (puntos parciales opcionales: aciertos − errores) |
+  | Verdadero o falso | Valor esperado |
+  | Respuesta corta | Lista de respuestas aceptadas (ignora espacios, acentos y mayúsculas, salvo que se pida) |
+  | Respuesta numérica | Valor con tolerancia ± |
+  | ¿Qué imprime? | Se ejecuta el programa del maestro y se compara con lo que escribe el alumno |
+  | Escribir un programa | Casos de prueba (datos para `prompt()` → salida esperada), visibles u **ocultos**, y requisitos («debe usar `for`», «no debe usar `sort`») |
+  | Ordenar líneas | Problema de Parsons; puntos parciales por la secuencia correcta más larga |
+
+  En las preguntas de programación el maestro escribe su **solución de referencia** (nunca se envía al alumno): **Calcular salidas con la solución** llena los casos y **Verificar solución** confirma que obtiene el 100 %. La comparación de salidas puede ser *flexible*, *exacta*, *solo números* o *contiene*.
+- **Ajustes**: duración (o sin límite), banco de preguntas (cada alumno recibe *N* al azar), mezclar preguntas y opciones, escala 0–10 / 0–100, porcentaje aprobatorio, qué ve el alumno al enviar (nada, calificación o detalle), perfil del lenguaje, permitir ejecutar/probar código, autocompletado, errores en tiempo real, **bloquear pegar** y **detectar salidas de la ventana**.
+- **Vista previa**: presenta el examen como alumno (otra versión mezclada cada vez) y lo califica.
+- **Sala en vivo**: al abrirla se genera un **código de 6 caracteres** (y un enlace `?sala=CODIGO`). Se ve a cada alumno en tiempo real: conectado o no, avance (respondidas/total), pregunta actual, **qué está haciendo** (leyendo, escribiendo código, ejecutando, probando casos, inactivo, fuera de la ventana), tiempo restante, salidas de la ventana, intentos de pegar y calificación al entregar. Al tocar un alumno se ven sus respuestas en vivo (incluido su código), la bitácora de actividad y se pueden **ajustar puntos a mano**, darle más tiempo, recoger su examen o quitarlo de la sala. También: avisos a todos, +5 minutos a todos y **Cerrar examen** (recoge y califica lo pendiente).
+- **Resultados (concentrado)**: alumnos, promedio, mediana, máxima, mínima, % de aprobados, tiempo promedio, distribución de calificaciones, **análisis por pregunta** (aciertos y dificultad) y tabla por alumno (calificación, puntos, tiempo, respondidas, salidas, pegados, cómo entregó). Exporta a **CSV** (Excel) y respaldo **JSON**. Queda un historial de exámenes aplicados.
+
+### Modo Examen (alumno)
+
+- Entra con el **código**, su nombre y grupo/matrícula. Lee las instrucciones y el tiempo empieza al presionar **Comenzar**.
+- Durante el examen **no existen** la ayuda, la mascota, insertar comandos, archivos/ejemplos ni exportar (el entorno normal no se monta). Las preguntas y opciones aparecen **en orden aleatorio** (distinto por alumno, generado con una semilla).
+- Navegador de preguntas, «revisar después», editor con resaltado para programar, **Ejecutar** (con `prompt()`) y **Probar con los ejemplos**, si el maestro lo permite.
+- **Enviar a calificar** muestra cuántas faltan; al agotarse el tiempo o cerrar el maestro, se envía solo. La calificación se calcula en el equipo del maestro (el alumno nunca recibe respuestas ni casos ocultos).
+- Las respuestas se guardan en el dispositivo: si se recarga la página o se cae la red, el alumno vuelve a su examen y lo pendiente se reenvía al reconectar.
+
+### Conexión de la sala
+
+El equipo del maestro es el anfitrión: recibe, guarda y califica. Hay tres formas de conectarse:
+
+- **Por Internet** (recomendado, sin instalar nada): WebRTC directo entre cada alumno y el maestro con [PeerJS](https://peerjs.com/); el servidor público de PeerJS solo los presenta. Funciona desde GitHub Pages y la versión de escritorio. Una escuela puede usar su propio servidor de enlace definiendo `window.__PSJS_PEER__ = { host, port, path, secure }`.
+- **Red del aula** (sin Internet): en la computadora del maestro
+  ```bash
+  npm run export:web   # una vez, genera dist/
+  npm run sala         # servidor del aula en el puerto 8787 (sin dependencias)
+  ```
+  El servidor muestra la dirección (`http://192.168.x.x:8787`) que abren maestro y alumnos en la misma red Wi-Fi; la conexión se configura sola. Opciones: `npm run sala -- --puerto 9000 --dir ./dist`.
+- **Este dispositivo**: pestañas del mismo navegador (para probar un examen sin red).
+
+Código: `src/core/exam/` (tipos, generación del examen por alumno, calificación, protocolo, anfitrión, cliente, transportes y concentrado; probado en `tests/exam.test.ts`), `src/store/teacher.ts`, `src/store/student.ts`, `src/components/teacher/`, `src/components/exam/` y `scripts/sala-servidor.js`.
+
 ## Arquitectura
 
 ```
@@ -78,9 +127,12 @@ src/
     flowchart/         Modelo de bloques, layout clásico y Nassi-Shneiderman, exportación SVG
     exporters/         PSeInt, Python, C++, lenguaje coloquial
     editor/            Tokenizador (resaltado), sangría y formato
+    exam/              Modo Maestro / Examen: calificación, salas y transportes
     catalog.ts help.ts examples.ts
   components/          Editor, paneles, modales e IDE
   store/app.ts         Estado global (zustand) + persistencia (AsyncStorage)
+  store/teacher.ts     Exámenes, sala activa e historial del maestro
+  store/student.ts     Sesión del alumno (se retoma al recargar)
   ui/                  Tema claro/oscuro y utilidades de plataforma
 tests/                 Pruebas del núcleo (incluye ejecutar el Python exportado y compilar el C++ exportado)
 ```
@@ -98,6 +150,7 @@ npm test             # pruebas del núcleo
 npm run typecheck    # TypeScript (app y pruebas)
 npx expo lint        # ESLint
 npm run export:web   # sitio estático en dist/
+npm run sala         # servidor del aula para exámenes sin Internet (sirve dist/)
 npm run build:desktop # empaqueta la versión según tu sistema (GNU/Linux .AppImage, macOS .dmg o Windows .exe)
 npm run build:desktop:linux # empaqueta específicamente para GNU/Linux (.AppImage / .deb)
 npm run build:desktop:mac # empaqueta específicamente para macOS (.dmg)
