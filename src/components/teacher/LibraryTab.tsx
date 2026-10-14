@@ -36,7 +36,7 @@ export default function LibraryTab() {
         <Card style={{ backgroundColor: t.primary + '0d' }} accent={t.primary}>
           <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginBottom: 10 }}>Exámenes en 3 pasos</Text>
           <View style={styles.steps}>
-            <Step n={1} icon="create-outline" title="Diseña" text="Agrega preguntas de opción múltiple, código, salida esperada, ordenar líneas y más." />
+            <Step n={1} icon="create-outline" title="Diseña" text="Elige preguntas del banco, pega una lista en texto o escríbelas: opción múltiple, código, ordenar líneas y más." />
             <Step n={2} icon="radio-outline" title="Aplica" text="Abre una sala y comparte el código. Cada alumno recibe las preguntas en otro orden." />
             <Step n={3} icon="bar-chart-outline" title="Revisa" text="Sigue el avance en vivo y al cerrar obtén el concentrado de calificaciones." />
           </View>
