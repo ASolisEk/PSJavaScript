@@ -39,7 +39,7 @@ const PALETTES = {
 
 // referencia → sprite: se refleja (mira a la derecha) y se escala
 const K = 0.38;
-const X1 = 1425; // borde derecho de la referencia (la cadera)
+const X1 = 1450; // borde derecho de la referencia (la cadera)
 const Y0 = 60; // borde de arriba de la referencia (las orejas)
 const LW = 13; // grosor del contorno en la referencia (≈ 5 px en el sprite)
 
@@ -55,17 +55,17 @@ const stroke = (P, w = LW) => `fill="none" stroke="${P.line}" stroke-width="${w}
 
 /** Silueta de cabeza y cuerpo sentado, mirando a la izquierda. */
 const SILHOUETTE =
-  'M 776 300 C 772 232 806 176 864 150 C 916 126 980 112 1044 114 C 1114 116 1164 136 1196 172 ' +
-  'C 1236 214 1268 262 1300 312 C 1352 390 1426 470 1428 590 C 1430 690 1376 770 1290 778 ' +
+  'M 770 300 C 768 244 790 194 840 164 C 900 128 980 112 1044 114 C 1114 116 1164 136 1196 172 ' +
+  'C 1236 214 1268 262 1300 312 C 1356 386 1444 466 1446 592 C 1448 700 1384 772 1290 778 ' +
   'L 1000 780 C 970 780 940 776 932 760 C 926 744 932 720 944 700 C 954 650 926 570 936 500 ' +
-  'C 938 474 936 454 928 442 C 884 452 822 444 796 406 C 780 380 776 340 776 300 Z';
+  'C 938 474 936 454 928 442 C 870 458 808 448 788 414 C 772 388 770 344 770 300 Z';
 
 /** Hocico café (se recorta con la silueta). */
-const MUZZLE = 'M 862 140 C 925 205 945 290 936 350 C 930 395 920 425 905 445 L 700 470 L 700 100 Z';
+const MUZZLE = 'M 846 136 C 930 186 962 278 950 350 C 942 400 926 432 906 452 L 700 470 L 700 100 Z';
 
-const EYE = [1036, 248];
+const EYE = [1054, 246];
 const EAR_NEAR = [1158, 122];
-const EAR_FAR = [1070, 88];
+const EAR_FAR = [1080, 98];
 
 function ear(P, [x, y], r = 44) {
   return (
@@ -82,9 +82,9 @@ function foot(P, x0, x1, y0, y1) {
   // contorno: frente redondeado, tres deditos abajo al frente y la planta hasta el talón
   const edge =
     `M ${x0 + 34} ${y0} C ${x0 + 8} ${y0 + 2} ${x0 - 4} ${y1 - 34} ${x0 + 2} ${y1 - 18} ` +
-    `a 13 13 0 0 0 20 14 a 13 13 0 0 0 24 5 a 13 13 0 0 0 24 1 L ${x1 - 14} ${y1} Q ${x1} ${y1} ${x1} ${y1 - 14}`;
+    `a 17 17 0 0 0 24 18 a 17 17 0 0 0 32 6 a 17 17 0 0 0 32 1 L ${x1 - 14} ${y1 + 2} Q ${x1} ${y1 + 2} ${x1} ${y1 - 12}`;
   // la orilla de arriba es una curva sin contorno que se funde con la pierna
-  const top = ` L ${x1} ${y0 + 8} C ${x1 - 30} ${y0 - 6} ${x0 + 60} ${y0 - 6} ${x0 + 34} ${y0} Z`;
+  const top = ` L ${x1} ${y0 + 14} C ${x1 - 8} ${y0 - 26} ${x0 + 54} ${y0 - 30} ${x0 + 34} ${y0} Z`;
   return (
     `<path d="${edge}${top}" fill="${P.dark}"/>` +
     `<path d="${edge}" fill="none" stroke="${P.line}" stroke-width="${LW}" stroke-linecap="round" stroke-linejoin="round"/>`
@@ -142,7 +142,7 @@ function face(P, mouth) {
 
 /** Líneas de adentro: quijada, muslo y patas delanteras. */
 function inner(P, { frontLegs = true } = {}) {
-  let s = `<path d="M 928 440 C 952 446 985 440 1002 426" ${stroke(P)}/>`;
+  let s = `<path d="M 928 442 C 962 452 1012 446 1044 418" ${stroke(P)}/>`;
   s += `<path d="M 1276 536 C 1214 556 1180 640 1192 698 C 1200 734 1240 742 1300 736" ${stroke(P)}/>`;
   if (frontLegs) {
     s += `<path d="M 1040 610 C 1034 656 1030 700 1024 732" ${stroke(P)}/>`;
@@ -179,7 +179,7 @@ function legEdges(P, [bx, by], [tx, ty], w) {
 
 /** Capibara completo (sin la oreja cercana, que va en su propia capa). */
 function capybara(P, id, { eyes = 'open', look = 0, mouth = 'smile', frontLegs = true, sweat = false } = {}) {
-  let s = ear(P, EAR_FAR, 40);
+  let s = ear(P, EAR_FAR, 33);
   s += `<clipPath id="sil${id}"><path d="${SILHOUETTE}"/></clipPath>`;
   s += `<path d="${SILHOUETTE}" fill="${P.fur}"/>`;
   s += `<g clip-path="url(#sil${id})"><path d="${MUZZLE}" fill="${P.dark}"/></g>`;
@@ -264,8 +264,8 @@ function running(P) {
 }
 
 /** Cabeza asomándose por el borde (mira hacia adentro, con el hocico por delante). */
-const PEEK = { w: 180, h: 165 };
-const peek = (P) => svg(PEEK.w, PEEK.h, g(4, 4, ear(P, EAR_NEAR) + capybara(P, 'p'), false));
+const PEEK = { w: 180, h: 172 };
+const peek = (P) => svg(PEEK.w, PEEK.h, g(4, 14, ear(P, EAR_NEAR) + capybara(P, 'p'), false));
 
 // ───────────────────────────── anclas para el código ─────────────────────────────
 

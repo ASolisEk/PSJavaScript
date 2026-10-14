@@ -116,15 +116,15 @@ const GATO: Character = {
 
 /** Reposo y error comparten silueta: sentado de perfil, se ve un solo ojo. */
 const CAPI_SITTING: Anchors = {
-  crown: [178, 33],
+  crown: [187, 33],
   rot: 6,
-  eyes: [[168, 83, 11]],
-  nose: [247, 92],
-  mouth: [220, 118],
-  cheeks: [[190, 122]],
-  chin: [231, 153],
-  neck: [185, 161],
-  back: [82, 115],
+  eyes: [[170, 83, 11]],
+  nose: [256, 92],
+  mouth: [229, 118],
+  cheeks: [[199, 122]],
+  chin: [240, 153],
+  neck: [195, 161],
+  back: [91, 115],
 };
 
 /**
@@ -146,15 +146,15 @@ const CAPIBARA: Character = {
     idle: CAPI_SITTING,
     error: CAPI_SITTING,
     running: {
-      crown: [174, 33],
+      crown: [183, 33],
       rot: 6,
-      eyes: [[164, 83, 11]],
-      nose: [243, 92],
-      mouth: [216, 118],
-      cheeks: [[186, 122]],
-      chin: [227, 153],
-      neck: [181, 161],
-      back: [78, 115],
+      eyes: [[166, 83, 11]],
+      nose: [252, 92],
+      mouth: [225, 118],
+      cheeks: [[195, 122]],
+      chin: [236, 153],
+      neck: [191, 161],
+      back: [87, 115],
     },
   },
 };
