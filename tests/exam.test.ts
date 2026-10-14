@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AddressInfo } from 'node:net';
-import { cloneExam, createExam, createQuestion, parseExam, sampleExam, serializeExam, validateExam } from '../src/core/exam/config';
+import { cloneExam, createExam, createQuestion, parseExam, questionsPerStudent, sampleExam as fullSampleExam, serializeExam, validateExam } from '../src/core/exam/config';
+import { FUNDAMENTOS_PER_TOPIC, FUNDAMENTOS_TOPICS } from '../src/core/exam/samples/fundamentos';
 import { expectedFromSolution, gradePaper, gradeQuestion, outputMatches, ruleSatisfied, runProgram, studentView } from '../src/core/exam/grading';
 import { buildPaper, isAnswered } from '../src/core/exam/paper';
 import { ExamHost } from '../src/core/exam/host';
@@ -16,6 +17,54 @@ import { getProfile } from '../src/core/profiles';
 import type { CodeQuestion, ExamConfig, OrderQuestion, Question } from '../src/core/exam/types';
 
 const std = getProfile('estandar');
+
+/** Las 9 preguntas originales del ejemplo (una de cada tipo), sin elegir por tema: las pruebas de la sala dependen de ellas. */
+const sampleExam = (): ExamConfig => {
+  const e = fullSampleExam();
+  return { ...e, topicPicks: {}, questions: e.questions.slice(0, 9) };
+};
+
+/** Lo que imprime el código en JavaScript real (para comparar con el intérprete). */
+function nodeOutput(code: string): string {
+  const out: string[] = [];
+  new Function('console', code)({ log: (...a: unknown[]) => out.push(a.map(String).join(' ')) });
+  return out.join('\n');
+}
+
+test('ejemplo Fundamentos: banco por temas, cada alumno recibe 2 de cada tema', () => {
+  const ex = fullSampleExam();
+  assert.equal(ex.questions.length, 49);
+  assert.equal(validateExam(ex).filter((i) => i.severity === 'error').length, 0);
+  assert.equal(questionsPerStudent(ex), FUNDAMENTOS_PER_TOPIC * FUNDAMENTOS_TOPICS.length);
+  for (const t of FUNDAMENTOS_TOPICS) assert.ok(ex.questions.filter((q) => q.topic === t).length >= 5, t);
+  assert.ok(ex.questions.every((q) => FUNDAMENTOS_TOPICS.includes(q.topic as any)));
+  assert.equal(new Set(ex.questions.map((q) => q.type)).size, 8, 'todos los tipos de pregunta');
+  const p = buildPaper(ex, 'alumno-1').paper;
+  for (const t of FUNDAMENTOS_TOPICS) assert.equal(p.questions.filter((q) => q.topic === t).length, FUNDAMENTOS_PER_TOPIC, t);
+});
+
+test('ejemplo Fundamentos: cada pregunta se califica bien con su respuesta correcta', () => {
+  for (const q of fullSampleExam().questions) {
+    let answer: any;
+    if (q.type === 'single') answer = q.options.find((o) => o.correct)!.id;
+    if (q.type === 'multiple') answer = q.options.filter((o) => o.correct).map((o) => o.id);
+    if (q.type === 'truefalse') answer = q.answer;
+    if (q.type === 'short') answer = q.answers[0];
+    if (q.type === 'numeric') answer = String(q.answer);
+    if (q.type === 'order') answer = q.lines.map((_, i) => i);
+    if (q.type === 'code') answer = q.solution;
+    if (q.type === 'output') {
+      const r = runProgram(q.code, std, q.inputs);
+      assert.equal(r.error, null, q.prompt);
+      answer = nodeOutput(q.code);
+      assert.ok(outputMatches(r.output, answer, 'exact'), `${q.code}\nintérprete: ${r.output}\nnode: ${answer}`);
+    }
+    if (q.type === 'order') continue; // el orden lo revisa la prueba de examen por alumno
+    const g = gradeQuestion(q, answer, std);
+    assert.equal(g.status, 'correct', `${q.prompt}: ${g.feedback} ${JSON.stringify(g.tests?.filter((t) => !t.passed))}`);
+    if (q.type === 'code') assert.notEqual(gradeQuestion(q, q.starter, std).status, 'correct', `${q.prompt}: el código inicial no debe aprobar`);
+  }
+});
 
 test('comparación de salidas', () => {
   assert.ok(outputMatches('Hola  Mundo\n\n', 'hola mundo', 'flexible'));
