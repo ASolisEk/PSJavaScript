@@ -43,6 +43,8 @@ export interface Settings {
   mascotPos: { right: number; bottom: number } | null;
   /** Vestuario de la mascota: 'auto' (según la fecha), 'none' o el id de un vestuario. */
   mascotCostume: string;
+  /** Personaje de la mascota: Michi el gato o Capi el capibara. */
+  mascotCharacter: 'gato' | 'capibara';
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -60,6 +62,7 @@ const DEFAULT_SETTINGS: Settings = {
   mascot: true,
   mascotPos: null,
   mascotCostume: 'auto',
+  mascotCharacter: 'gato',
 };
 
 export const SPEEDS = [1200, 700, 400, 200, 80, 20];

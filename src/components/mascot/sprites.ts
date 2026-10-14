@@ -1,6 +1,7 @@
 /**
- * Sprites de la mascota, extraídos de assets/mascot.jpg con
- * scripts/generar_mascota.py. Las coordenadas están en píxeles del sprite
+ * Sprites de las mascotas. Los del gato se extrajeron de assets/mascot.jpg con
+ * scripts/generar_mascota.py; los del capibara se dibujan con
+ * scripts/generar_capibara.js. Las coordenadas están en píxeles del sprite
  * (antes de escalar). Las decoraciones se ubican respecto a la esquina
  * superior izquierda del cuerpo de su estado.
  */
@@ -104,21 +105,135 @@ const BLACK = {
   },
 };
 
+/**
+ * Lo que se asoma por el borde cuando la mascota se esconde o se minimiza:
+ * la imagen y la ventana visible (en píxeles del sprite).
+ */
+export interface Peek {
+  src: ImageSourcePropType;
+  w: number;
+  h: number;
+  /** Tamaño de la ventana visible y desplazamiento de la imagen dentro de ella. */
+  view: [number, number];
+  offset: [number, number];
+}
+
 export interface SpriteSet {
   IDLE: typeof IDLE;
   ERROR: typeof ERROR;
   RUNNING: typeof RUNNING;
+  PEEK: Peek;
 }
+
+/** El gato asoma la cola. */
+const tailPeek = (tail: ImageSourcePropType): Peek => ({ src: tail, w: IDLE.w, h: IDLE.h, view: [88, 170], offset: [0, -40] });
 
 const withSkin = (p: typeof DARK): SpriteSet => ({
   IDLE: { ...IDLE, ...p.idle },
   ERROR: { ...ERROR, ...p.error },
   RUNNING: { ...RUNNING, ...p.running },
+  PEEK: tailPeek(p.idle.tail),
 });
 
 /** Sprites de cada piel (objetos estables: se crean una sola vez). */
 export const SKINS: Record<Skin, SpriteSet> = {
-  normal: { IDLE, ERROR, RUNNING },
+  normal: { IDLE, ERROR, RUNNING, PEEK: tailPeek(IDLE.tail) },
   dark: withSkin(DARK),
   black: withSkin(BLACK),
+};
+
+// ───────────────────────────── Capi, el capibara ─────────────────────────────
+// Generado con scripts/generar_capibara.js (mismas capas y poses que el gato).
+
+const CAPI_IDLE: typeof IDLE = {
+  w: 309,
+  h: 303,
+  pivot: [38, 196],
+  body: require('../../../assets/mascot/capibara/idle_body.png'),
+  tail: require('../../../assets/mascot/capibara/idle_tail.png'),
+  blinkHalf: require('../../../assets/mascot/capibara/idle_blink_half.png'),
+  blink: require('../../../assets/mascot/capibara/idle_blink.png'),
+};
+
+const CAPI_ERROR: typeof ERROR = {
+  w: 297,
+  h: 311,
+  pivot: [32, 208],
+  body: require('../../../assets/mascot/capibara/confused_body.png'),
+  tail: require('../../../assets/mascot/capibara/confused_tail.png'),
+  lookLeft: require('../../../assets/mascot/capibara/confused_look_left.png'),
+  lookRight: require('../../../assets/mascot/capibara/confused_look_right.png'),
+  // mismas decoraciones que el gato, alrededor de la cabeza del capibara
+  questions: ERROR.questions.map((q, i) => ({ ...q, x: 126 + i * 32, y: -26 + (i === 2 ? 4 : 0) })),
+  drop: { ...ERROR.drop, x: 108, y: 84 },
+  sweat: { ...ERROR.sweat, x: 268, y: 40 },
+  fly: { ...ERROR.fly, x: 280, y: 60 },
+};
+
+const CAPI_RUNNING: typeof RUNNING = {
+  w: 313,
+  h: 305,
+  pivot: [30, 174],
+  body: require('../../../assets/mascot/capibara/running_body.png'),
+  tail: require('../../../assets/mascot/capibara/running_tail.png'),
+  keys: [
+    [133, 272], [150, 268], [184, 260], [201, 256], [236, 248], [253, 244], [287, 236], [135, 283], [170, 275], [187, 271],
+    [221, 263], [238, 259], [272, 251], [290, 247], [155, 290], [172, 286], [206, 278], [224, 274], [258, 266], [275, 262],
+  ],
+};
+
+/** El capibara asoma la cabeza (mirando hacia adentro de la pantalla). */
+const headPeek = (src: ImageSourcePropType): Peek => ({ src, w: 150, h: 180, view: [86, 150], offset: [0, -14] });
+
+const CAPI_DARK = {
+  idle: {
+    body: require('../../../assets/mascot/capibara/skins/dark/idle_body.png'),
+    tail: require('../../../assets/mascot/capibara/skins/dark/idle_tail.png'),
+    blinkHalf: require('../../../assets/mascot/capibara/skins/dark/idle_blink_half.png'),
+    blink: require('../../../assets/mascot/capibara/skins/dark/idle_blink.png'),
+  },
+  error: {
+    body: require('../../../assets/mascot/capibara/skins/dark/confused_body.png'),
+    tail: require('../../../assets/mascot/capibara/skins/dark/confused_tail.png'),
+    lookLeft: require('../../../assets/mascot/capibara/skins/dark/confused_look_left.png'),
+    lookRight: require('../../../assets/mascot/capibara/skins/dark/confused_look_right.png'),
+  },
+  running: {
+    body: require('../../../assets/mascot/capibara/skins/dark/running_body.png'),
+    tail: require('../../../assets/mascot/capibara/skins/dark/running_tail.png'),
+  },
+  peek: require('../../../assets/mascot/capibara/skins/dark/peek.png'),
+};
+
+const CAPI_BLACK = {
+  idle: {
+    body: require('../../../assets/mascot/capibara/skins/black/idle_body.png'),
+    tail: require('../../../assets/mascot/capibara/skins/black/idle_tail.png'),
+    blinkHalf: require('../../../assets/mascot/capibara/skins/black/idle_blink_half.png'),
+    blink: require('../../../assets/mascot/capibara/skins/black/idle_blink.png'),
+  },
+  error: {
+    body: require('../../../assets/mascot/capibara/skins/black/confused_body.png'),
+    tail: require('../../../assets/mascot/capibara/skins/black/confused_tail.png'),
+    lookLeft: require('../../../assets/mascot/capibara/skins/black/confused_look_left.png'),
+    lookRight: require('../../../assets/mascot/capibara/skins/black/confused_look_right.png'),
+  },
+  running: {
+    body: require('../../../assets/mascot/capibara/skins/black/running_body.png'),
+    tail: require('../../../assets/mascot/capibara/skins/black/running_tail.png'),
+  },
+  peek: require('../../../assets/mascot/capibara/skins/black/peek.png'),
+};
+
+const capiSkin = (p: typeof CAPI_DARK): SpriteSet => ({
+  IDLE: { ...CAPI_IDLE, ...p.idle },
+  ERROR: { ...CAPI_ERROR, ...p.error },
+  RUNNING: { ...CAPI_RUNNING, ...p.running },
+  PEEK: headPeek(p.peek),
+});
+
+export const CAPI_SKINS: Record<Skin, SpriteSet> = {
+  normal: { IDLE: CAPI_IDLE, ERROR: CAPI_ERROR, RUNNING: CAPI_RUNNING, PEEK: headPeek(require('../../../assets/mascot/capibara/peek.png')) },
+  dark: capiSkin(CAPI_DARK),
+  black: capiSkin(CAPI_BLACK),
 };

@@ -15,95 +15,32 @@ import Svg, { Circle, Ellipse, G, Line, Path, Polygon, Rect } from 'react-native
 import type { Costume } from '../../core/holidays';
 import { MONO } from '../../ui/theme';
 import { ND, to, useLoops, useValue, useValues, wait } from './anim';
-import { SKINS, SpriteSet } from './sprites';
+import { Anchors, Character, getCharacter, Pose, Pt } from './characters';
+import type { SpriteSet } from './sprites';
 
 export { COSTUMES, resolveCostume } from '../../core/holidays';
 
 const CostumeContext = createContext<Costume | null>(null);
+/** Personaje de la mascota (gato o capibara). */
+const CharacterContext = createContext<Character>(getCharacter('gato'));
+export const CharacterProvider = CharacterContext.Provider;
+export const useCharacter = () => useContext(CharacterContext);
 /** Orientación de la mascota (-1 izquierda, 1 derecha), para dibujos que no deben verse en espejo. */
 const FaceContext = createContext<Animated.Value | null>(null);
 export const FaceProvider = FaceContext.Provider;
 export const CostumeProvider = CostumeContext.Provider;
 export const useCostume = () => useContext(CostumeContext);
 
-/** Sprites con el color de pelaje del vestuario actual. */
+/** Sprites del personaje con el color de pelaje del vestuario actual. */
 export function useSprites(): SpriteSet {
-  return SKINS[useContext(CostumeContext)?.skin ?? 'normal'];
+  return useContext(CharacterContext).skins[useContext(CostumeContext)?.skin ?? 'normal'];
 }
 
 // ───────────────────────────── anclas por pose ─────────────────────────────
+// Cada personaje (ver characters.ts) define dónde están su coronilla, ojos,
+// boca, cuello y espalda en cada pose; los accesorios se colocan ahí.
 
-export type Pose = 'idle' | 'error' | 'running';
-type Pt = [number, number];
-
-interface Anchors {
-  /** Coronilla (centro de la base de un sombrero). */
-  crown: Pt;
-  /** Inclinación de la cabeza en grados. */
-  rot: number;
-  eyes: [number, number, number][];
-  nose: Pt;
-  mouth: Pt;
-  cheeks: Pt[];
-  chin: Pt;
-  neck: Pt;
-  /** Base de las alas, en la espalda. */
-  back: Pt;
-}
-
-const POSES: Record<Pose, Anchors> = {
-  idle: {
-    crown: [180, 44],
-    rot: -7,
-    eyes: [
-      [164, 111, 24],
-      [245, 104, 22],
-    ],
-    nose: [212, 128],
-    mouth: [212, 140],
-    cheeks: [
-      [160, 152],
-      [258, 139],
-    ],
-    chin: [206, 176],
-    neck: [200, 186],
-    back: [126, 184],
-  },
-  error: {
-    crown: [160, 46],
-    rot: -7,
-    eyes: [
-      [147, 120, 23],
-      [229, 104, 21],
-    ],
-    nose: [194, 129],
-    mouth: [191, 150],
-    cheeks: [
-      [139, 152],
-      [240, 136],
-    ],
-    chin: [180, 178],
-    neck: [178, 190],
-    back: [112, 190],
-  },
-  running: {
-    crown: [174, 36],
-    rot: -2,
-    eyes: [
-      [154, 118, 21],
-      [236, 111, 21],
-    ],
-    nose: [203, 124],
-    mouth: [201, 141],
-    cheeks: [
-      [151, 131],
-      [247, 128],
-    ],
-    chin: [197, 164],
-    neck: [196, 172],
-    back: [114, 160],
-  },
-};
+export type { Anchors, Pose } from './characters';
 
 // ───────────────────────────── piezas ─────────────────────────────
 
@@ -640,6 +577,7 @@ function Overlay({ s, w, h, children }: { s: number; w: number; h: number; child
 
 function OutfitImpl({ pose, part, s, w, h, active }: { pose: Pose; part: 'back' | 'front'; s: number; w: number; h: number; active: boolean }) {
   const costume = useCostume();
+  const character = useCharacter();
   const faceDir = useContext(FaceContext);
   const id = costume?.id;
   const wob = useValue(0);
@@ -665,7 +603,7 @@ function OutfitImpl({ pose, part, s, w, h, active }: { pose: Pose; part: 'back' 
   );
 
   if (!id) return null;
-  const a = POSES[pose];
+  const a = character.anchors[pose];
   // muestra la versión normal o la reflejada según hacia dónde mira
   const facing = (mirror: boolean) =>
     faceDir ? faceDir.interpolate({ inputRange: [-1, -0.001, 0.001, 1], outputRange: mirror ? [1, 1, 0, 0] : [0, 0, 1, 1] }) : mirror ? 0 : 1;
