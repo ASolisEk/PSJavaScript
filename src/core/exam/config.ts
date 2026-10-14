@@ -3,6 +3,7 @@
  */
 import { DEFAULT_PROFILE_ID, PROFILES } from '../profiles';
 import { randomId } from './random';
+import { FUNDAMENTOS_PER_TOPIC, FUNDAMENTOS_TOPICS, fundamentosQuestions } from './samples/fundamentos';
 import type { ChoiceOption, CodeRule, CodeTest, ExamConfig, OutputMatch, Question, QuestionType, ResultsVisibility } from './types';
 
 export const EXAM_FORMAT = 'psjavascript-exam';
@@ -362,86 +363,14 @@ export function parseExam(text: string): ExamConfig {
 
 // ───────────────────────────── examen de ejemplo ─────────────────────────────
 
-/** Examen listo para usar que muestra todos los tipos de pregunta. */
+/** Examen listo para usar: 49 preguntas de fundamentos en 8 temas, con todos los tipos de pregunta. */
 export function sampleExam(): ExamConfig {
-  const qs: Question[] = [
-    {
-      id: randomId('q'),
-      type: 'single',
-      prompt: '¿Qué palabra se usa para declarar una variable cuyo valor NO cambiará?',
-      points: 1,
-      options: [option('const', true), option('let'), option('var'), option('static')],
-    },
-    {
-      id: randomId('q'),
-      type: 'multiple',
-      prompt: 'Selecciona todas las estructuras que son ciclos (repeticiones).',
-      points: 2,
-      partialCredit: true,
-      options: [option('for', true), option('while', true), option('do…while', true), option('if'), option('switch')],
-    },
-    {
-      id: randomId('q'),
-      type: 'truefalse',
-      prompt: 'prompt() devuelve siempre un texto, aunque el usuario escriba un número.',
-      points: 1,
-      answer: true,
-    },
-    {
-      id: randomId('q'),
-      type: 'short',
-      prompt: '¿Qué función convierte el texto "42" en el número 42? (escribe solo el nombre)',
-      points: 1,
-      answers: ['Number', 'parseInt', 'parseFloat'],
-      caseSensitive: false,
-    },
-    {
-      id: randomId('q'),
-      type: 'numeric',
-      prompt: '¿Cuánto vale la variable r al terminar?',
-      code: 'let r = 0;\nfor (let i = 1; i <= 4; i++) {\n  r += i * 2;\n}',
-      points: 1,
-      answer: 20,
-      tolerance: 0,
-    },
-    {
-      id: randomId('q'),
-      type: 'output',
-      prompt: '¿Qué muestra en la consola el siguiente programa?',
-      points: 2,
-      code: 'const nums = [3, 8, 1];\nlet mayor = nums[0];\nfor (const n of nums) {\n  if (n > mayor) mayor = n;\n}\nconsole.log("Mayor:", mayor);\n',
-      inputs: [],
-      match: 'flexible',
-    },
-    {
-      id: randomId('q'),
-      type: 'order',
-      prompt: 'Ordena las líneas para que el programa muestre los números del 1 al 3.',
-      points: 2,
-      partialCredit: true,
-      lines: ['let i = 1;', 'while (i <= 3) {', '  console.log(i);', '  i++;', '}'],
-    },
-    {
-      id: randomId('q'),
-      type: 'code',
-      prompt: 'Escribe un programa que lea un número entero con prompt() y muestre "par" si es par o "impar" si es impar.',
-      points: 5,
-      starter: '// Lee el número y muestra "par" o "impar"\nconst n = Number(prompt("Número:"));\n',
-      solution: 'const n = Number(prompt("Número:"));\nif (n % 2 === 0) {\n  console.log("par");\n} else {\n  console.log("impar");\n}\n',
-      match: 'flexible',
-      tests: [
-        codeTest({ name: 'Número par', inputs: ['8'], expected: 'par' }),
-        codeTest({ name: 'Número impar', inputs: ['7'], expected: 'impar' }),
-        codeTest({ name: 'Cero', inputs: ['0'], expected: 'par', hidden: true }),
-        codeTest({ name: 'Negativo impar', inputs: ['-3'], expected: 'impar', hidden: true }),
-      ],
-      rules: [codeRule({ kind: 'contains', pattern: 'if', message: 'Usa una condición if.' })],
-    },
-  ];
+  const per = FUNDAMENTOS_PER_TOPIC;
   return createExam({
     title: 'Fundamentos de JavaScript (ejemplo)',
-    description: 'Examen de ejemplo con todos los tipos de pregunta. Lee con atención; puedes moverte entre preguntas y cambiar tus respuestas antes de enviar.',
-    durationMin: 30,
-    questions: qs,
+    description: `Examen de ejemplo con todos los tipos de pregunta. Recibes ${per} preguntas al azar de cada uno de los ${FUNDAMENTOS_TOPICS.length} temas (${per * FUNDAMENTOS_TOPICS.length} en total). Lee con atención; puedes moverte entre preguntas y cambiar tus respuestas antes de enviar.`,
+    durationMin: 45,
+    topicPicks: Object.fromEntries(FUNDAMENTOS_TOPICS.map((t) => [t, per])),
+    questions: fundamentosQuestions(),
   });
 }
