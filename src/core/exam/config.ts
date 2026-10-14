@@ -363,7 +363,7 @@ export function parseExam(text: string): ExamConfig {
 
 // ───────────────────────────── examen de ejemplo ─────────────────────────────
 
-/** Examen listo para usar: 49 preguntas de fundamentos en 8 temas, con todos los tipos de pregunta. */
+/** Examen listo para usar: 100 preguntas de fundamentos en 8 temas, con todos los tipos de pregunta. */
 export function sampleExam(): ExamConfig {
   const per = FUNDAMENTOS_PER_TOPIC;
   return createExam({

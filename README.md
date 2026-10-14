@@ -70,7 +70,7 @@ Botón **Examen** de la barra de herramientas → **Soy maestro** o **Soy alumno
 
 ### Modo Maestro (diseñar y aplicar)
 
-- **Mis exámenes**: crear desde cero o a partir del examen de ejemplo *Fundamentos de JavaScript* (49 preguntas en 8 temas: variables, cadenas, números, condicionales, funciones, arreglos, objetos y ciclos; cada alumno recibe 2 al azar de cada tema), duplicar, eliminar, **exportar** la configuración (`.examen.json`) e **importarla** en otro equipo.
+- **Mis exámenes**: crear desde cero o a partir del examen de ejemplo *Fundamentos de JavaScript* (100 preguntas en 8 temas: variables, cadenas, números, condicionales, funciones, arreglos, objetos y ciclos; cada alumno recibe 2 al azar de cada tema), duplicar, eliminar, **exportar** la configuración (`.examen.json`) e **importarla** en otro equipo.
 - **Editor** con 8 tipos de ejercicio:
 
   | Tipo | Cómo se califica |
