@@ -186,7 +186,7 @@ const CAPI_RUNNING: typeof RUNNING = {
 };
 
 /** El capibara asoma la cabeza (mirando hacia adentro de la pantalla). */
-const headPeek = (src: ImageSourcePropType): Peek => ({ src, w: 180, h: 165, view: [150, 150], offset: [0, -6] });
+const headPeek = (src: ImageSourcePropType): Peek => ({ src, w: 180, h: 172, view: [150, 156], offset: [0, -4] });
 
 const CAPI_DARK = {
   idle: {

@@ -65,7 +65,7 @@ const MUZZLE = 'M 846 136 C 930 186 962 278 950 350 C 942 400 926 432 906 452 L 
 
 const EYE = [1054, 246];
 const EAR_NEAR = [1158, 122];
-const EAR_FAR = [1070, 88];
+const EAR_FAR = [1080, 98];
 
 function ear(P, [x, y], r = 44) {
   return (
@@ -84,7 +84,7 @@ function foot(P, x0, x1, y0, y1) {
     `M ${x0 + 34} ${y0} C ${x0 + 8} ${y0 + 2} ${x0 - 4} ${y1 - 34} ${x0 + 2} ${y1 - 18} ` +
     `a 17 17 0 0 0 24 18 a 17 17 0 0 0 32 6 a 17 17 0 0 0 32 1 L ${x1 - 14} ${y1 + 2} Q ${x1} ${y1 + 2} ${x1} ${y1 - 12}`;
   // la orilla de arriba es una curva sin contorno que se funde con la pierna
-  const top = ` L ${x1} ${y0 + 8} C ${x1 - 30} ${y0 - 6} ${x0 + 60} ${y0 - 6} ${x0 + 34} ${y0} Z`;
+  const top = ` L ${x1} ${y0 + 14} C ${x1 - 8} ${y0 - 26} ${x0 + 54} ${y0 - 30} ${x0 + 34} ${y0} Z`;
   return (
     `<path d="${edge}${top}" fill="${P.dark}"/>` +
     `<path d="${edge}" fill="none" stroke="${P.line}" stroke-width="${LW}" stroke-linecap="round" stroke-linejoin="round"/>`
@@ -179,7 +179,7 @@ function legEdges(P, [bx, by], [tx, ty], w) {
 
 /** Capibara completo (sin la oreja cercana, que va en su propia capa). */
 function capybara(P, id, { eyes = 'open', look = 0, mouth = 'smile', frontLegs = true, sweat = false } = {}) {
-  let s = ear(P, EAR_FAR, 40);
+  let s = ear(P, EAR_FAR, 33);
   s += `<clipPath id="sil${id}"><path d="${SILHOUETTE}"/></clipPath>`;
   s += `<path d="${SILHOUETTE}" fill="${P.fur}"/>`;
   s += `<g clip-path="url(#sil${id})"><path d="${MUZZLE}" fill="${P.dark}"/></g>`;
@@ -264,8 +264,8 @@ function running(P) {
 }
 
 /** Cabeza asomándose por el borde (mira hacia adentro, con el hocico por delante). */
-const PEEK = { w: 180, h: 165 };
-const peek = (P) => svg(PEEK.w, PEEK.h, g(4, 4, ear(P, EAR_NEAR) + capybara(P, 'p'), false));
+const PEEK = { w: 180, h: 172 };
+const peek = (P) => svg(PEEK.w, PEEK.h, g(4, 14, ear(P, EAR_NEAR) + capybara(P, 'p'), false));
 
 // ───────────────────────────── anclas para el código ─────────────────────────────
 
