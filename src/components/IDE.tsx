@@ -8,7 +8,7 @@ import { formatCode } from '../core/editor/indent';
 import { PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
 import type { VarDetail } from '../core/runner';
 import { BORDER, MONO, RADIUS, SCRIM, SPACE, useTheme } from '../ui/theme';
-import { useLayout } from '../ui/layout';
+import { CODE_SHARE, useLayout } from '../ui/layout';
 import CodeEditor from './CodeEditor';
 import Footer, { CREDITS, REPO_URL } from './Footer';
 import ExportModal from './modals/ExportModal';
@@ -31,7 +31,7 @@ import { Button, IconButton, Tab, Tooltip } from './ui';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** label: pestaña del panel lateral · short: pestaña en pantallas angostas (todas deben caber). */
+/** label: pestaña en pantalla ancha · short: pestaña en pantallas angostas (todas deben caber). */
 const PANELS: { id: PanelId; label: string; short: string; icon: IconName }[] = [
   { id: 'console', label: 'Consola', short: 'Consola', icon: 'terminal-outline' },
   { id: 'diagram', label: 'Diagrama', short: 'Diagrama', icon: 'git-network-outline' },
@@ -40,7 +40,6 @@ const PANELS: { id: PanelId; label: string; short: string; icon: IconName }[] = 
   { id: 'explain', label: 'Explicación', short: 'Explicar', icon: 'chatbubbles-outline' },
   { id: 'problems', label: 'Problemas', short: 'Problemas', icon: 'alert-circle-outline' },
 ];
-const EDITOR_TAB = { id: 'editor' as PanelId, label: 'Código', short: 'Código', icon: 'code-slash' as IconName };
 
 function PanelView({ id }: { id: PanelId }) {
   switch (id) {
@@ -255,32 +254,41 @@ function MoreSheet({ onClose }: { onClose(): void }) {
   );
 }
 
-/** Pestañas en pantallas angostas: ícono y nombre corto, todas a la vista sin deslizar. */
+/**
+ * Pestañas de los paneles en pantallas angostas (debajo del código): ícono y
+ * nombre corto, todas a la vista sin deslizar. Se acomodan al ancho que tienen.
+ */
 function PhoneTabs({ errorCount }: { errorCount: number }) {
   const t = useTheme();
-  const { width, height } = useWindowDimensions();
-  // en pantallas muy angostas la letra baja un punto para que quepan los siete nombres
-  const tiny = width < 360;
-  // celular acostado: sobra ancho y falta alto, así que ícono y nombre van lado a lado
-  const inline = height < 500 && width >= 600;
-  const panel = useApp((s) => s.panel);
-  const setPanel = useApp((s) => s.setPanel);
+  const windowWidth = useWindowDimensions().width;
+  const [w, setW] = useState(0);
+  const per = (w || windowWidth) / PANELS.length;
+  // con espacio de sobra el ícono y el nombre van lado a lado; si falta, solo el ícono
+  const inline = per >= 96;
+  const iconOnly = per < 46;
+  const tiny = per < 56;
+  const sidePanel = useApp((s) => s.sidePanel);
+  const setSidePanel = useApp((s) => s.setSidePanel);
   return (
-    <View accessibilityRole="tablist" style={[styles.phoneTabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
-      {[EDITOR_TAB, ...PANELS].map((p) => {
-        const active = panel === p.id;
+    <View
+      accessibilityRole="tablist"
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      style={[styles.phoneTabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}
+    >
+      {PANELS.map((p) => {
+        const active = sidePanel === p.id;
         const c = active ? t.primary : t.textMuted;
         const badge = p.id === 'problems' && errorCount ? errorCount : 0;
         return (
           <Pressable
             key={p.id}
-            onPress={() => setPanel(p.id)}
+            onPress={() => setSidePanel(p.id)}
             accessibilityRole="tab"
             accessibilityLabel={p.label}
             accessibilityState={{ selected: active }}
             style={({ pressed }) => [
               styles.phoneTab,
-              inline && { flexDirection: 'row', paddingTop: 4 },
+              (inline || iconOnly) && { flexDirection: 'row', paddingTop: 4, minHeight: 38 },
               { borderBottomColor: active ? t.primary : 'transparent', backgroundColor: pressed ? t.surfaceAlt : 'transparent' },
             ]}
           >
@@ -292,12 +300,14 @@ function PhoneTabs({ errorCount }: { errorCount: number }) {
                 </View>
               ) : null}
             </View>
-            <Text
-              style={[{ color: c, fontSize: tiny ? 9 : 10, fontWeight: '800', letterSpacing: tiny ? -0.2 : 0, marginTop: 2 }, inline && { fontSize: 12, marginTop: 0, marginLeft: 6 }]}
-              numberOfLines={1}
-            >
-              {p.short}
-            </Text>
+            {iconOnly ? null : (
+              <Text
+                style={[{ color: c, fontSize: tiny ? 9 : 10, fontWeight: '800', letterSpacing: tiny ? -0.2 : 0, marginTop: 2 }, inline && { fontSize: 12, marginTop: 0, marginLeft: 6 }]}
+                numberOfLines={1}
+              >
+                {p.short}
+              </Text>
+            )}
           </Pressable>
         );
       })}
@@ -382,26 +392,6 @@ function Notice() {
       {isUpdateNotice ? <Button label="Actualizar" kind="primary" size="sm" onPress={() => setModal('update')} style={{ marginRight: 6 }} /> : null}
       {notice ? <IconButton icon="close" label="Cerrar aviso" size={16} onPress={() => setNotice(null)} /> : null}
     </View>
-  );
-}
-
-function MiniConsole() {
-  const t = useTheme();
-  const output = useApp((s) => s.run?.output);
-  const setPanel = useApp((s) => s.setPanel);
-  const lines = (output ?? []).filter((l) => l.kind !== 'system').slice(-4);
-  if (!lines.length) return null;
-  return (
-    <Pressable onPress={() => setPanel('console')} style={[styles.mini, { backgroundColor: t.terminal.bg }]}>
-      {lines.map((l) => {
-        const color = l.kind === 'error' ? t.terminal.error : l.kind === 'warn' ? t.terminal.warn : l.kind === 'input' ? t.terminal.input : t.terminal.text;
-        return (
-          <Text key={l.id} style={{ color, fontFamily: MONO, fontSize: 13 }} numberOfLines={1}>
-            {l.kind === 'input' ? `${l.prompt ?? ''} › ${l.text}` : l.text}
-          </Text>
-        );
-      })}
-    </Pressable>
   );
 }
 
@@ -530,17 +520,16 @@ function DebugBar() {
 export default function IDE() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { width, wide, phone } = useLayout();
+  const { width, wide, phone, split } = useLayout();
   const hydrated = useApp((s) => s.hydrated);
   const file = useActiveFile();
-  const panel = useApp((s) => s.panel);
   const sidePanel = useApp((s) => s.sidePanel);
   const modal = useApp((s) => s.modal);
   const diagnostics = useApp((s) => s.diagnostics);
   const fontSize = useApp((s) => s.settings.fontSize);
   const symbolBar = useApp((s) => s.settings.symbolBar);
   const run = useApp((s) => s.run);
-  const { setCode, toggleBreakpoint, setPanel, setSidePanel, hydrate } = useApp.getState();
+  const { setCode, toggleBreakpoint, setSidePanel, hydrate } = useApp.getState();
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length + (run?.error ? 1 : 0);
 
   useEffect(() => {
@@ -574,17 +563,13 @@ export default function IDE() {
     };
   }, []);
 
-  // En pantallas angostas, al terminar una ejecución completa se muestra la consola
+  // Con un error se muestra el panel que lo explica: Problemas (sintaxis) o la Consola
   const lastStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
     const st = run?.status;
-    if (!wide && st !== lastStatus.current) {
-      if ((st === 'finished' || st === 'error') && run?.mode === 'run' && panel === 'editor') setPanel('console');
-      if (st === 'error' && run?.error?.syntax) setPanel('problems');
-    }
-    if (wide && st === 'error' && st !== lastStatus.current) setSidePanel(run?.error?.syntax ? 'problems' : 'console');
+    if (st === 'error' && st !== lastStatus.current) setSidePanel(run?.error?.syntax ? 'problems' : 'console');
     lastStatus.current = st;
-  }, [run?.status, run?.mode, run?.error, wide, panel, setPanel, setSidePanel]);
+  }, [run?.status, run?.error, setSidePanel]);
 
   // Atajos de teclado (web / escritorio)
   const onKey = useCallback((e: KeyboardEvent) => {
@@ -656,12 +641,12 @@ export default function IDE() {
       errorLine={errorLine}
       diagnostics={diagnostics}
       fontSize={fontSize}
-      showSymbolBar={symbolBar && (Platform.OS !== 'web' || !wide)}
+      // en web (también en el celular) no se muestra la barra de símbolos; en la app nativa se puede activar
+      showSymbolBar={symbolBar && Platform.OS !== 'web'}
       varDetails={varDetails}
       isDebugging={isDebugging}
     />
   );
-  const runActive = run && run.status !== 'idle';
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
@@ -742,13 +727,24 @@ export default function IDE() {
               </View>
             </View>
           ) : (
-            <View style={{ flex: 1 }}>
-              <PhoneTabs errorCount={errorCount} />
-              <View style={{ flex: 1, position: 'relative' }}>
-                {panel === 'editor' ? editor : <PanelView id={panel} />}
-                {panel === 'editor' && <FloatingDebugWidget />}
+            // pantalla angosta: el código ocupa el 60 % (arriba, o a la izquierda con el celular acostado)
+            // y el resto las pestañas con su panel
+            <View style={{ flex: 1, flexDirection: split === 'row' ? 'row' : 'column' }}>
+              <View
+                style={[
+                  { flex: CODE_SHARE, minHeight: 0, minWidth: 0, position: 'relative', borderColor: t.border },
+                  split === 'row' ? { borderRightWidth: BORDER } : { borderBottomWidth: BORDER },
+                ]}
+              >
+                {editor}
+                <FloatingDebugWidget />
               </View>
-              {panel === 'editor' && runActive ? <MiniConsole /> : null}
+              <View style={{ flex: 1 - CODE_SHARE, minHeight: 0, minWidth: 0 }}>
+                <PhoneTabs errorCount={errorCount} />
+                <View style={{ flex: 1 }}>
+                  <PanelView id={sidePanel} />
+                </View>
+              </View>
             </View>
           )}
           <Mascot />
@@ -799,7 +795,6 @@ const styles = StyleSheet.create({
   status: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: SPACE.md, borderTopWidth: BORDER },
   dot: { width: 10, height: 10, borderRadius: 5 },
   notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.md, paddingVertical: 6, borderBottomWidth: BORDER },
-  mini: { maxHeight: 92, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
   debugBar: { flexDirection: 'row', justifyContent: 'center', paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, borderTopWidth: BORDER, flexWrap: 'wrap', gap: SPACE.sm },
   floatingDebugWidget: {
     position: 'absolute',
