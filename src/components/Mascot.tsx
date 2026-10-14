@@ -1,5 +1,6 @@
 /**
- * Mascota guía: un gatito que reacciona al programa y a la persona.
+ * Mascota guía: Michi el gatito o Capi el capibara (ver mascot/characters.ts),
+ * que reacciona al programa y a la persona.
  *
  * Estados (capas con transición cruzada):
  *  - reposo · error de análisis · ejecutando · esperando un dato · error de
@@ -26,24 +27,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Animated,
-  Easing,
-  Image,
-  LayoutChangeEvent,
-  PanResponder,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Image, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../ui/text';
 import { useActiveFile, useApp } from '../store/app';
-import { useTheme } from '../ui/theme';
+import { BORDER, RADIUS, SPACE, TYPE, useTheme } from '../ui/theme';
+import { CODE_SHARE, WIDE_MIN } from '../ui/layout';
 import { easeIn, easeOut, ND, startNextFrame, to, useValue, wait } from './mascot/anim';
-import { Ambient, COSTUMES, CostumeProvider, FaceProvider, resolveCostume, useSprites } from './mascot/costumes';
+import { CHARACTER_LIST, getCharacter } from './mascot/characters';
+import { Ambient, CharacterProvider, COSTUMES, CostumeProvider, FaceProvider, resolveCostume, useSprites } from './mascot/costumes';
 import { AlertLayer, Confetti, CrashLayer, DizzyLayer, FxKind, OutputParticle, PetLayer, ReactionFx, WaitingLayer } from './mascot/extras';
 import { ErrorLayer, IdleLayer, RunningLayer } from './mascot/layers';
 import { BOX } from './mascot/sprites';
@@ -81,8 +72,10 @@ const TIPS = [
   'Puedes exportar tu código a PSeInt, Python y más.',
   'Usa === para comparar: no convierte los tipos.',
   'Toca dos veces rápido y verás una voltereta',
-  'A veces me escondo en el borde ¡Toca mi cola para encontrarme!',
 ];
+
+/** Consejo que depende de lo que asoma el personaje al esconderse. */
+const hideTip = (part: string) => `A veces me escondo en el borde ¡Toca ${part} para encontrarme!`;
 
 function useProgram() {
   const status = useApp((s) => s.run?.status ?? 'idle');
@@ -131,6 +124,8 @@ const lineAt = (code: string, pos: number) => {
 
 function Card({ children, gap, side }: { children: React.ReactNode; gap: number; side: 'left' | 'right' }) {
   const t = useTheme();
+  // en el teléfono el globo es más angosto para tapar menos
+  const narrow = useWindowDimensions().width < 600;
   const v = useValue(0);
   useEffect(() => {
     Animated.spring(v, { toValue: 1, friction: 6, tension: 90, useNativeDriver: ND }).start();
@@ -139,6 +134,7 @@ function Card({ children, gap, side }: { children: React.ReactNode; gap: number;
     <Animated.View
       style={[
         styles.card,
+        narrow && { maxWidth: 220 },
         side === 'left' ? { marginLeft: 18 } : { marginRight: 18 },
         {
           marginBottom: gap,
@@ -153,6 +149,8 @@ function Card({ children, gap, side }: { children: React.ReactNode; gap: number;
       ]}
     >
       {children}
+      {/* colita del globo: triángulo del color del borde y, encima, uno del fondo */}
+      <View style={[styles.arrow, styles.arrowOuter, side === 'left' ? { left: 24 } : { right: 24 }, { borderTopColor: t.border }]} />
       <View style={[styles.arrow, side === 'left' ? { left: 26 } : { right: 26 }, { borderTopColor: t.surface }]} />
     </Animated.View>
   );
@@ -168,7 +166,7 @@ function Bubble({ text, persist, onHide, gap, side }: { text: string; persist: b
   return (
     <View style={{ pointerEvents: 'none' }}>
       <Card gap={gap} side={side}>
-        <Text style={{ color: t.text, fontSize: 13, lineHeight: 18 }}>{text}</Text>
+        <Text style={{ color: t.text, fontSize: 14, fontWeight: '600', lineHeight: 19 }}>{text}</Text>
       </Card>
     </View>
   );
@@ -189,7 +187,7 @@ function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; s
   }, [onClose]);
   return (
     <Card gap={gap} side={side}>
-      <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>¿QUÉ HACEMOS? 🐾</Text>
+      <Text style={{ color: t.textMuted, ...TYPE.label, fontSize: 12, marginBottom: 6 }}>¿Qué hacemos? 🐾</Text>
       {items.map((it) => (
         <Pressable
           key={it.label}
@@ -200,16 +198,16 @@ function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; s
           style={({ pressed }) => [styles.menuItem, { backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
         >
           <Ionicons name={it.icon} size={16} color={it.color ?? t.primary} />
-          <Text style={{ color: t.text, fontSize: 13, marginLeft: 8 }}>{it.label}</Text>
+          <Text style={{ color: t.text, fontSize: 14, fontWeight: '700', marginLeft: 10 }}>{it.label}</Text>
         </Pressable>
       ))}
     </Card>
   );
 }
 
-/** Mascota minimizada o escondida: solo asoma la cola por el borde. */
+/** Mascota minimizada o escondida: solo asoma la cola (gato) o la cabeza (capibara) por el borde. */
 function PeekingTail({ onPress, edge, label }: { onPress(): void; edge: 'left' | 'right'; label: string }) {
-  const { IDLE } = useSprites();
+  const { PEEK } = useSprites();
   const wag = useValue(0);
   useEffect(() => {
     const a = Animated.loop(Animated.sequence([to(wag, 1, 520), to(wag, -1, 1040), to(wag, 0, 520), wait(600)]));
@@ -221,14 +219,14 @@ function PeekingTail({ onPress, edge, label }: { onPress(): void; edge: 'left' |
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={[styles.peek, edge === 'left' && { transform: [{ scaleX: -1 }] }]}>
       <Animated.View
         style={{
-          width: 88 * s,
-          height: 170 * s,
+          width: PEEK.view[0] * s,
+          height: PEEK.view[1] * s,
           overflow: 'hidden',
           transformOrigin: 'center bottom',
           transform: [{ rotate: wag.interpolate({ inputRange: [-1, 1], outputRange: ['-16deg', '12deg'] }) }],
         }}
       >
-        <Image source={IDLE.tail} style={{ width: IDLE.w * s, height: IDLE.h * s, marginTop: -40 * s }} />
+        <Image source={PEEK.src} style={{ width: PEEK.w * s, height: PEEK.h * s, marginLeft: PEEK.offset[0] * s, marginTop: PEEK.offset[1] * s }} />
       </Animated.View>
     </Pressable>
   );
@@ -240,12 +238,11 @@ export default function Mascot() {
   const t = useTheme();
   const enabled = useApp((s) => s.settings.mascot);
   const savedPos = useApp((s) => s.settings.mascotPos);
-  const panel = useApp((s) => s.panel);
-  const symbolBar = useApp((s) => s.settings.symbolBar);
+  const sidePanel = useApp((s) => s.sidePanel);
   const editorRequest = useApp((s) => s.editorRequest);
-  const runActive = useApp((s) => !!s.run && s.run.status !== 'idle');
   const costumeSetting = useApp((s) => s.settings.mascotCostume);
-  const { width } = useWindowDimensions();
+  const character = getCharacter(useApp((s) => s.settings.mascotCharacter));
+  const { width, height } = useWindowDimensions();
   const file = useActiveFile();
   const code = file?.code ?? '';
   const fileId = file?.id ?? '';
@@ -278,7 +275,10 @@ export default function Mascot() {
   const costume = useMemo(() => resolveCostume(costumeSetting, today), [costumeSetting, today]);
   const [shownCostume, setShownCostume] = useState(costume?.id ?? null);
   const [costumeNonce, setCostumeNonce] = useState(0);
-  const tips = useMemo(() => (costume ? [costume.greeting, ...TIPS] : TIPS), [costume]);
+  const tips = useMemo(() => {
+    const base = [...TIPS, hideTip(character.peekPart)];
+    return costume ? [costume.greeting, ...base] : base;
+  }, [costume, character]);
 
   const react = (kind: FxKind, msg?: string) => setFx((f) => ({ kind, msg, n: (f?.n ?? 0) + 1 }));
 
@@ -294,18 +294,21 @@ export default function Mascot() {
     }
   }
 
-  const wide = width >= 900;
-  const size = wide ? 132 : 96;
+  const wide = width >= WIDE_MIN;
+  const split = wide ? 'side' : height < 500 && width >= 600 ? 'row' : 'column';
+  // con poca altura (celular acostado) se hace más chica para no tapar la consola
+  const size = wide ? 132 : height < 500 ? 70 : 96;
   const s = size / BOX;
-  // posición por defecto: sobre la barra de símbolos/ayuda del editor y la mini consola (móvil)
-  const defaultBottom = wide ? 10 : panel === 'editor' ? (symbolBar ? 84 : 40) + (runActive ? 96 : 0) : 10;
+  // posición por defecto: en la esquina de abajo; con el celular en vertical, parada sobre las
+  // pestañas de los paneles (al pie del código) para no tapar la consola
+  const defaultBottom = split === 'column' && area.h ? Math.round(area.h * (1 - CODE_SHARE)) + 4 : 10;
   const right = savedPos && area.w ? clamp(savedPos.right, 4, area.w - size - 4) : 14;
   const bottom = savedPos && area.h ? clamp(savedPos.bottom, 4, area.h - size - 4) : defaultBottom;
   const centerX = area.w - right - size / 2;
   const side: 'left' | 'right' = area.w && centerX < area.w / 2 ? 'left' : 'right';
   // mira hacia el editor (a la izquierda salvo que lo hayas puesto a la izquierda del editor)
-  const editorX = wide ? area.w * 0.27 : area.w / 2;
-  const faceLeft = !area.w || !(wide || panel === 'editor') || editorX <= centerX;
+  const editorX = wide ? area.w * 0.27 : split === 'row' ? area.w * CODE_SHARE * 0.5 : area.w / 2;
+  const faceLeft = !area.w || editorX <= centerX;
   const dir = faceLeft ? -1 : 1;
 
   useEffect(() => {
@@ -757,7 +760,7 @@ export default function Mascot() {
 
   const message = useMemo(() => {
     if (sneaking) return '¡Me escondo! 🙈 A ver si me encuentras…';
-    if (mood === 'pet') return 'Prrr… prrr… 💕';
+    if (mood === 'pet') return character.petting;
     if (mood === 'dizzy') return 'Me mareo… 😵 ¿Un ciclo infinito? Revisa que la condición del ciclo llegue a ser falsa.';
     if (fx?.msg) return fx.msg;
     if (celebrating) return '¡Arreglado! 🎉 ¡Bien hecho!';
@@ -765,22 +768,24 @@ export default function Mascot() {
       if (stackOverflow) return `¡Me estoy clonando sin fin! 🌀 Recursión sin caso base${errLine ? ` (línea ${errLine})` : ''}.`;
       return `¡Auch! 💥 Error de ejecución${errLine ? ` en la línea ${errLine}` : ''}: ${isUndefined ? '🔍 ' : ''}${runError.message}`;
     }
-    if (mood === 'waiting') return 'Te espero: escribe el dato abajo 👇';
+    // en pantallas angostas, dentro de la consola el dato se escribe en la misma consola (arriba)
+    // en pantallas angostas el dato se escribe dentro de la consola
+    if (mood === 'waiting') return !wide && sidePanel === 'console' ? `Te espero: escribe el dato en la consola ${split === 'row' ? '☝️' : '👇'}` : 'Te espero: escribe el dato abajo 👇';
     if (mood === 'running') return '¡Ejecutando tu código a toda velocidad! 🏃‍♂️';
     if (mood === 'alert') return `¡Alto! ✋ Punto de interrupción en la línea ${p.line}. Revisa tus variables.`;
     if (thinking) return 'Mmm… 🤔 ¿Se cumplirá la condición? Avanza un paso para verlo.';
     // errores de sintaxis: el título corto y una invitación a ver la explicación completa
     if (status === 'error' && runError?.syntax)
       return runError.title
-        ? `¡Miau! Línea ${errLine}: ${runError.title}. Tócame → "Explícame el error" 🐾`
-        : `¡Miau! Error de sintaxis${errLine ? ` en la línea ${errLine}` : ''}: ${runError.message}`;
+        ? `${character.exclaim} Línea ${errLine}: ${runError.title}. Tócame → "Explícame el error" 🐾`
+        : `${character.exclaim} Error de sintaxis${errLine ? ` en la línea ${errLine}` : ''}: ${runError.message}`;
     if (staticError)
-      return `${many ? `¡Son ${p.errorCount} errores! Empecemos por uno: ` : '¡Miau! '}${isUndefined ? '🔍 ' : ''}Línea ${staticError.line}: ${staticError.title ? `${staticError.title}. Tócame → "Explícame el error" 🐾` : staticError.message
+      return `${many ? `¡Son ${p.errorCount} errores! Empecemos por uno: ` : `${character.exclaim} `}${isUndefined ? '🔍 ' : ''}Línea ${staticError.line}: ${staticError.title ? `${staticError.title}. Tócame → "Explícame el error" 🐾` : staticError.message
         }`;
     if (sleeping) return 'Zzz… (tócame para despertarme)';
     if (status === 'finished') return '¡Listo! El programa terminó sin errores 🎉';
     return tips[tip % tips.length];
-  }, [sneaking, mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip, tips]);
+  }, [sneaking, mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip, tips, character, wide, sidePanel, split]);
 
   const persist = ['error', 'crash', 'pet', 'dizzy', 'waiting', 'alert'].includes(mood) || thinking || !!fx || sneaking;
   const bubbleKey = `${message}#${tip}`;
@@ -799,10 +804,9 @@ export default function Mascot() {
         label: errLine ? `Explícame el error (línea ${errLine})` : 'Explícame el error',
         color: t.danger,
         onPress: () => {
-          if (wide) {
-            st.setSidePanel('problems');
-            if (errLine) st.jumpToLine(errLine);
-          } else st.setPanel('problems');
+          // el código siempre está a la vista: se abre Problemas y se salta a la línea
+          st.setSidePanel('problems');
+          if (errLine) st.jumpToLine(errLine);
         },
       });
     items.push({
@@ -824,19 +828,27 @@ export default function Mascot() {
       color: t.primary,
       onPress: () => st.updateSettings({ mascotCostume: next }),
     });
+    // cambiar de personaje: Michi el gato ↔ Capi el capibara
+    const other = CHARACTER_LIST.find((c) => c.id !== character.id) ?? character;
+    items.push({
+      icon: 'swap-horizontal-outline',
+      label: `Cambiar a ${other.name} (${other.species})`,
+      color: t.accent,
+      onPress: () => st.updateSettings({ mascotCharacter: other.id }),
+    });
     if (savedPos) items.push({ icon: 'locate-outline', label: 'Volver a mi lugar', onPress: () => st.updateSettings({ mascotPos: null }) });
     items.push({ icon: 'chevron-forward-circle-outline', label: 'Minimizar (esconderme en el borde)', color: t.textMuted, onPress: () => setMinimized('manual') });
     items.push({
       icon: 'eye-off-outline',
-      label: 'Ocultar a Michi',
+      label: `Ocultar a ${character.name}`,
       color: t.textMuted,
       onPress: () => {
         st.updateSettings({ mascot: false });
-        st.setNotice('Michi se fue a dormir. Puedes volver a mostrarlo en Configuración → Mostrar mascota.');
+        st.setNotice(`${character.name} se fue a dormir. Puedes volver a mostrarlo en Configuración → Mostrar mascota.`);
       },
     });
     return items;
-  }, [status, hasError, errLine, wide, savedPos, t, costume]);
+  }, [status, hasError, errLine, savedPos, t, costume, character]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width: w, height: h } = e.nativeEvent.layout;
@@ -847,16 +859,16 @@ export default function Mascot() {
 
   if (minimized) {
     return (
-      <CostumeProvider value={costume}>
+      <CharacterProvider value={character}><CostumeProvider value={costume}>
         <View style={styles.minOverlay} onLayout={onLayout}>
           <View style={[styles.minBlock, { bottom: bottom + 10 }, minimized === 'auto' && hideEdge === 'left' ? { left: 0 } : { right: 0 }]}>
             <PeekingTail
               edge={minimized === 'auto' ? hideEdge : 'right'}
-              label={minimized === 'auto' ? 'Encontrar a Michi' : 'Mostrar a Michi'}
+              label={minimized === 'auto' ? `Encontrar a ${character.name}` : `Mostrar a ${character.name}`}
               onPress={() => {
                 if (minimized === 'auto') {
                   if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-                  comeBack('¡Me encontraste! 😸');
+                  comeBack(character.found);
                   return;
                 }
                 setMinimized(false);
@@ -867,7 +879,7 @@ export default function Mascot() {
             />
           </View>
         </View>
-      </CostumeProvider>
+      </CostumeProvider></CharacterProvider>
     );
   }
 
@@ -895,7 +907,7 @@ export default function Mascot() {
     error: 'preocupada por un error',
     running: 'ejecutando',
     dizzy: 'mareada',
-    pet: 'ronroneando',
+    pet: character.pettingLabel,
     waiting: 'esperando un dato',
     crash: 'golpeada por un error de ejecución',
     alert: 'alerta en un punto de interrupción',
@@ -905,12 +917,12 @@ export default function Mascot() {
   const escapeX = hideEdge === 'right' ? right + size + 16 : -(area.w - right + 16);
   const headX = faceLeft ? 120 : 210;
   const particleDx = wide && centerX < area.w * 0.535 ? size * 1.3 : 0;
-  const particleDy = !wide && panel === 'editor' && runActive ? size * 0.9 : -size * 1.1;
+  const particleDy = -size * 1.1;
   const fxKind: FxKind | null = fx?.kind ?? (thinking ? 'think' : null);
   const fxKey = fx ? `fx${fx.n}` : thinking ? `think${p.pausedStep}` : '';
 
   return (
-    <CostumeProvider value={costume}>
+    <CharacterProvider value={character}><CostumeProvider value={costume}>
       {/* recorta al salir corriendo por el borde (sin barras de desplazamiento) */}
       <View style={styles.overlay} onLayout={onLayout}>
         <Animated.View
@@ -1016,7 +1028,7 @@ export default function Mascot() {
             : null}
         </Animated.View>
       </View>
-    </CostumeProvider>
+    </CostumeProvider></CharacterProvider>
   );
 }
 
@@ -1047,30 +1059,11 @@ const styles = StyleSheet.create({
     zIndex: 50,
     pointerEvents: 'box-none',
   },
-  clip: { overflow: 'hidden' },
-  card: {
-    maxWidth: 260,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 3px 8px rgba(0, 0, 0, 0.15)',
-      },
-      default: {
-        shadowColor: '#000',
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 4,
-      },
-    }),
-  },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, paddingHorizontal: 6, borderRadius: 8 },
+  card: { maxWidth: 270, paddingHorizontal: SPACE.md, paddingVertical: 10, borderRadius: RADIUS.lg, borderWidth: BORDER },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.sm, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.md },
   arrow: {
     position: 'absolute',
-    bottom: -9,
+    bottom: -8,
     width: 0,
     height: 0,
     borderLeftWidth: 9,
@@ -1079,6 +1072,7 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
+  arrowOuter: { bottom: -11.5, borderLeftWidth: 11, borderRightWidth: 11, borderTopWidth: 11 },
   particles: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   peek: { paddingLeft: 4, paddingTop: 6 },
 });

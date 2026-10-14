@@ -4,12 +4,13 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import * as Linking from 'expo-linking';
 import { DownloadProgress, downloadAndInstall, CURRENT_VERSION } from '../../core/updater';
 import { useApp } from '../../store/app';
-import { useTheme } from '../../ui/theme';
-import { Button } from '../ui';
+import { BORDER, RADIUS, useTheme } from '../../ui/theme';
+import { Button, Heading } from '../ui';
 import ModalShell from './ModalShell';
 
 export default function UpdateModal() {
@@ -79,7 +80,7 @@ export default function UpdateModal() {
             <Ionicons name="sparkles" size={32} color={t.primary} />
           </View>
           <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={[styles.title, { color: t.text }]}>¡Nueva versión de PSJavaScript!</Text>
+            <Heading>¡Nueva versión de PSJavaScript!</Heading>
             <View style={styles.badgeRow}>
               <View style={[styles.versionBadge, { backgroundColor: t.surfaceAlt, borderColor: t.border }]}>
                 <Text style={[styles.versionText, { color: t.textMuted }]}>Actual: v{currentVer}</Text>
@@ -195,16 +196,15 @@ export default function UpdateModal() {
 const styles = StyleSheet.create({
   container: { padding: 18 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  iconBox: { width: 56, height: 56, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 18, fontWeight: '800' },
+  iconBox: { width: 56, height: 56, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center' },
   badgeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  versionBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: StyleSheet.hairlineWidth },
+  versionBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: RADIUS.md, borderWidth: BORDER },
   versionText: { fontSize: 12 },
-  notesBox: { padding: 14, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, marginBottom: 16 },
+  notesBox: { padding: 14, borderRadius: RADIUS.md, borderWidth: BORDER, marginBottom: 16 },
   notesHeader: { fontSize: 13, fontWeight: '700', marginBottom: 6 },
-  progressCard: { padding: 14, borderRadius: 10, borderWidth: 1, marginBottom: 16 },
-  progressBarBg: { height: 8, borderRadius: 4, overflow: 'hidden' },
-  progressBarFill: { height: '100%', borderRadius: 4 },
-  statusBox: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 16 },
+  progressCard: { padding: 14, borderRadius: RADIUS.md, borderWidth: BORDER, marginBottom: 16 },
+  progressBarBg: { height: 8, borderRadius: RADIUS.md, overflow: 'hidden' },
+  progressBarFill: { height: '100%', borderRadius: RADIUS.md },
+  statusBox: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, borderRadius: RADIUS.md, borderWidth: BORDER, marginBottom: 16 },
   actions: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 8 },
 });

@@ -42,9 +42,13 @@ Interacción: **tocarlo** abre un menú (Ejecutar/Detener, Explícame el error, 
 
 Los sprites (`assets/mascot/`) se generan desde `assets/mascot.jpg` con `scripts/generar_mascota.py` (quita el fondo blanco conservando el blanco de los ojos, separa la cola y crea los cuadros de parpadeo y mirada). Respeta la opción del sistema "reducir movimiento" y puede ocultarse en Configuración.
 
+### Capi, el capibara
+
+Segunda mascota, al estilo de una ilustración kawaii de capibara: sentado de perfil, una sola silueta naranja con contorno café, el hocico café oscuro, un ojito con brillo, orejas redondas y patitas cafés con deditos. Tiene las mismas animaciones, poses y vestuarios que Michi (en reposo mueve la oreja en lugar de la cola; con un error se toca el hocico, pensando; al correr el código teclea con las dos patas). Se elige en **Configuración → Mascota** o desde su menú (**Cambiar a Capi / Cambiar a Michi**). Al esconderse asoma la cabecita. Como de perfil se ve un solo ojo, los lentes y la pintura de calavera se adaptan a un ojo. Sus sprites (`assets/mascot/capibara/`, con pieles oscura y negra para Halloween y Día de Muertos) se dibujan en SVG y se exportan a PNG con `node scripts/generar_capibara.js` (usa el Chromium de Playwright); ese script también imprime las anclas de la cara que usan los vestuarios (`src/components/mascot/characters.ts`).
+
 ### Vestuarios de temporada
 
-Michi se disfraza solo según la fecha (`src/core/holidays.ts`): se pone el vestuario **un mes antes** del día festivo y lo conserva **10 días después**. Si otra fiesta cae en el mismo mes, la anticipación se acorta a **10 días**. Cuando dos periodos se enciman gana la fiesta más cercana (en empate, la que viene). También se puede elegir en **Configuración → Vestuario de la mascota** o desde su menú ("Vestuario: …" recorre todos). Los accesorios son SVG que siguen las animaciones del cuerpo en todas las poses (`src/components/mascot/costumes.tsx`) y cada fiesta trae sus propias partículas:
+Michi (y Capi) se disfraza solo según la fecha (`src/core/holidays.ts`): se pone el vestuario **un mes antes** del día festivo y lo conserva **10 días después**. Si otra fiesta cae en el mismo mes, la anticipación se acorta a **10 días**. Cuando dos periodos se enciman gana la fiesta más cercana (en empate, la que viene). También se puede elegir en **Configuración → Vestuario de la mascota** o desde su menú ("Vestuario: …" recorre todos). Los accesorios son SVG que siguen las animaciones del cuerpo en todas las poses (`src/components/mascot/costumes.tsx`) y cada fiesta trae sus propias partículas:
 
 | Fiesta | Día festivo | Periodo automático | Vestuario |
 | --- | --- | --- | --- |
@@ -70,7 +74,7 @@ Botón **Examen** de la barra de herramientas → **Soy maestro** o **Soy alumno
 
 ### Modo Maestro (diseñar y aplicar)
 
-- **Mis exámenes**: crear desde cero o a partir del examen de ejemplo *Fundamentos de JavaScript* (49 preguntas en 8 temas: variables, cadenas, números, condicionales, funciones, arreglos, objetos y ciclos; cada alumno recibe 2 al azar de cada tema), duplicar, eliminar, **exportar** la configuración (`.examen.json`) e **importarla** en otro equipo.
+- **Mis exámenes**: crear desde cero o a partir del examen de ejemplo *Fundamentos de JavaScript* (100 preguntas en 8 temas: variables, cadenas, números, condicionales, funciones, arreglos, objetos y ciclos; cada alumno recibe 2 al azar de cada tema), duplicar, eliminar, **exportar** la configuración (`.examen.json`) e **importarla** en otro equipo.
 - **Editor** con 8 tipos de ejercicio:
 
   | Tipo | Cómo se califica |
@@ -112,6 +116,16 @@ En **Mis exámenes → Agregar simulacro y práctica** se crean dos configuracio
 
 El banco se genera con `node scripts/importar-fcc-javascript.js` (descarga los cuestionarios del repositorio de freeCodeCamp y escribe `src/core/exam/certs/fccJavascriptQuizzes.ts`); los laboratorios están en `src/core/exam/certs/fccJavascriptLabs.ts` y `tests/certification.test.ts` comprueba que cada solución pasa sus pruebas. Contenido © freeCodeCamp.org, licencia CC BY-SA 4.0.
 
+### Curso Learn JavaScript de web.dev (simulacro y práctica)
+
+Simulacro del curso [Learn JavaScript de web.dev](https://web.dev/learn/javascript?hl=es-419). El curso no tiene examen oficial (cada lección termina con una autoevaluación), así que el simulacro toma **sus 26 lecciones como temas**, en español:
+
+- **217 preguntas** sobre las definiciones y los ejemplos de código de cada lección: introducción, tipos de datos (números, cadenas, booleanos, `null`/`undefined`, BigInt, Symbol), variables, operadores de comparación, flujo de control, funciones (expresiones, `new`, `return`, `this`), objetos (accesores, descriptores, herencia de prototipos), colecciones (indexadas y con clave) y clases (`extends`, campos privados y estáticos, bloques `static`). Son de opción única, opción múltiple, verdadero o falso y «¿qué muestra este programa?».
+- **14 ejercicios de programación** (p. ej. *Valor predeterminado con `??`*, *Plantilla etiquetada*, *Propiedad de solo lectura*, *Contar con Map*, *Subclase con extends*, *Campo privado y método estático*); cada prueba llama a la función o clase y compara lo que devuelve.
+- **Criterios**: cada alumno recibe **2 preguntas por lección y 3 ejercicios** (55), tiene **90 minutos** y aprueba con **80 %**. Cada pregunta vale 1 punto y cada ejercicio 4.
+
+Se agrega igual que el de freeCodeCamp (**Mis exámenes → Agregar simulacro y práctica**) y en **Practicar por mi cuenta** el alumno elige **freeCodeCamp** o **web.dev**. El banco está en `src/core/exam/certs/webdevJavascriptBank.ts`; `tests/webdev_certification.test.ts` ejecuta el código de cada pregunta en Node y en el intérprete de PSJavaScript para comprobar cada respuesta. Contenido basado en web.dev, licencia CC BY 4.0.
+
 ### Conexión de la sala
 
 El equipo del maestro es el anfitrión: recibe, guarda y califica. Hay tres formas de conectarse:
@@ -126,7 +140,16 @@ El equipo del maestro es el anfitrión: recibe, guarda y califica. Hay tres form
 - **Este dispositivo**: pestañas del mismo navegador (para probar un examen sin red).
 - **Práctica individual**: el alumno practica solo; la sala corre dentro de su propia aplicación.
 
-Código: `src/core/exam/` (tipos, generación del examen por alumno, calificación, protocolo, anfitrión, cliente, transportes y concentrado; probado en `tests/exam.test.ts` y `tests/certification.test.ts`), `src/core/exam/certs/` (certificación de freeCodeCamp), `src/store/teacher.ts`, `src/store/student.ts`, `src/store/practice.ts`, `src/components/teacher/`, `src/components/exam/` y `scripts/sala-servidor.js`.
+Código: `src/core/exam/` (tipos, generación del examen por alumno, calificación, protocolo, anfitrión, cliente, transportes y concentrado; probado en `tests/exam.test.ts` y `tests/certification.test.ts`), `src/core/exam/certs/` (certificaciones de freeCodeCamp y web.dev), `src/store/teacher.ts`, `src/store/student.ts`, `src/store/practice.ts`, `src/components/teacher/`, `src/components/exam/` y `scripts/sala-servidor.js`.
+
+## Diseño
+
+Toda la interfaz (editor, paneles, modales, modo Maestro y modo Examen) comparte un mismo sistema de diseño inspirado en el estilo "cuaderno de cuentos": lienzo blanco, un verde de progreso, un azul para lo interactivo, tipografía redondeada y componentes planos con bordes gruesos, sin sombras ni degradados.
+
+- **Tokens** (`src/ui/theme.ts`): colores para tema claro y oscuro, radios (`RADIUS`: 12 controles, 16 superficies), borde único de 2 px (`BORDER`), espaciado base 4 (`SPACE`), escala tipográfica (`TYPE`) y fuente `FONT` (Nunito en web; la del sistema en móvil).
+- **Colores con significado**: verde `#58cc02` para la acción principal, el avance y lo correcto (y la banda del pie de página); azul `#1cb0f6` para enlaces, botones secundarios y la opción seleccionada; texto en gris carbón `#4b4b4b` y gris lápiz `#777777`.
+- **Componentes** (`src/components/ui.tsx`): `Button` (primario verde, secundario delineado azul, peligro, discreto; etiquetas en mayúsculas), `IconButton`, `Tab`, `Chip`, `Segmented`, `Switch`, `Heading`, `SectionTitle`, `Card`, `Banner`, `Pill`, `ProgressBar`, `Stat`, `BigChoice`, `ScreenHeader`, `CodeBlock` y campos de formulario (`Field`, `TextField`, `Toggle`, `NumberStepper`). `exam/kit.tsx` los reexporta para los modos Maestro y Examen.
+- **Texto** (`src/ui/text.tsx`): `Text` y `TextInput` aplican la fuente de la marca; el código usa siempre la fuente monoespaciada (`MONO`).
 
 ## Arquitectura
 

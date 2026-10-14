@@ -1,11 +1,12 @@
 /** Archivos: programas guardados, ejemplos e importación. */
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../../ui/text';
 import { EXAMPLES, Level } from '../../core/examples';
 import { useApp } from '../../store/app';
 import { confirmDialog, pickTextFileWeb, saveTextFile } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button, Chip, IconButton, SectionTitle } from '../ui';
 import ModalShell from './ModalShell';
 
@@ -157,10 +158,10 @@ export default function FilesModal() {
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', alignItems: 'center', padding: 10, paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth, flexWrap: 'wrap' },
-  search: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 10, height: 38, marginBottom: 10 },
-  fileRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 8 },
+  tabs: { flexDirection: 'row', alignItems: 'center', padding: 10, paddingBottom: 4, borderBottomWidth: BORDER, flexWrap: 'wrap' },
+  search: { borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, height: 38, marginBottom: 10 },
+  fileRow: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginBottom: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
-  exCard: { width: 230, flexGrow: 1, margin: 4, padding: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
-  paste: { minHeight: 220, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10, fontSize: 13, textAlignVertical: 'top' },
+  exCard: { width: 230, flexGrow: 1, margin: 4, padding: 12, borderRadius: RADIUS.md, borderWidth: BORDER },
+  paste: { minHeight: 220, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, fontSize: 13, textAlignVertical: 'top' },
 });

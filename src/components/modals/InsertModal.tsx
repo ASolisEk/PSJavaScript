@@ -1,10 +1,11 @@
 /** Paleta para insertar comandos, funciones, operadores y variables. */
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../../ui/text';
 import { CatalogItem, COMMANDS, FUNCTIONS, OPERATORS } from '../../core/catalog';
 import { declaredNames } from '../../core/editor/tokenizer';
 import { useActiveFile, useApp } from '../../store/app';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Chip, SectionTitle } from '../ui';
 import ModalShell from './ModalShell';
 
@@ -73,8 +74,8 @@ export default function InsertModal() {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', padding: 10, paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
-  search: { flexGrow: 1, minWidth: 140, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 10, height: 34, marginBottom: 6 },
+  bar: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', padding: 10, paddingBottom: 4, borderBottomWidth: BORDER },
+  search: { flexGrow: 1, minWidth: 140, borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, height: 34, marginBottom: 6 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4 },
-  card: { width: 250, flexGrow: 1, margin: 4, padding: 10, borderRadius: 8, borderWidth: StyleSheet.hairlineWidth },
+  card: { width: 250, flexGrow: 1, margin: 4, padding: 10, borderRadius: RADIUS.md, borderWidth: BORDER },
 });

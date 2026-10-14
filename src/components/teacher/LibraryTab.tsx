@@ -1,15 +1,15 @@
 /** Mis exámenes: crear, importar, exportar, duplicar y aplicar. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { examFileName, hasExamErrors, questionsPerStudent, questionTypeInfo, serializeExam, totalPoints } from '../../core/exam/config';
-import { FCC_PASS_PERCENT, fccJavascriptTopics, SIMULACRO } from '../../core/exam/certs/fccJavascript';
-import { FCC_JAVASCRIPT_LABS } from '../../core/exam/certs/fccJavascriptLabs';
+import { Certification, CERTIFICATIONS } from '../../core/exam/certs';
 import type { ExamConfig } from '../../core/exam/types';
 import { useTeacher } from '../../store/teacher';
 import { confirmDialog, pickTextFileWeb, saveTextFile } from '../../ui/platform';
-import { useTheme } from '../../ui/theme';
-import { Button } from '../ui';
+import { BORDER, RADIUS, SCRIM, useTheme } from '../../ui/theme';
+import { Button, Heading } from '../ui';
 import { Banner, Card, IconName, Pill, TextField } from '../exam/kit';
 
 export default function LibraryTab() {
@@ -35,9 +35,9 @@ export default function LibraryTab() {
     <ScrollView contentContainerStyle={{ padding: 16, alignItems: 'center' }}>
       <View style={{ width: '100%', maxWidth: 1000 }}>
         <Card style={{ backgroundColor: t.primary + '0d' }} accent={t.primary}>
-          <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginBottom: 10 }}>Exámenes en 3 pasos</Text>
+          <Heading style={{ marginBottom: 10 }}>Exámenes en 3 pasos</Heading>
           <View style={styles.steps}>
-            <Step n={1} icon="create-outline" title="Diseña" text="Agrega preguntas de opción múltiple, código, salida esperada, ordenar líneas y más." />
+            <Step n={1} icon="create-outline" title="Diseña" text="Elige preguntas del banco, pega una lista en texto o escríbelas: opción múltiple, código, ordenar líneas y más." />
             <Step n={2} icon="radio-outline" title="Aplica" text="Abre una sala y comparte el código. Cada alumno recibe las preguntas en otro orden." />
             <Step n={3} icon="bar-chart-outline" title="Revisa" text="Sigue el avance en vivo y al cerrar obtén el concentrado de calificaciones." />
           </View>
@@ -48,7 +48,9 @@ export default function LibraryTab() {
           </View>
         </Card>
 
-        <CertCard onAdded={(text) => setMsg({ ok: true, text })} />
+        {CERTIFICATIONS.map((c) => (
+          <CertCard key={c.id} cert={c} onAdded={(text) => setMsg({ ok: true, text })} />
+        ))}
 
         {msg ? <Banner icon={msg.ok ? 'checkmark-circle' : 'alert-circle'} color={msg.ok ? t.success : t.danger} text={msg.text} onClose={() => setMsg(null)} /> : null}
 
@@ -78,22 +80,17 @@ export default function LibraryTab() {
   );
 }
 
-/** Simulacro de la certificación JavaScript de freeCodeCamp. */
-function CertCard({ onAdded }: { onAdded(text: string): void }) {
+/** Simulacro y copia de práctica de una certificación incluida. */
+function CertCard({ cert, onAdded }: { cert: Certification; onAdded(text: string): void }) {
   const t = useTheme();
-  const topics = fccJavascriptTopics();
-  const questions = topics.reduce((s, x) => s + x.questions, 0);
-  const per = topics.length * SIMULACRO.perTopic + SIMULACRO.labs;
   return (
     <Card accent={t.success}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
         <Ionicons name="ribbon-outline" size={24} color={t.success} />
-        <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', flex: 1 }}>Certificación JavaScript de freeCodeCamp</Text>
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', flex: 1 }}>{cert.title}</Text>
       </View>
       <Text style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }}>
-        Simulacro con los {topics.length} temas del currículo JavaScript v9: {questions} preguntas de sus cuestionarios (traducidas al español) y {FCC_JAVASCRIPT_LABS.length} laboratorios de programación. Cada alumno
-        recibe {SIMULACRO.perTopic} preguntas por tema y {SIMULACRO.labs} laboratorios ({per} en total), tiene {SIMULACRO.durationMin} minutos y aprueba con {FCC_PASS_PERCENT} %, como los cuestionarios de freeCodeCamp. También se crea una copia de
-        práctica sin tiempo que muestra las respuestas correctas. Los alumnos pueden practicar por su cuenta desde «Soy alumno».
+        {cert.teacherSummary()} También se crea una copia de práctica sin tiempo que muestra las respuestas correctas. Los alumnos pueden practicar por su cuenta desde «Soy alumno».
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
         <Button
@@ -101,7 +98,7 @@ function CertCard({ onAdded }: { onAdded(text: string): void }) {
           icon="add-circle-outline"
           kind="primary"
           onPress={() => {
-            const [sim, pra] = useTeacher.getState().addFccJavascript();
+            const [sim, pra] = useTeacher.getState().addCertification(cert.id);
             onAdded(`Se agregaron «${sim.title}» y «${pra.title}» (${sim.questions.length} preguntas en el banco). Revisa sus ajustes antes de aplicarlos.`);
           }}
         />
@@ -221,6 +218,6 @@ const styles = StyleSheet.create({
   stepIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
   examCard: { flexBasis: 420, flexGrow: 1, marginHorizontal: 6 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  dialog: { width: '100%', maxWidth: 620, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 18 },
+  overlay: { flex: 1, backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  dialog: { width: '100%', maxWidth: 620, borderRadius: RADIUS.lg, borderWidth: BORDER, padding: 18 },
 });

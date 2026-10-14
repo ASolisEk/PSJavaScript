@@ -1,6 +1,7 @@
 /** Diagrama de flujo / Nassi-Shneiderman generado a partir del código. */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import Svg, { Line as SvgLine, Path, Polyline, Text as SvgText } from 'react-native-svg';
 import { buildFlow, FlowDiagram } from '../../core/flowchart/model';
 import { FEl, layoutClassic, layoutNassi } from '../../core/flowchart/layout';
@@ -9,7 +10,8 @@ import { translateSyntaxError } from '../../core/errors';
 import { explainSyntaxError } from '../../core/syntaxHelp';
 import { useActiveFile, useApp } from '../../store/app';
 import { copyText, saveTextFile } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, useTheme } from '../../ui/theme';
+import { usePanelBottomPad } from '../../ui/layout';
 import { Chip, Empty, IconButton } from '../ui';
 
 /** En web react-native-svg reenvía los props de "responder" al DOM: se usa onClick. */
@@ -20,6 +22,8 @@ function pressProps(fn: (() => void) | undefined): any {
 
 export default function DiagramPanel() {
   const t = useTheme();
+  // que la mascota no tape lo último en pantallas angostas
+  const bottomPad = usePanelBottomPad();
   const file = useActiveFile();
   const code = file?.code ?? '';
   const execLine = useApp((s) => (s.run && (s.run.status === 'paused' || s.run.status === 'running' || s.run.status === 'input') ? s.run.line : null));
@@ -66,10 +70,10 @@ export default function DiagramPanel() {
       const hl = execLine !== null && el.line === execLine && el.line > 0;
       const isComment = el.shape === 'comment';
       const fill = el.shape === 'connector' ? pal.stroke : pal.fills[el.shape] ?? 'none';
-      const stroke = hl ? pal.highlight : isComment ? '#608b4e' : pal.stroke;
+      const stroke = hl ? pal.highlight : isComment ? t.primary : pal.stroke;
       const strokeWidth = hl ? 3 : 1.2;
       const dash = el.dashed || isComment ? '5,4' : undefined;
-      const textColor = isComment ? (t.dark ? '#85c391' : '#386e3a') : pal.text;
+      const textColor = isComment ? (t.dark ? t.success : t.primaryDark) : pal.text;
       return (
         <React.Fragment key={i}>
           <Path
@@ -133,13 +137,13 @@ export default function DiagramPanel() {
         <IconButton icon="download-outline" label="Exportar SVG" onPress={exportSvg} size={18} />
       </View>
       {result.list.length > 1 ? (
-        <ScrollView horizontal style={{ flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }} contentContainerStyle={{ padding: 6 }}>
+        <ScrollView horizontal style={{ flexGrow: 0, borderBottomWidth: BORDER, borderBottomColor: t.border }} contentContainerStyle={{ padding: 6 }}>
           {result.list.map((d) => (
             <Chip key={d.id} label={d.kind === 'main' ? 'Principal' : d.name} active={d.name === diagram.name} onPress={() => setSelected(d.name)} style={styles.chip} />
           ))}
         </ScrollView>
       ) : null}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ alignItems: 'center' }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ alignItems: 'center', paddingBottom: bottomPad }}>
         <ScrollView horizontal contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
           <Svg width={layout.w * zoom} height={layout.h * zoom} viewBox={`0 0 ${layout.w} ${layout.h}`}>
             {layout.els.map(renderEl)}
@@ -151,6 +155,6 @@ export default function DiagramPanel() {
 }
 
 const styles = StyleSheet.create({
-  toolbar: { flexDirection: 'row', alignItems: 'center', paddingLeft: 8, paddingRight: 4, minHeight: 44, borderBottomWidth: StyleSheet.hairlineWidth, flexWrap: 'wrap' },
+  toolbar: { flexDirection: 'row', alignItems: 'center', paddingLeft: 8, paddingRight: 4, minHeight: 44, borderBottomWidth: BORDER, flexWrap: 'wrap' },
   chip: { marginBottom: 0 },
 });

@@ -175,6 +175,8 @@ export class Interpreter {
   callStack: Frame[] = [];
   explanations: Explanation[] = [];
   explainEnabled: boolean;
+  /** El programa empieza con "use strict" (escribir en propiedades de solo lectura lanza error). */
+  strictMode = false;
   private watchMode = false;
   private syncDepth = 0;
   private timers: { id: number; fn: any; args: any[]; time: number; seq: number; interval: number | null }[] = [];
@@ -377,6 +379,7 @@ export class Interpreter {
 
   *run(): G<void> {
     const body = this.ast.body;
+    this.strictMode = body[0]?.type === 'ExpressionStatement' && body[0].directive === 'use strict';
     this.hoistVars(body, this.global);
     this.hoistLexical(body, this.global);
     yield* this.execStatements(body, this.global);
@@ -886,7 +889,12 @@ export class Interpreter {
     if (obj === null || obj === undefined)
       throw this.err(TypeError, `No se puede asignar '${String(key)}' porque '${this.src(node.object)}' es ${obj}`, node, 'set-prop-nullish');
     if (typeof obj !== 'object' && typeof obj !== 'function') return;
-    obj[key as any] = value;
+    // como en el navegador: fuera de "use strict" escribir en una propiedad de solo lectura no hace nada
+    if (!Reflect.set(obj, key, value)) {
+      if (this.strictMode) throw this.err(TypeError, `No se puede asignar '${String(key)}': la propiedad es de solo lectura o el objeto no se puede modificar`, node, 'read-only');
+      this.explain(`${this.src(node)} no cambia: la propiedad es de solo lectura o el objeto está congelado`, node);
+      return;
+    }
     this.explain(`${this.src(node)} ← ${this.fmt(value)}`, node);
   }
 
@@ -1171,11 +1179,27 @@ export class Interpreter {
 
       case 'ParenthesizedExpression':
         return yield* this.evaluate(node.expression, scope);
+
+      case 'TaggedTemplateExpression': {
+        let fn: any;
+        let thisArg: any;
+        if (node.tag.type === 'MemberExpression' && node.tag.object.type !== 'Super') {
+          thisArg = yield* this.evalObject(node.tag, scope);
+          fn = this.getMember(thisArg, yield* this.memberKey(node.tag, scope), node.tag);
+        } else fn = yield* this.evaluate(node.tag, scope);
+        const quasis = node.quasi.quasis;
+        const strings: any = quasis.map((q: N) => q.value.cooked);
+        Object.defineProperty(strings, 'raw', { value: Object.freeze(quasis.map((q: N) => q.value.raw)) });
+        Object.freeze(strings);
+        const values: any[] = [];
+        for (const e of node.quasi.expressions) values.push(yield* this.evaluate(e, scope));
+        if (typeof fn !== 'function') throw this.err(TypeError, `${this.src(node.tag)} no es una función (es ${typeName(fn)})`, node.tag, 'not-function');
+        return yield* this.callFunction(fn, thisArg, [strings, ...values], undefined, node);
+      }
     }
     const names: Record<string, string> = {
       AwaitExpression: 'await (funciones asíncronas)',
       YieldExpression: 'yield (generadores)',
-      TaggedTemplateExpression: 'plantillas etiquetadas',
       ImportExpression: 'import()',
     };
     throw this.err(SyntaxError, `No soportado por el intérprete: ${names[node.type] ?? node.type}`, node, 'unsupported');
@@ -1468,8 +1492,8 @@ export class Interpreter {
       if (parent) Object.setPrototypeOf(C, parent);
     }
     d.homeObject = proto;
-    const statics: { key: PropertyKey; value: N | null }[] = [];
-    const staticBlocks: N[] = [];
+    // campos estáticos y bloques static { } se ejecutan juntos, en el orden en que aparecen
+    const statics: ({ key: PropertyKey; value: N | null } | { block: N })[] = [];
     for (const m of node.body.body) {
       if (m.type === 'MethodDefinition') {
         if (m.kind === 'constructor') continue;
@@ -1489,22 +1513,22 @@ export class Interpreter {
       } else if (m.type === 'PropertyDefinition') {
         const key = yield* this.propKey(m, cs);
         (m.static ? statics : d.fields!).push({ key, value: m.value });
-      } else if (m.type === 'StaticBlock') staticBlocks.push(m);
+      } else if (m.type === 'StaticBlock') statics.push({ block: m });
     }
     if (name) {
       const b = cs.vars.get(name)!;
       b.value = C;
       b.init = true;
     }
-    if (statics.length || staticBlocks.length) {
+    if (statics.length) {
       const fsc = new Scope(cs, 'function', `Clase ${name}`);
       fsc.isFunction = true;
       fsc.thisValue = C;
       fsc.homeObject = C;
       for (const s of statics) {
-        C[s.key] = s.value ? yield* this.evaluateNamed(s.value, fsc, { type: 'Identifier', name: String(s.key) }) : undefined;
+        if ('block' in s) yield* this.execBlock(s.block.body, fsc);
+        else C[s.key] = s.value ? yield* this.evaluateNamed(s.value, fsc, { type: 'Identifier', name: String(s.key) }) : undefined;
       }
-      for (const b of staticBlocks) yield* this.execBlock(b.body, fsc);
     }
     return C;
   }

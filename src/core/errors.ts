@@ -15,6 +15,7 @@ export type ErrorCode =
   | 'tdz'
   | 'read-prop-nullish'
   | 'set-prop-nullish'
+  | 'read-only'
   | 'not-function'
   | 'not-constructor'
   | 'class-call'
@@ -65,6 +66,13 @@ const HINTS: Record<ErrorCode, ErrorHint> = {
   'set-prop-nullish': {
     causes: ['Intentas asignar una propiedad a un valor undefined o null.'],
     solutions: ['Inicializa el objeto o arreglo antes de asignar sus elementos: let a = [];'],
+  },
+  'read-only': {
+    causes: [
+      'La propiedad se definió con writable: false (Object.defineProperty) o el objeto está congelado con Object.freeze.',
+      'El programa usa "use strict": en modo estricto escribir en una propiedad de solo lectura es un error.',
+    ],
+    solutions: ['Revisa el descriptor de la propiedad con Object.getOwnPropertyDescriptor(objeto, "nombre").', 'Si necesitas modificarla, crea una copia del objeto: { ...objeto, nombre: valor }.'],
   },
   'not-function': {
     causes: [

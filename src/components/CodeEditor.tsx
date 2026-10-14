@@ -8,25 +8,15 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import {
-  LayoutChangeEvent,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../ui/text';
 import type { Diagnostic } from '../core/analyzer';
 import { CatalogItem, lookupHelp, suggest } from '../core/catalog';
 import { dedentOnClose, INDENT, newlineWithIndent, toggleComment } from '../core/editor/indent';
 import { declaredNames, LineToken, matchBracket, tokenize, tokensByLine, wordBefore } from '../core/editor/tokenizer';
 import type { VarDetail } from '../core/runner';
 import { useApp } from '../store/app';
-import { MONO, Theme, useTheme } from '../ui/theme';
+import { BORDER, MONO, RADIUS, SPACE, Theme, useTheme } from '../ui/theme';
 
 export interface EditorRequest {
   nonce: number;
@@ -199,7 +189,7 @@ const HLine = memo(function HLine({
                   ? {
                       textDecorationLine: 'underline',
                       textDecorationStyle: 'dotted',
-                      textDecorationColor: v.changed ? theme.warning : (theme.dark ? '#818cf8' : '#4f46e5'),
+                      textDecorationColor: v.changed ? theme.warning : theme.accent,
                     }
                   : isErr
                   ? { textDecorationLine: 'underline', textDecorationStyle: 'wavy', textDecorationColor: theme.danger }
@@ -221,9 +211,9 @@ const HLine = memo(function HLine({
               },
               isExec
                 ? {
-                    backgroundColor: theme.dark ? 'rgba(91, 140, 255, 0.20)' : 'rgba(47, 111, 237, 0.12)',
+                    backgroundColor: theme.accentSoft,
                     color: theme.text,
-                    fontWeight: '600',
+                    fontWeight: '700',
                   }
                 : {
                     color: theme.textMuted,
@@ -241,7 +231,7 @@ const HLine = memo(function HLine({
                   {v.changed ? (
                     <Text style={{ color: theme.warning, fontWeight: '700' }}>● </Text>
                   ) : null}
-                  <Text style={{ color: isExec ? (theme.dark ? '#cbd5e1' : '#334155') : theme.textMuted }}>
+                  <Text style={{ color: isExec ? theme.text : theme.textMuted }}>
                     {v.name}:{' '}
                   </Text>
                   <Text style={{ color: valColor, fontWeight: isExec || v.changed ? '700' : '500' }}>
@@ -672,7 +662,7 @@ export default function CodeEditor(props: Props) {
       <View style={{ flex: 1 }} onLayout={onLayout}>
         <ScrollView ref={vScroll} onScroll={onVScroll} scrollEventThrottle={32} keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', minHeight: contentH }}>
-            <View style={{ width: gutterW, backgroundColor: theme.gutter, paddingTop: PAD_TOP, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: theme.border }}>
+            <View style={{ width: gutterW, backgroundColor: theme.gutter, paddingTop: PAD_TOP, borderRightWidth: BORDER, borderRightColor: theme.border }}>
               {lines.map((_, i) => (
                 <GutterLine
                   key={i}
@@ -774,13 +764,21 @@ export default function CodeEditor(props: Props) {
       </View>
 
       {info ? (
-        <View style={[styles.infoBar, { backgroundColor: theme.surfaceAlt, borderTopColor: theme.border }]}>
+        <View
+          style={[
+            styles.infoBar,
+            {
+              backgroundColor: info.kind === 'error' ? theme.dangerSoft : info.kind === 'help' ? theme.accentSoft : theme.warningSoft,
+              borderTopColor: info.kind === 'error' ? theme.danger : info.kind === 'help' ? theme.accent : theme.warning,
+            },
+          ]}
+        >
           <Ionicons
-            name={info.kind === 'help' ? 'information-circle-outline' : info.kind === 'error' ? 'close-circle' : 'warning'}
-            size={15}
-            color={info.kind === 'error' ? theme.danger : info.kind === 'help' ? theme.info : theme.warning}
+            name={info.kind === 'help' ? 'information-circle' : info.kind === 'error' ? 'close-circle' : 'warning'}
+            size={17}
+            color={info.kind === 'error' ? theme.danger : info.kind === 'help' ? theme.accentDark : theme.warning}
           />
-          <Text style={{ color: theme.text, fontSize: 12, flex: 1, marginLeft: 6 }} numberOfLines={2}>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600', flex: 1, marginLeft: SPACE.sm }} numberOfLines={2}>
             {info.text}
           </Text>
           {info.fix && 'rule' in info ? (
@@ -788,12 +786,12 @@ export default function CodeEditor(props: Props) {
               onPress={() => applyFix(info.rule, info.line)}
               style={({ pressed }) => [
                 styles.quickFixBtn,
-                { backgroundColor: theme.primary, opacity: pressed ? 0.8 : 1 },
+                { backgroundColor: pressed ? theme.primaryDark : theme.primary },
               ]}
               accessibilityLabel={info.fix}
             >
-              <Ionicons name="sparkles" size={12} color="#fff" style={{ marginRight: 4 }} />
-              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700', fontFamily: MONO }}>
+              <Ionicons name="sparkles" size={12} color="#fff" style={{ marginRight: 5 }} />
+              <Text style={styles.quickFixText}>
                 {info.fix}
               </Text>
             </Pressable>
@@ -802,7 +800,7 @@ export default function CodeEditor(props: Props) {
       ) : null}
 
       {suggestions.length ? (
-        <ScrollView horizontal keyboardShouldPersistTaps="always" style={[styles.bar, { backgroundColor: theme.surfaceAlt, borderTopColor: theme.border }]} contentContainerStyle={styles.barContent}>
+        <ScrollView horizontal keyboardShouldPersistTaps="always" style={[styles.bar, { backgroundColor: theme.surface, borderTopColor: theme.border }]} contentContainerStyle={styles.barContent}>
           {suggestions.map((s) => (
             <Pressable
               key={s.label}
@@ -819,16 +817,16 @@ export default function CodeEditor(props: Props) {
       ) : null}
 
       {showSymbolBar ? (
-        <ScrollView horizontal keyboardShouldPersistTaps="always" style={[styles.bar, { backgroundColor: theme.surfaceAlt, borderTopColor: theme.border }]} contentContainerStyle={styles.barContent}>
+        <ScrollView horizontal keyboardShouldPersistTaps="always" style={[styles.bar, { backgroundColor: theme.surface, borderTopColor: theme.border }]} contentContainerStyle={styles.barContent}>
           <Pressable onPress={undo} style={[styles.sym, { borderColor: theme.border, backgroundColor: theme.surface }]} accessibilityLabel="Deshacer">
-            <Ionicons name="arrow-undo" size={16} color={theme.text} />
+            <Ionicons name="arrow-undo" size={16} color={theme.accent} />
           </Pressable>
           <Pressable onPress={redo} style={[styles.sym, { borderColor: theme.border, backgroundColor: theme.surface }]} accessibilityLabel="Rehacer">
-            <Ionicons name="arrow-redo" size={16} color={theme.text} />
+            <Ionicons name="arrow-redo" size={16} color={theme.accent} />
           </Pressable>
           {SYMBOLS.map((s) => (
             <Pressable key={s.label} onPress={() => insertSnippet(s.insert)} style={[styles.sym, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-              <Text style={{ color: theme.text, fontFamily: MONO, fontSize: 14 }}>{s.label}</Text>
+              <Text style={{ color: theme.text, fontFamily: MONO, fontSize: 15, fontWeight: '700' }}>{s.label}</Text>
             </Pressable>
           ))}
           <Pressable
@@ -840,7 +838,7 @@ export default function CodeEditor(props: Props) {
             style={[styles.sym, { borderColor: theme.border, backgroundColor: theme.surface }]}
             accessibilityLabel="Comentar líneas"
           >
-            <Text style={{ color: theme.text, fontFamily: MONO, fontSize: 14 }}>{'//'}</Text>
+            <Text style={{ color: theme.text, fontFamily: MONO, fontSize: 15, fontWeight: '700' }}>{'//'}</Text>
           </Pressable>
         </ScrollView>
       ) : null}
@@ -852,10 +850,11 @@ const styles = StyleSheet.create({
   italic: { fontStyle: 'italic' },
   bold: { fontWeight: '600' },
   bpDot: { width: 10, height: 10, borderRadius: 5 },
-  infoBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderTopWidth: StyleSheet.hairlineWidth },
-  quickFixBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, marginLeft: 8 },
-  bar: { flexGrow: 0, borderTopWidth: StyleSheet.hairlineWidth },
-  barContent: { paddingHorizontal: 6, paddingVertical: 5, alignItems: 'center' },
-  chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, marginRight: 6 },
-  sym: { minWidth: 36, height: 32, paddingHorizontal: 8, borderRadius: 6, borderWidth: StyleSheet.hairlineWidth, marginRight: 5, alignItems: 'center', justifyContent: 'center' },
+  infoBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.md, paddingVertical: 6, borderTopWidth: BORDER },
+  quickFixBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, height: 30, borderRadius: RADIUS.md, marginLeft: SPACE.sm },
+  quickFixText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' },
+  bar: { flexGrow: 0, borderTopWidth: BORDER },
+  barContent: { paddingHorizontal: SPACE.sm, paddingVertical: 6, alignItems: 'center' },
+  chip: { paddingHorizontal: SPACE.md, height: 34, justifyContent: 'center', borderRadius: RADIUS.md, borderWidth: BORDER, marginRight: 6 },
+  sym: { minWidth: 40, height: 38, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.md, borderWidth: BORDER, marginRight: 6, alignItems: 'center', justifyContent: 'center' },
 });

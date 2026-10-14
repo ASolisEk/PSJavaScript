@@ -43,6 +43,8 @@ export interface Settings {
   mascotPos: { right: number; bottom: number } | null;
   /** Vestuario de la mascota: 'auto' (según la fecha), 'none' o el id de un vestuario. */
   mascotCostume: string;
+  /** Personaje de la mascota: Michi el gato o Capi el capibara. */
+  mascotCharacter: 'gato' | 'capibara';
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -60,6 +62,7 @@ const DEFAULT_SETTINGS: Settings = {
   mascot: true,
   mascotPos: null,
   mascotCostume: 'auto',
+  mascotCharacter: 'gato',
 };
 
 export const SPEEDS = [1200, 700, 400, 200, 80, 20];
@@ -432,13 +435,22 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     runProgram(mode) {
+      // al ejecutar completo, mostrar la consola para ver el resultado
+      // (en paso a paso se queda en el editor para seguir la línea resaltada)
+      const showConsole = () => {
+        if (mode === 'run') set({ sidePanel: 'console', panel: 'console' });
+      };
       const st = runner?.getStatus();
       if (runner && st === 'paused') {
         runner.resume(mode);
+        showConsole();
         return;
       }
-      if (runner && (st === 'running' || st === 'input') && mode === 'run') return;
-      createRunner(mode);
+      if (runner && (st === 'running' || st === 'input') && mode === 'run') {
+        showConsole();
+        return;
+      }
+      if (createRunner(mode)) showConsole();
     },
     stepOnce() {
       const st = runner?.getStatus();

@@ -1,7 +1,8 @@
 /** Sala en vivo: abrir la sala, compartir el código y seguir a cada alumno. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { hasExamErrors, questionsPerStudent, questionTypeInfo } from '../../core/exam/config';
 import { ACTIVITY_LABEL, answeredCount, RoomState, StudentRecord, studentPhase } from '../../core/exam/room';
 import { defaultRelayUrl, defaultTransport, transportLabel, transportOptions, TransportSpec } from '../../core/exam/transport';
@@ -9,8 +10,8 @@ import type { Activity } from '../../core/exam/types';
 import { useTeacher } from '../../store/teacher';
 import { buildExamLink } from '../../ui/examLink';
 import { confirmDialog, copyText } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
-import { Button, Chip } from '../ui';
+import { BORDER, MONO, RADIUS, SCRIM, useTheme } from '../../ui/theme';
+import { Button, Chip, Heading } from '../ui';
 import { Banner, BigChoice, Card, Field, formatDuration, formatSince, IconName, Pill, ProgressBar, Stat, TextField, Toggle } from '../exam/kit';
 import QrCode from '../exam/QrCode';
 import StudentDetailModal, { PHASE_INFO } from './StudentDetailModal';
@@ -51,7 +52,7 @@ function OpenRoom() {
   return (
     <ScrollView contentContainerStyle={{ padding: 16, alignItems: 'center' }}>
       <View style={{ width: '100%', maxWidth: 760 }}>
-        <Text style={{ color: t.text, fontSize: 20, fontWeight: '800', marginBottom: 4 }}>Aplicar un examen</Text>
+        <Heading style={{ marginBottom: 4 }}>Aplicar un examen</Heading>
         <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 16 }}>Abre una sala, comparte el código con tus alumnos y sigue su avance en tiempo real.</Text>
 
         <Card>
@@ -438,28 +439,28 @@ function ProjectorView({ room, link, stats, onClose }: { room: RoomState; link: 
         <Pressable onPress={onClose} style={styles.projectorClose} accessibilityLabel="Cerrar vista para proyectar">
           <Ionicons name="close" size={28} color="#fff" />
         </Pressable>
-        <Text style={{ color: '#cfd6e4', fontSize: Math.max(18, big * 0.03), fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
+        <Text style={{ color: '#dce6ec', fontSize: Math.max(18, big * 0.03), fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
           {room.exam.title}
         </Text>
         <View style={{ flexDirection: width > height ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: big * 0.06, marginVertical: big * 0.04 }}>
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: '#8b95a7', fontSize: Math.max(14, big * 0.025), fontWeight: '800', letterSpacing: 2 }}>CÓDIGO DE LA SALA</Text>
+            <Text style={{ color: '#a3b6bf', fontSize: Math.max(14, big * 0.025), fontWeight: '800', letterSpacing: 2 }}>CÓDIGO DE LA SALA</Text>
             <Text style={{ color: '#fff', fontSize: big * 0.13, fontWeight: '900', letterSpacing: big * 0.02, fontFamily: MONO }}>{room.code}</Text>
-            <Text style={{ color: '#cfd6e4', fontSize: Math.max(14, big * 0.024), textAlign: 'center', marginTop: 8 }}>
+            <Text style={{ color: '#dce6ec', fontSize: Math.max(14, big * 0.024), textAlign: 'center', marginTop: 8 }}>
               PSJavaScript → Examen → Soy alumno
             </Text>
           </View>
           {link && room.transport.kind !== 'device' ? (
             <View style={{ alignItems: 'center' }}>
               <QrCode value={link} size={Math.round(big * 0.34)} />
-              <Text style={{ color: '#8b95a7', fontSize: Math.max(12, big * 0.018), marginTop: 8 }}>o escanea con la cámara</Text>
+              <Text style={{ color: '#a3b6bf', fontSize: Math.max(12, big * 0.018), marginTop: 8 }}>o escanea con la cámara</Text>
             </View>
           ) : null}
         </View>
         <Text style={{ color: '#fff', fontSize: Math.max(16, big * 0.03), fontWeight: '700' }}>
           {total} en la sala · {stats.working} trabajando · {stats.submitted} entregados
         </Text>
-        {room.locked ? <Text style={{ color: '#f0b44c', fontSize: Math.max(14, big * 0.022), marginTop: 8 }}>Ingreso cerrado</Text> : null}
+        {room.locked ? <Text style={{ color: '#ffc800', fontSize: Math.max(14, big * 0.022), marginTop: 8 }}>Ingreso cerrado</Text> : null}
       </View>
     </Modal>
   );
@@ -501,12 +502,12 @@ const styles = StyleSheet.create({
   liveDot: { width: 9, height: 9, borderRadius: 5, marginRight: 6 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 },
   filters: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 },
-  student: { borderWidth: 1, borderLeftWidth: 4, borderRadius: 12, padding: 12, marginBottom: 10 },
+  student: { borderWidth: BORDER, borderLeftWidth: 4, borderRadius: RADIUS.md, padding: 12, marginBottom: 10 },
   avatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   conn: { position: 'absolute', right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2 },
-  activity: { flexDirection: 'row', alignItems: 'center', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, marginTop: 10 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  projector: { flex: 1, backgroundColor: '#10131a', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  projectorClose: { position: 'absolute', top: 18, right: 18, padding: 8, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.12)' },
-  dialog: { width: '100%', maxWidth: 520, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 18 },
+  activity: { flexDirection: 'row', alignItems: 'center', borderRadius: RADIUS.md, paddingHorizontal: 8, paddingVertical: 6, marginTop: 10 },
+  overlay: { flex: 1, backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  projector: { flex: 1, backgroundColor: '#131f24', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  projectorClose: { position: 'absolute', top: 18, right: 18, padding: 8, borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.12)' },
+  dialog: { width: '100%', maxWidth: 520, borderRadius: RADIUS.lg, borderWidth: BORDER, padding: 18 },
 });

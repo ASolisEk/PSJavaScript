@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
+import { RADIUS } from '../../ui/theme';
 
 // solo el generador (sin dependencias de canvas ni de Node)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -17,7 +18,7 @@ export default function QrCode({ value, size = 180 }: { value: string; size?: nu
   }, [value]);
   // fondo blanco siempre (las cámaras no leen bien los QR invertidos)
   return (
-    <View style={{ width: size, height: size, backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden' }} accessibilityLabel="Código QR para entrar a la sala">
+    <View style={{ width: size, height: size, backgroundColor: '#fff', borderRadius: RADIUS.md, overflow: 'hidden' }} accessibilityLabel="Código QR para entrar a la sala">
       <Svg width={size} height={size} viewBox={`0 0 ${n} ${n}`}>
         <Rect x={0} y={0} width={n} height={n} fill="#fff" />
         <Path d={path} fill="#000" />

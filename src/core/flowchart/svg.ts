@@ -15,47 +15,47 @@ export interface FlowPalette {
 
 export const LIGHT_PALETTE: FlowPalette = {
   background: '#ffffff',
-  stroke: '#4a5568',
-  text: '#1a202c',
-  muted: '#718096',
-  highlight: '#f6ad55',
+  stroke: '#4b4b4b',
+  text: '#4b4b4b',
+  muted: '#777777',
+  highlight: '#ffc800',
   fills: {
-    process: '#ebf4ff',
-    input: '#e6fffa',
-    output: '#fefcbf',
-    call: '#faf5ff',
-    return: '#fed7e2',
-    terminal: '#c6f6d5',
-    jump: '#fed7d7',
-    decision: '#fffaf0',
-    connector: '#4a5568',
+    process: '#ddf4ff',
+    input: '#d7ffb8',
+    output: '#fff5d3',
+    call: '#f3e5ff',
+    return: '#ffe2f0',
+    terminal: '#c8f59a',
+    jump: '#ffdfe0',
+    decision: '#fff1dc',
+    connector: '#4b4b4b',
     frame: 'none',
     ns: '#ffffff',
-    loop: '#ebf8ff',
-    comment: '#f0fdf4',
+    loop: '#ddf4ff',
+    comment: '#f7f7f7',
   },
 };
 
 export const DARK_PALETTE: FlowPalette = {
-  background: '#1a1d23',
-  stroke: '#a0aec0',
-  text: '#e2e8f0',
-  muted: '#a0aec0',
-  highlight: '#dd6b20',
+  background: '#131f24',
+  stroke: '#a3b6bf',
+  text: '#f1f7fb',
+  muted: '#a3b6bf',
+  highlight: '#ffb020',
   fills: {
-    process: '#2a4365',
-    input: '#234e52',
-    output: '#5f5229',
-    call: '#44337a',
-    return: '#702459',
-    terminal: '#22543d',
-    jump: '#742a2a',
-    decision: '#3c366b',
-    connector: '#a0aec0',
+    process: '#173a4f',
+    input: '#22401a',
+    output: '#4a3f12',
+    call: '#3a2a50',
+    return: '#4d2338',
+    terminal: '#2c4d14',
+    jump: '#4d2224',
+    decision: '#4a3214',
+    connector: '#a3b6bf',
     frame: 'none',
-    ns: '#1a1d23',
-    loop: '#2a4365',
-    comment: '#16281e',
+    ns: '#131f24',
+    loop: '#173a4f',
+    comment: '#18262d',
   },
 };
 
@@ -138,12 +138,12 @@ export function toSVG(layout: FLayout, palette: FlowPalette = LIGHT_PALETTE, tit
     if (el.t === 'box') {
       const isComment = el.shape === 'comment';
       const fill = el.shape === 'connector' ? palette.stroke : palette.fills[el.shape] ?? 'none';
-      const stroke = isComment ? '#608b4e' : palette.stroke;
+      const stroke = isComment ? '#58a700' : palette.stroke;
       const dashed = el.dashed || isComment ? ' stroke-dasharray="5,4"' : '';
       out.push(`<path d="${shapePath(el)}" fill="${fill}" stroke="${stroke}" stroke-width="1.2"${dashed}/>`);
       for (const e of shapeExtras(el)) out.push(`<line x1="${e[0]}" y1="${e[1]}" x2="${e[2]}" y2="${e[3]}" stroke="${stroke}" stroke-width="1.2"/>`);
       for (const t of textPositions(el)) {
-        const textFill = isComment ? (palette === DARK_PALETTE ? '#85c391' : '#386e3a') : palette.text;
+        const textFill = isComment ? (palette === DARK_PALETTE ? '#a5ed6e' : '#58a700') : palette.text;
         const fontStyle = isComment ? ' font-style="italic"' : '';
         out.push(`<text x="${t.x}" y="${t.y}" text-anchor="${t.anchor}" fill="${textFill}"${fontStyle}>${esc(t.text)}</text>`);
       }

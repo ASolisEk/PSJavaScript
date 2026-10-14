@@ -33,8 +33,10 @@ function nodeOutput(code: string): string {
 
 test('ejemplo Fundamentos: banco por temas, cada alumno recibe 2 de cada tema', () => {
   const ex = fullSampleExam();
-  assert.equal(ex.questions.length, 49);
+  assert.equal(ex.questions.length, 100);
+  assert.equal(new Set(ex.questions.map((q) => `${q.prompt}|${q.code ?? ''}`)).size, ex.questions.length, 'sin preguntas repetidas');
   assert.equal(validateExam(ex).filter((i) => i.severity === 'error').length, 0);
+  assert.deepEqual(validateExam(ex).filter((i) => i.questionId), [], 'sin avisos en las preguntas');
   assert.equal(questionsPerStudent(ex), FUNDAMENTOS_PER_TOPIC * FUNDAMENTOS_TOPICS.length);
   for (const t of FUNDAMENTOS_TOPICS) assert.ok(ex.questions.filter((q) => q.topic === t).length >= 5, t);
   assert.ok(ex.questions.every((q) => FUNDAMENTOS_TOPICS.includes(q.topic as any)));

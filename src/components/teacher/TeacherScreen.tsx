@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { studentPhase } from '../../core/exam/room';
 import { useApp } from '../../store/app';
 import { TeacherTab, useTeacher } from '../../store/teacher';
-import { useTheme } from '../../ui/theme';
+import { BORDER, useTheme } from '../../ui/theme';
 import { Button, Tab } from '../ui';
 import { Banner, ScreenHeader } from '../exam/kit';
 import BuilderTab from './BuilderTab';
@@ -75,5 +75,5 @@ export default function TeacherScreen() {
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth },
+  tabs: { flexGrow: 0, borderBottomWidth: BORDER },
 });

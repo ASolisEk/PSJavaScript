@@ -1,14 +1,16 @@
 /** Pantalla principal del entorno: barra de herramientas, editor y paneles. */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCode } from '../core/editor/indent';
 import { PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
 import type { VarDetail } from '../core/runner';
-import { MONO, useTheme } from '../ui/theme';
+import { BORDER, MONO, RADIUS, SCRIM, SPACE, useTheme } from '../ui/theme';
+import { CODE_SHARE, useLayout } from '../ui/layout';
 import CodeEditor from './CodeEditor';
-import Footer, { REPO_URL } from './Footer';
+import Footer, { CREDITS, REPO_URL } from './Footer';
 import ExportModal from './modals/ExportModal';
 import FilesModal from './modals/FilesModal';
 import HelpModal from './modals/HelpModal';
@@ -27,12 +29,15 @@ import VariablesPanel from './panels/VariablesPanel';
 import Mascot from './Mascot';
 import { Button, IconButton, Tab, Tooltip } from './ui';
 
-const PANELS: { id: PanelId; label: string; short: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+/** label: pestaña en pantalla ancha · short: pestaña en pantallas angostas (todas deben caber). */
+const PANELS: { id: PanelId; label: string; short: string; icon: IconName }[] = [
   { id: 'console', label: 'Consola', short: 'Consola', icon: 'terminal-outline' },
   { id: 'diagram', label: 'Diagrama', short: 'Diagrama', icon: 'git-network-outline' },
   { id: 'variables', label: 'Variables', short: 'Variables', icon: 'cube-outline' },
   { id: 'desktop', label: 'Prueba de escritorio', short: 'Escritorio', icon: 'grid-outline' },
-  { id: 'explain', label: 'Explicación', short: 'Explicación', icon: 'chatbubbles-outline' },
+  { id: 'explain', label: 'Explicación', short: 'Explicar', icon: 'chatbubbles-outline' },
   { id: 'problems', label: 'Problemas', short: 'Problemas', icon: 'alert-circle-outline' },
 ];
 
@@ -82,8 +87,8 @@ function FileTabs() {
             onPress={() => openFile(id)}
             style={[styles.fileTab, { backgroundColor: active ? t.surface : 'transparent', borderColor: active ? t.border : 'transparent' }]}
           >
-            <Ionicons name="logo-javascript" size={13} color={active ? '#e8b100' : t.textMuted} />
-            <Text style={{ color: active ? t.text : t.textMuted, fontSize: 13, marginLeft: 5, fontWeight: active ? '600' : '400' }} numberOfLines={1}>
+            <Ionicons name="logo-javascript" size={14} color={active ? t.warning : t.textFaint} />
+            <Text style={{ color: active ? t.text : t.textMuted, fontSize: 13, marginLeft: 6, fontWeight: active ? '800' : '600' }} numberOfLines={1}>
               {f.name}
             </Text>
             {openIds.length > 1 ? (
@@ -95,13 +100,13 @@ function FileTabs() {
         );
       })}
       <Pressable onPress={() => newFile()} style={styles.addTab} accessibilityLabel="Nuevo programa">
-        <Ionicons name="add" size={18} color={t.textMuted} />
+        <Ionicons name="add" size={20} color={t.accent} />
       </Pressable>
     </ScrollView>
   );
 }
 
-function Toolbar({ compact }: { compact: boolean }) {
+function Toolbar({ compact, clip }: { compact: boolean; clip: boolean }) {
   const t = useTheme();
   const status = useApp((s) => s.run?.status ?? 'idle');
   const speed = useApp((s) => s.settings.speed);
@@ -114,7 +119,8 @@ function Toolbar({ compact }: { compact: boolean }) {
   const label = !compact;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar} style={{ overflow: 'visible' }} keyboardShouldPersistTaps="handled">
+    // los tooltips necesitan overflow visible, pero si la barra no cabe eso desborda la página
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar} style={{ overflow: clip ? 'hidden' : 'visible' }} keyboardShouldPersistTaps="handled">
       <IconButton icon="folder-open-outline" label="Archivos" tooltip="Archivos y ejemplos" onPress={() => setModal('files')} showLabel={label} />
       <View style={[styles.sep, { backgroundColor: t.border }]} />
       <IconButton icon="play" label={status === 'paused' ? 'Continuar' : 'Ejecutar'} tooltip={status === 'paused' ? 'Continuar ejecución' : 'Ejecutar programa completo'} color={t.success} onPress={() => runProgram('run')} showLabel={label} disabled={running} />
@@ -131,7 +137,7 @@ function Toolbar({ compact }: { compact: boolean }) {
             </Pressable>
           </Tooltip>
           <Ionicons name="speedometer-outline" size={15} color={t.textMuted} style={{ marginHorizontal: 4 }} />
-          <Text style={{ color: t.text, fontSize: 12, width: 12, textAlign: 'center' }}>{speedIdx + 1}</Text>
+          <Text style={{ color: t.text, fontSize: 13, fontWeight: '800', width: 12, textAlign: 'center' }}>{speedIdx + 1}</Text>
           <Tooltip text="Más rápido">
             <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.min(SPEEDS.length - 1, speedIdx + 1)] })} hitSlop={6} accessibilityLabel="Más rápido">
               <Ionicons name="add" size={16} color={t.textMuted} />
@@ -161,8 +167,157 @@ function Toolbar({ compact }: { compact: boolean }) {
   );
 }
 
+/**
+ * Barra del teléfono: los controles de ejecución siempre a la vista (sin
+ * deslizar) y el resto de las acciones en el menú «Más».
+ */
+function PhoneToolbar() {
+  const t = useTheme();
+  const status = useApp((s) => s.run?.status ?? 'idle');
+  const { runProgram, stepOnce, stepBack, pause, stop, setModal } = useApp.getState();
+  const [more, setMore] = useState(false);
+  const running = status === 'running';
+  const active = status === 'running' || status === 'paused' || status === 'input';
+  const canBack = status === 'paused' || status === 'finished' || status === 'error' || status === 'input';
+  return (
+    <View style={styles.phoneToolbar}>
+      <IconButton icon="folder-open-outline" label="Archivos" onPress={() => setModal('files')} />
+      <IconButton icon="play" label={status === 'paused' ? 'Continuar' : 'Ejecutar'} color={t.success} onPress={() => runProgram('run')} disabled={running} />
+      <IconButton icon="play-forward" label="Paso a paso" color={t.primary} onPress={() => runProgram('animate')} disabled={running} />
+      <IconButton icon="play-skip-forward" label="Siguiente paso" onPress={stepOnce} disabled={status === 'input'} />
+      <IconButton icon="play-skip-back" label="Paso anterior" onPress={stepBack} disabled={!canBack} />
+      <IconButton icon="pause" label="Pausar" onPress={pause} disabled={!running} />
+      <IconButton icon="stop" label="Detener" color={t.danger} onPress={stop} disabled={!active} />
+      <IconButton icon="ellipsis-horizontal" label="Más opciones" onPress={() => setMore(true)} active={more} />
+      {more ? <MoreSheet onClose={() => setMore(false)} /> : null}
+    </View>
+  );
+}
+
+/** Menú «Más» del teléfono: velocidad, edición, exportar, examen, configuración, ayuda y créditos. */
+function MoreSheet({ onClose }: { onClose(): void }) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const speed = useApp((s) => s.settings.speed);
+  const { setModal, updateSettings, replaceCode, setNotice } = useApp.getState();
+  const file = useActiveFile();
+  const speedIdx = Math.max(0, SPEEDS.indexOf(speed));
+  const go = (fn: () => void) => () => {
+    onClose();
+    fn();
+  };
+  const items: { icon: IconName; label: string; color?: string; onPress(): void }[] = [
+    { icon: 'add-circle-outline', label: 'Insertar comandos y estructuras', onPress: go(() => setModal('insert')) },
+    {
+      icon: 'color-wand-outline',
+      label: 'Formatear código',
+      onPress: go(() => {
+        if (!file) return;
+        replaceCode(formatCode(file.code));
+        setNotice('Código formateado correctamente ✨');
+      }),
+    },
+    { icon: 'swap-horizontal', label: 'Exportar a otros lenguajes', onPress: go(() => setModal('export')) },
+    { icon: 'school-outline', label: 'Examen (maestro o alumno)', color: t.accent, onPress: go(() => setModal('exam')) },
+    { icon: 'settings-outline', label: 'Configuración y perfil', onPress: go(() => setModal('settings')) },
+    { icon: 'help-circle-outline', label: 'Ayuda', onPress: go(() => setModal('help')) },
+    { icon: 'logo-github', label: 'Código fuente en GitHub', onPress: go(() => Linking.openURL(REPO_URL)) },
+  ];
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} supportedOrientations={['portrait', 'landscape']}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM }]} onPress={onClose} accessibilityLabel="Cerrar menú" />
+      <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.border, paddingBottom: SPACE.md + insets.bottom }]} accessibilityViewIsModal>
+        <View style={[styles.sheetRow, { borderBottomColor: t.border }]}>
+          <Ionicons name="speedometer-outline" size={20} color={t.textMuted} />
+          <Text style={[styles.sheetLabel, { color: t.text }]}>Velocidad paso a paso</Text>
+          <IconButton icon="remove" label="Más lento" onPress={() => updateSettings({ speed: SPEEDS[Math.max(0, speedIdx - 1)] })} disabled={speedIdx === 0} />
+          <Text style={{ color: t.text, fontSize: 15, fontWeight: '800', width: 22, textAlign: 'center' }}>{speedIdx + 1}</Text>
+          <IconButton icon="add" label="Más rápido" onPress={() => updateSettings({ speed: SPEEDS[Math.min(SPEEDS.length - 1, speedIdx + 1)] })} disabled={speedIdx === SPEEDS.length - 1} />
+        </View>
+        <ScrollView style={{ flexShrink: 1 }}>
+          {items.map((it) => (
+            <Pressable
+              key={it.label}
+              onPress={it.onPress}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.sheetRow, { borderBottomColor: t.border, backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
+            >
+              <Ionicons name={it.icon} size={20} color={it.color ?? t.textMuted} />
+              <Text style={[styles.sheetLabel, { color: t.text }]}>{it.label}</Text>
+              <Ionicons name="chevron-forward" size={16} color={t.textFaint} />
+            </Pressable>
+          ))}
+        </ScrollView>
+        <Text style={{ color: t.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACE.md }}>{CREDITS}</Text>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * Pestañas de los paneles en pantallas angostas (debajo del código): ícono y
+ * nombre corto, todas a la vista sin deslizar. Se acomodan al ancho que tienen.
+ */
+function PhoneTabs({ errorCount }: { errorCount: number }) {
+  const t = useTheme();
+  const windowWidth = useWindowDimensions().width;
+  const [w, setW] = useState(0);
+  const per = (w || windowWidth) / PANELS.length;
+  // con espacio de sobra el ícono y el nombre van lado a lado; si falta, solo el ícono
+  const inline = per >= 96;
+  const iconOnly = per < 46;
+  const tiny = per < 56;
+  const sidePanel = useApp((s) => s.sidePanel);
+  const setSidePanel = useApp((s) => s.setSidePanel);
+  return (
+    <View
+      accessibilityRole="tablist"
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+      style={[styles.phoneTabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}
+    >
+      {PANELS.map((p) => {
+        const active = sidePanel === p.id;
+        const c = active ? t.primary : t.textMuted;
+        const badge = p.id === 'problems' && errorCount ? errorCount : 0;
+        return (
+          <Pressable
+            key={p.id}
+            onPress={() => setSidePanel(p.id)}
+            accessibilityRole="tab"
+            accessibilityLabel={p.label}
+            accessibilityState={{ selected: active }}
+            style={({ pressed }) => [
+              styles.phoneTab,
+              (inline || iconOnly) && { flexDirection: 'row', paddingTop: 4, minHeight: 38 },
+              { borderBottomColor: active ? t.primary : 'transparent', backgroundColor: pressed ? t.surfaceAlt : 'transparent' },
+            ]}
+          >
+            <View>
+              <Ionicons name={p.icon} size={19} color={c} />
+              {badge ? (
+                <View style={[styles.phoneBadge, { backgroundColor: t.danger }]}>
+                  <Text style={styles.phoneBadgeText}>{badge > 9 ? '9+' : badge}</Text>
+                </View>
+              ) : null}
+            </View>
+            {iconOnly ? null : (
+              <Text
+                style={[{ color: c, fontSize: tiny ? 9 : 10, fontWeight: '800', letterSpacing: tiny ? -0.2 : 0, marginTop: 2 }, inline && { fontSize: 12, marginTop: 0, marginLeft: 6 }]}
+                numberOfLines={1}
+              >
+                {p.short}
+              </Text>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function StatusBar() {
   const t = useTheme();
+  const narrow = useWindowDimensions().width < 520;
   const run = useApp((s) => s.run);
   const diags = useApp((s) => s.diagnostics);
   const profile = useProfile();
@@ -172,10 +327,12 @@ function StatusBar() {
   const errors = diags.filter((d) => d.severity === 'error').length;
   const warns = diags.filter((d) => d.severity === 'warning').length;
   return (
-    <View style={[styles.status, { backgroundColor: t.surfaceAlt, borderTopColor: t.border }]}>
+    <View style={[styles.status, { backgroundColor: t.surface, borderTopColor: t.border }]}>
       {status === 'running' ? <ActivityIndicator size="small" color={t.primary} style={{ transform: [{ scale: 0.7 }] }} /> : <View style={[styles.dot, { backgroundColor: color }]} />}
-      <Text style={{ color, fontSize: 12, fontWeight: '700', marginLeft: 6 }}>{STATUS_LABEL[status]}</Text>
-      {run && run.line ? <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 10, fontFamily: MONO }}>Línea {run.line}</Text> : null}
+      <Text style={{ color, fontSize: 12, fontWeight: '800', marginLeft: 6 }} numberOfLines={1}>
+        {STATUS_LABEL[status]}
+      </Text>
+      {run && run.line && !narrow ? <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 10, fontFamily: MONO }}>Línea {run.line}</Text> : null}
       {run ? <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 10, fontFamily: MONO }}>Paso {run.stepCount}</Text> : null}
       <View style={{ flex: 1 }} />
       <Pressable
@@ -186,13 +343,13 @@ function StatusBar() {
         style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}
       >
         <Ionicons name="close-circle" size={13} color={errors ? t.danger : t.textMuted} />
-        <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 3 }}>{errors}</Text>
+        <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 3 }}>{errors}</Text>
         <Ionicons name="warning" size={13} color={warns ? t.warning : t.textMuted} style={{ marginLeft: 8 }} />
-        <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 3 }}>{warns}</Text>
+        <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 3 }}>{warns}</Text>
       </Pressable>
       <Pressable onPress={() => setModal('settings')}>
-        <Text style={{ color: t.primary, fontSize: 12 }} numberOfLines={1}>
-          Perfil: {profile.name}
+        <Text style={{ color: t.accent, fontSize: 12, fontWeight: '800' }} numberOfLines={1}>
+          {narrow ? 'Perfil' : `Perfil: ${profile.name}`}
         </Text>
       </Pressable>
     </View>
@@ -208,10 +365,10 @@ function LiveRoomPill() {
     <Pressable
       onPress={() => useApp.getState().setAppMode('teacher')}
       accessibilityLabel="Volver a la sala del examen"
-      style={({ pressed }) => [styles.repoLink, { borderColor: t.accent, backgroundColor: pressed ? t.surfaceAlt : t.accent + '18' }]}
+      style={({ pressed }) => [styles.repoLink, { borderColor: t.accent, backgroundColor: pressed ? t.surfaceAlt : t.accentSoft }]}
     >
-      <Ionicons name="radio-outline" size={15} color={t.accent} />
-      <Text style={{ color: t.accent, fontSize: 12, fontWeight: '800', marginLeft: 5 }}>Sala {room.code}</Text>
+      <Ionicons name="radio-outline" size={15} color={t.accentDark} />
+      <Text style={[styles.navLabel, { color: t.accentDark, marginLeft: 5 }]}>Sala {room.code}</Text>
     </Pressable>
   );
 }
@@ -229,59 +386,12 @@ function Notice() {
   const isUpdateNotice = Boolean(updateInfo?.hasUpdate && text.includes('versión'));
 
   return (
-    <View style={[styles.notice, { backgroundColor: t.surfaceAlt, borderBottomColor: isUpdateNotice ? t.primary : t.warning }]}>
-      <Ionicons name={isUpdateNotice ? 'cloud-download-outline' : 'information-circle'} size={16} color={isUpdateNotice ? t.primary : t.warning} />
-      <Text style={{ color: t.text, fontSize: 13, flex: 1, marginLeft: 6 }}>{text}</Text>
-      {isUpdateNotice ? (
-        <Pressable
-          onPress={() => setModal('update')}
-          style={({ pressed }) => ({
-            backgroundColor: t.primary,
-            opacity: pressed ? 0.85 : 1,
-            paddingHorizontal: 10,
-            paddingVertical: 3,
-            borderRadius: 6,
-            marginRight: 6,
-          })}
-        >
-          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Actualizar</Text>
-        </Pressable>
-      ) : null}
+    <View style={[styles.notice, { backgroundColor: isUpdateNotice ? t.primarySoft : t.warningSoft, borderBottomColor: isUpdateNotice ? t.primary : t.warning }]}>
+      <Ionicons name={isUpdateNotice ? 'cloud-download-outline' : 'information-circle'} size={18} color={isUpdateNotice ? t.primaryDark : t.warning} />
+      <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', flex: 1, marginLeft: SPACE.sm }}>{text}</Text>
+      {isUpdateNotice ? <Button label="Actualizar" kind="primary" size="sm" onPress={() => setModal('update')} style={{ marginRight: 6 }} /> : null}
       {notice ? <IconButton icon="close" label="Cerrar aviso" size={16} onPress={() => setNotice(null)} /> : null}
     </View>
-  );
-}
-
-function MiniConsole() {
-  const output = useApp((s) => s.run?.output);
-  const setPanel = useApp((s) => s.setPanel);
-  const lines = (output ?? []).filter((l) => l.kind !== 'system').slice(-4);
-  if (!lines.length) return null;
-  return (
-    <Pressable onPress={() => setPanel('console')} style={[styles.mini, { backgroundColor: '#1e1e1e', borderTopWidth: 0 }]}>
-      {lines.map((l) => {
-        const color = l.kind === 'error' ? '#ff5555' : l.kind === 'warn' ? '#f1fa8c' : l.kind === 'input' ? '#50fa7b' : '#f8f8f2';
-        return (
-          <Text
-            key={l.id}
-            style={[
-              { color, fontFamily: MONO, fontSize: 13 },
-              Platform.select({
-                web: { textShadow: '0 1px 1px rgba(0, 0, 0, 0.5)' },
-                default: {
-                  textShadowColor: 'rgba(0, 0, 0, 0.5)',
-                  textShadowOffset: { width: 0, height: 1 },
-                  textShadowRadius: 1,
-                },
-              }),
-            ]}
-            numberOfLines={1}
-          >
-            {l.kind === 'input' ? `${l.prompt ?? ''} › ${l.text}` : l.text}
-          </Text>
-        );
-      })}
-    </Pressable>
   );
 }
 
@@ -300,34 +410,27 @@ function FloatingDebugWidget() {
     <View
       style={[
         styles.floatingDebugWidget,
-        {
-          backgroundColor: t.surfaceAlt,
-          borderColor: t.border,
-          ...Platform.select({
-            web: { boxShadow: '0 3px 6px rgba(0, 0, 0, 0.28)' },
-            default: { shadowColor: '#000' },
-          }),
-        },
+        { backgroundColor: t.surface, borderColor: t.border },
       ]}
     >
       <View
         style={[
           styles.debugStepBadge,
           {
-            backgroundColor: run.status === 'paused' ? t.warning + '25' : run.status === 'input' ? t.primary + '25' : t.success + '25',
+            backgroundColor: run.status === 'paused' ? t.warningSoft : run.status === 'input' ? t.accentSoft : t.primarySoft,
           },
         ]}
       >
         <Ionicons
           name={run.status === 'paused' ? 'pause-circle' : run.status === 'input' ? 'keypad-outline' : 'play-forward'}
           size={14}
-          color={run.status === 'paused' ? t.warning : run.status === 'input' ? t.primary : t.success}
+          color={run.status === 'paused' ? t.warning : run.status === 'input' ? t.accentDark : t.primaryDark}
         />
         <Text
           style={{
-            color: run.status === 'paused' ? t.warning : run.status === 'input' ? t.primary : t.success,
+            color: run.status === 'paused' ? t.warning : run.status === 'input' ? t.accentDark : t.primaryDark,
             fontSize: 11,
-            fontWeight: '700',
+            fontWeight: '800',
             fontFamily: MONO,
             marginLeft: 5,
           }}
@@ -356,7 +459,7 @@ function FloatingDebugWidget() {
               style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
               accessibilityLabel="Siguiente paso (F7)"
             >
-              <Ionicons name="play-skip-forward" size={16} color={t.primary} />
+              <Ionicons name="play-skip-forward" size={16} color={t.accent} />
             </Pressable>
           </Tooltip>
 
@@ -366,7 +469,7 @@ function FloatingDebugWidget() {
               style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
               accessibilityLabel="Paso anterior (Shift+F7)"
             >
-              <Ionicons name="play-skip-back" size={16} color={t.text} />
+              <Ionicons name="play-skip-back" size={16} color={t.textMuted} />
             </Pressable>
           </Tooltip>
         </>
@@ -398,15 +501,17 @@ function FloatingDebugWidget() {
 function DebugBar() {
   const t = useTheme();
   const run = useApp((s) => s.run);
+  // en el teléfono estos controles ya están siempre a la vista en la barra de arriba
+  const { phone } = useLayout();
   const { runProgram, stepOnce, stepBack, stop } = useApp.getState();
 
-  if (run?.status !== 'paused') return null;
+  if (run?.status !== 'paused' || phone) return null;
 
   return (
-    <View style={[{ backgroundColor: t.surfaceAlt, borderTopColor: t.warning, flexDirection: 'row', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, borderTopWidth: 2, flexWrap: 'wrap', gap: 8 }]}>
-      <Button label="Continuar" kind="primary" icon="play" onPress={() => runProgram('run')} style={{ marginRight: 8 }} />
-      <Button label="Siguiente" icon="play-skip-forward" onPress={stepOnce} style={{ marginRight: 8 }} />
-      <Button label="Anterior" icon="play-skip-back" onPress={stepBack} style={{ marginRight: 8 }} />
+    <View style={[styles.debugBar, { backgroundColor: t.warningSoft, borderTopColor: t.warning }]}>
+      <Button label="Continuar" kind="primary" icon="play" onPress={() => runProgram('run')} />
+      <Button label="Siguiente" icon="play-skip-forward" onPress={stepOnce} />
+      <Button label="Anterior" icon="play-skip-back" onPress={stepBack} />
       <IconButton icon="stop" color={t.danger} label="Detener" onPress={stop} />
     </View>
   );
@@ -415,18 +520,16 @@ function DebugBar() {
 export default function IDE() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const wide = width >= 900;
+  const { width, wide, phone, split } = useLayout();
   const hydrated = useApp((s) => s.hydrated);
   const file = useActiveFile();
-  const panel = useApp((s) => s.panel);
   const sidePanel = useApp((s) => s.sidePanel);
   const modal = useApp((s) => s.modal);
   const diagnostics = useApp((s) => s.diagnostics);
   const fontSize = useApp((s) => s.settings.fontSize);
   const symbolBar = useApp((s) => s.settings.symbolBar);
   const run = useApp((s) => s.run);
-  const { setCode, toggleBreakpoint, setPanel, setSidePanel, hydrate } = useApp.getState();
+  const { setCode, toggleBreakpoint, setSidePanel, hydrate } = useApp.getState();
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length + (run?.error ? 1 : 0);
 
   useEffect(() => {
@@ -460,17 +563,13 @@ export default function IDE() {
     };
   }, []);
 
-  // En pantallas angostas, al terminar una ejecución completa se muestra la consola
+  // Con un error se muestra el panel que lo explica: Problemas (sintaxis) o la Consola
   const lastStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
     const st = run?.status;
-    if (!wide && st !== lastStatus.current) {
-      if ((st === 'finished' || st === 'error') && run?.mode === 'run' && panel === 'editor') setPanel('console');
-      if (st === 'error' && run?.error?.syntax) setPanel('problems');
-    }
-    if (wide && st === 'error' && st !== lastStatus.current) setSidePanel(run?.error?.syntax ? 'problems' : 'console');
+    if (st === 'error' && st !== lastStatus.current) setSidePanel(run?.error?.syntax ? 'problems' : 'console');
     lastStatus.current = st;
-  }, [run?.status, run?.mode, run?.error, wide, panel, setPanel, setSidePanel]);
+  }, [run?.status, run?.error, setSidePanel]);
 
   // Atajos de teclado (web / escritorio)
   const onKey = useCallback((e: KeyboardEvent) => {
@@ -542,17 +641,17 @@ export default function IDE() {
       errorLine={errorLine}
       diagnostics={diagnostics}
       fontSize={fontSize}
-      showSymbolBar={symbolBar && (Platform.OS !== 'web' || !wide)}
+      // en web (también en el celular) no se muestra la barra de símbolos; en la app nativa se puede activar
+      showSymbolBar={symbolBar && Platform.OS !== 'web'}
       varDetails={varDetails}
       isDebugging={isDebugging}
     />
   );
-  const runActive = run && run.status !== 'idle';
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={{ flex: 1, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
-        <View style={[styles.header, { borderBottomColor: t.border }]}>
+        <View style={[styles.header, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
           <View style={styles.brandContainer}>
             <Image
               source={require('../../assets/icon.png')}
@@ -560,55 +659,59 @@ export default function IDE() {
               accessibilityLabel="PSJavaScript Icon"
             />
             <Text style={[styles.brand, { color: t.text }]}>
-              PS<Text style={{ color: '#e8b100' }}>JS</Text>
+              PS<Text style={{ color: t.primary }}>JS</Text>
             </Text>
           </View>
           <View style={{ flex: 1 }}>
             <FileTabs />
           </View>
           <LiveRoomPill />
-          {Platform.OS === 'web' && (
+          {/* descargas de escritorio: no tienen sentido en un teléfono */}
+          {Platform.OS === 'web' && width >= 700 && (
             <>
               <a href="PSJavaScript.dmg" download="PSJavaScript.dmg" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.border, backgroundColor: t.surface }]}>
-                  <Ionicons name="logo-apple" size={16} color={t.text} />
-                  {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>macOS</Text> : null}
+                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
+                  <Ionicons name="logo-apple" size={16} color={t.textMuted} />
+                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>macOS</Text>
                 </View>
               </a>
               <a href="PSJavaScript-Setup.exe" download="PSJavaScript-Setup.exe" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.border, backgroundColor: t.surface }]}>
-                  <Ionicons name="logo-windows" size={16} color={t.text} />
-                  {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Windows</Text> : null}
+                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
+                  <Ionicons name="logo-windows" size={16} color={t.textMuted} />
+                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Windows</Text>
                 </View>
               </a>
               <a href="PSJavaScript.AppImage" download="PSJavaScript.AppImage" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.border, backgroundColor: t.surface }]}>
-                  <Ionicons name="logo-tux" size={16} color={t.text} />
-                  {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Linux</Text> : null}
+                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
+                  <Ionicons name="logo-tux" size={16} color={t.textMuted} />
+                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Linux</Text>
                 </View>
               </a>
             </>
           )}
-          <Pressable
-            onPress={() => Linking.openURL(REPO_URL)}
-            accessibilityRole="link"
-            accessibilityLabel="Ver el código fuente en GitHub"
-            {...({ title: 'Ver el código fuente en GitHub' } as object)}
-            style={({ pressed }) => [styles.repoLink, { borderColor: t.border, backgroundColor: pressed ? t.surfaceAlt : t.surface }]}
-          >
-            <Ionicons name="logo-github" size={16} color={t.text} />
-            {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5, marginRight: 5 }}>Código fuente</Text> : null}
-          </Pressable>
+          {/* en el teléfono el enlace está en el menú «Más» para dejarle espacio a los archivos */}
+          {!phone ? (
+            <Pressable
+              onPress={() => Linking.openURL(REPO_URL)}
+              accessibilityRole="link"
+              accessibilityLabel="Ver el código fuente en GitHub"
+              {...({ title: 'Ver el código fuente en GitHub' } as object)}
+              style={({ pressed }) => [styles.repoLink, { borderColor: t.borderStrong, backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
+            >
+              <Ionicons name="logo-github" size={16} color={t.textMuted} />
+              {width >= 700 ? <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Código fuente</Text> : null}
+            </Pressable>
+          ) : null}
         </View>
-        <View style={[styles.toolbarWrap, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
-          <Toolbar compact={width < 1200} />
+        <View style={[styles.toolbarWrap, { backgroundColor: t.surface, borderBottomColor: t.border, overflow: phone || width < 700 ? 'hidden' : 'visible' }]}>
+          {phone ? <PhoneToolbar /> : <Toolbar compact={width < 1200} clip={width < 700} />}
         </View>
         <Notice />
 
         <View style={{ flex: 1 }}>
           {wide ? (
             <View style={{ flex: 1, flexDirection: 'row' }}>
-              <View style={{ flex: 1.4, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border, position: 'relative' }}>
+              <View style={{ flex: 1.4, borderRightWidth: BORDER, borderRightColor: t.border, position: 'relative' }}>
                 {editor}
                 <FloatingDebugWidget />
               </View>
@@ -624,18 +727,24 @@ export default function IDE() {
               </View>
             </View>
           ) : (
-            <View style={{ flex: 1 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
-                <Tab label="Código" icon="code-slash" active={panel === 'editor'} onPress={() => setPanel('editor')} />
-                {PANELS.map((p) => (
-                  <Tab key={p.id} label={p.short} icon={p.icon} active={panel === p.id} onPress={() => setPanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
-                ))}
-              </ScrollView>
-              <View style={{ flex: 1, position: 'relative' }}>
-                {panel === 'editor' ? editor : <PanelView id={panel} />}
-                {panel === 'editor' && <FloatingDebugWidget />}
+            // pantalla angosta: el código ocupa el 60 % (arriba, o a la izquierda con el celular acostado)
+            // y el resto las pestañas con su panel
+            <View style={{ flex: 1, flexDirection: split === 'row' ? 'row' : 'column' }}>
+              <View
+                style={[
+                  { flex: CODE_SHARE, minHeight: 0, minWidth: 0, position: 'relative', borderColor: t.border },
+                  split === 'row' ? { borderRightWidth: BORDER } : { borderBottomWidth: BORDER },
+                ]}
+              >
+                {editor}
+                <FloatingDebugWidget />
               </View>
-              {panel === 'editor' && runActive ? <MiniConsole /> : null}
+              <View style={{ flex: 1 - CODE_SHARE, minHeight: 0, minWidth: 0 }}>
+                <PhoneTabs errorCount={errorCount} />
+                <View style={{ flex: 1 }}>
+                  <PanelView id={sidePanel} />
+                </View>
+              </View>
             </View>
           )}
           <Mascot />
@@ -643,9 +752,10 @@ export default function IDE() {
 
         <InputBar />
         <DebugBar />
-        <View style={{ paddingBottom: insets.bottom, backgroundColor: t.surfaceAlt }}>
+        <View style={{ paddingBottom: insets.bottom, backgroundColor: t.primary }}>
           <StatusBar />
-          <Footer />
+          {/* en el teléfono los créditos están en el menú «Más» */}
+          {!phone ? <Footer /> : null}
         </View>
       </View>
 
@@ -661,62 +771,44 @@ export default function IDE() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 10, paddingTop: 6, borderBottomWidth: StyleSheet.hairlineWidth },
-  repoLink: { flexDirection: 'row', alignItems: 'center', height: 28, paddingHorizontal: 9, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, marginHorizontal: 8, marginBottom: 4 },
-  brandContainer: { flexDirection: 'row', alignItems: 'center', marginRight: 10, marginBottom: 7 },
-  brandIcon: { width: 22, height: 22, borderRadius: 5, marginRight: 6 },
-  brand: { fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
-  fileTab: { flexDirection: 'row', alignItems: 'center', height: 34, paddingHorizontal: 12, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, maxWidth: 220 },
-  addTab: { height: 34, width: 34, alignItems: 'center', justifyContent: 'center' },
-  toolbarWrap: { borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 100, overflow: 'visible' },
-  toolbar: { alignItems: 'center', paddingHorizontal: 6, paddingVertical: 3 },
-  sep: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 6 },
-  speed: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 6, height: 30, marginLeft: 4 },
-  tabs: { flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth },
-  status: { flexDirection: 'row', alignItems: 'center', height: 28, paddingHorizontal: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderBottomWidth: 2 },
-  mini: { maxHeight: 92, paddingHorizontal: 10, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth },
+  header: { flexDirection: 'row', alignItems: 'flex-end', paddingLeft: SPACE.md, paddingTop: SPACE.sm, borderBottomWidth: BORDER },
+  repoLink: { flexDirection: 'row', alignItems: 'center', height: 32, paddingHorizontal: 10, borderRadius: RADIUS.md, borderWidth: BORDER, marginRight: SPACE.sm, marginBottom: 6 },
+  navLabel: { fontSize: 12, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
+  brandContainer: { flexDirection: 'row', alignItems: 'center', marginRight: SPACE.md, marginBottom: 9 },
+  brandIcon: { width: 26, height: 26, borderRadius: RADIUS.sm, marginRight: SPACE.sm },
+  brand: { fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
+  fileTab: { flexDirection: 'row', alignItems: 'center', height: 38, paddingHorizontal: 14, borderTopLeftRadius: RADIUS.md, borderTopRightRadius: RADIUS.md, borderWidth: BORDER, borderBottomWidth: 0, marginBottom: -BORDER, maxWidth: 220 },
+  addTab: { height: 38, width: 38, alignItems: 'center', justifyContent: 'center' },
+  toolbarWrap: { borderBottomWidth: BORDER, zIndex: 100, overflow: 'visible' },
+  toolbar: { alignItems: 'center', paddingHorizontal: SPACE.sm, paddingVertical: 4 },
+  sep: { width: BORDER, height: 24, borderRadius: 1, marginHorizontal: SPACE.sm },
+  speed: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, height: 34, marginLeft: 4 },
+  tabs: { flexGrow: 0, borderBottomWidth: BORDER },
+  phoneToolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 2 },
+  phoneTabs: { flexDirection: 'row', borderBottomWidth: BORDER },
+  phoneTab: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingTop: 6, paddingBottom: 4, borderBottomWidth: 3 },
+  phoneBadge: { position: 'absolute', top: -5, right: -10, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
+  phoneBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '85%', borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg, borderWidth: BORDER, paddingTop: SPACE.sm },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', minHeight: 50, paddingHorizontal: SPACE.lg, borderBottomWidth: BORDER },
+  sheetLabel: { flex: 1, fontSize: 15, fontWeight: '700', marginLeft: SPACE.md },
+  status: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: SPACE.md, borderTopWidth: BORDER },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.md, paddingVertical: 6, borderBottomWidth: BORDER },
+  debugBar: { flexDirection: 'row', justifyContent: 'center', paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, borderTopWidth: BORDER, flexWrap: 'wrap', gap: SPACE.sm },
   floatingDebugWidget: {
     position: 'absolute',
     top: 10,
     right: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: SPACE.sm,
     paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 3px 6px rgba(0, 0, 0, 0.28)',
-      },
-      default: {
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.28,
-        shadowRadius: 6,
-        elevation: 8,
-      },
-    }),
+    borderRadius: RADIUS.lg,
+    borderWidth: BORDER,
     zIndex: 100,
   },
-  debugStepBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  floatingSep: {
-    width: 1,
-    height: 18,
-    marginHorizontal: 6,
-  },
-  floatingBtn: {
-    padding: 6,
-    borderRadius: 6,
-    marginHorizontal: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  debugStepBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.sm, paddingVertical: 4, borderRadius: RADIUS.md },
+  floatingSep: { width: BORDER, height: 18, marginHorizontal: 6 },
+  floatingBtn: { padding: 7, borderRadius: RADIUS.md, marginHorizontal: 1, alignItems: 'center', justifyContent: 'center' },
 });

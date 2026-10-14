@@ -1,15 +1,16 @@
 /** Concentrado: calificaciones, tiempos, análisis por pregunta e historial. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
 import { plainText } from '../../core/exam/richText';
 import type { RoomState } from '../../core/exam/room';
 import { summarizeRoom, summaryCsv } from '../../core/exam/summary';
 import { roomKey, useResultsRoom, useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
-import { Button, Empty } from '../ui';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
+import { Button, Empty, Heading } from '../ui';
 import { Banner, Card, IconName, Pill, ProgressBar, Stat } from '../exam/kit';
 import StudentDetailModal from './StudentDetailModal';
 
@@ -89,7 +90,7 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
     <View>
       <View style={styles.head}>
         <View style={{ flex: 1, minWidth: 200 }}>
-          <Text style={{ color: t.text, fontSize: 20, fontWeight: '800' }}>{sum.title}</Text>
+          <Heading>{sum.title}</Heading>
           <Text style={{ color: t.textMuted, fontSize: 13 }}>
             {date.toLocaleDateString()} {date.toLocaleTimeString()} · sala {sum.code}
             {sum.closedAt ? ` · cerrada a las ${new Date(sum.closedAt).toLocaleTimeString()}` : ''}
@@ -117,7 +118,7 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
               {sum.histogram.map((v, i) => (
                 <View key={i} style={{ flex: 1, alignItems: 'center' }}>
                   <Text style={{ color: t.textMuted, fontSize: 10, marginBottom: 2 }}>{v || ''}</Text>
-                  <View style={{ width: '70%', height: Math.max(2, (v / maxBar) * 110), backgroundColor: (i + 1) * 10 > sum.passPercent ? t.success : t.danger, borderRadius: 4, opacity: v ? 1 : 0.25 }} />
+                  <View style={{ width: '70%', height: Math.max(2, (v / maxBar) * 110), backgroundColor: (i + 1) * 10 > sum.passPercent ? t.success : t.danger, borderRadius: RADIUS.md, opacity: v ? 1 : 0.25 }} />
                   <Text style={{ color: t.textMuted, fontSize: 9, marginTop: 4 }} numberOfLines={1}>
                     {Math.round((i * sum.scale) / 10)}–{Math.round(((i + 1) * sum.scale) / 10)}
                   </Text>
@@ -227,8 +228,8 @@ const styles = StyleSheet.create({
   stats: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 },
   cols: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   histo: { flexDirection: 'row', alignItems: 'flex-end', height: 150 },
-  tr: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 8 },
+  tr: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: BORDER, paddingVertical: 8 },
   th: { fontSize: 11, fontWeight: '800', paddingHorizontal: 6 },
   td: { fontSize: 13, paddingHorizontal: 6 },
-  hist: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 8 },
+  hist: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, padding: 12, marginBottom: 8 },
 });

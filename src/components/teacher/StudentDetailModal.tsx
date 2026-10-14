@@ -1,14 +1,15 @@
 /** Detalle de un alumno: respuestas en vivo, calificación por pregunta y bitácora. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
 import { ACTIVITY_LABEL, answeredCount, RoomState, StudentEventKind, StudentRecord, studentPhase } from '../../core/exam/room';
 import { plainText } from '../../core/exam/richText';
 import type { AnswerValue, Question, QuestionResult } from '../../core/exam/types';
 import { useTeacher } from '../../store/teacher';
 import { confirmDialog } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
 import { Button, Chip } from '../ui';
 import { Card, CodeBlock, formatDuration, formatSince, IconName, NumberStepper, Pill } from '../exam/kit';
@@ -248,5 +249,5 @@ function AnswerCard({ q, index, s, r, current }: { q: Question; index: number; s
 }
 
 const styles = StyleSheet.create({
-  event: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderBottomWidth: StyleSheet.hairlineWidth },
+  event: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderBottomWidth: BORDER },
 });

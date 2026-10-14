@@ -1,12 +1,14 @@
 /** Configuración: perfil del lenguaje, ejecución y apariencia. */
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { FLAG_LABELS, getProfile, PROFILES, ProfileFlags } from '../../core/profiles';
 import { SPEEDS, useApp, useProfile } from '../../store/app';
-import { useTheme } from '../../ui/theme';
+import { BORDER, RADIUS, useTheme } from '../../ui/theme';
 import { checkForUpdate, CURRENT_VERSION, getPlatformLabel } from '../../core/updater';
 import { COSTUMES, costumeForDate } from '../../core/holidays';
-import { Button, Chip, SectionTitle } from '../ui';
+import { Button, Chip, SectionTitle, Switch } from '../ui';
+import { CHARACTER_LIST } from '../mascot/characters';
 import ModalShell from './ModalShell';
 
 function Row({ label, value, onChange, hint }: { label: string; value: boolean; onChange(v: boolean): void; hint?: string }) {
@@ -129,7 +131,15 @@ export default function SettingsModal() {
             <Chip key={n} label={String(n)} active={settings.fontSize === n} onPress={() => update({ fontSize: n })} />
           ))}
         </View>
-        <Row label="Mostrar mascota" hint="Gatito que reacciona a errores, ejecución y reposo. Tócalo para ver consejos." value={settings.mascot} onChange={(v) => update({ mascot: v })} />
+        <Row label="Mostrar mascota" hint="Michi el gatito o Capi el capibara: reaccionan a errores, ejecución y reposo. Tócalos para ver consejos." value={settings.mascot} onChange={(v) => update({ mascot: v })} />
+        {settings.mascot ? (
+          <View style={[styles.row, { borderBottomColor: t.border }]}>
+            <Text style={{ color: t.text, fontSize: 14, flex: 1 }}>Mascota</Text>
+            {CHARACTER_LIST.map((c) => (
+              <Chip key={c.id} label={`${c.name} (${c.species.replace(/^el /, '')})`} active={(settings.mascotCharacter ?? 'gato') === c.id} onPress={() => update({ mascotCharacter: c.id })} />
+            ))}
+          </View>
+        ) : null}
         {settings.mascot ? (
           <View style={[styles.row, { borderBottomColor: t.border, flexDirection: 'column', alignItems: 'stretch' }]}>
             <Text style={{ color: t.text, fontSize: 14 }}>Vestuario de la mascota</Text>
@@ -174,8 +184,8 @@ export default function SettingsModal() {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, flexWrap: 'wrap' },
-  profile: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 8 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: BORDER, flexWrap: 'wrap' },
+  profile: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginBottom: 8 },
   radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   radioDot: { width: 8, height: 8, borderRadius: 4 },
 });

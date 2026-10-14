@@ -5,20 +5,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isAnswered } from '../../core/exam/paper';
 import { isValidRoomCode, normalizeRoomCode } from '../../core/exam/random';
 import { defaultTransport, transportOptions, TransportSpec } from '../../core/exam/transport';
 import { plainText } from '../../core/exam/richText';
-import { practiceOptions } from '../../core/exam/certs/fccJavascript';
+import { CERTIFICATIONS, practiceKey } from '../../core/exam/certs';
 import type { Activity, PaperQuestion, StudentResultView, TopicScore } from '../../core/exam/types';
 import { useApp } from '../../store/app';
 import { idleMs, serverNow, useStudent } from '../../store/student';
 import { clearExamLink, readExamLink, rememberedStudent, rememberStudent } from '../../ui/examLink';
 import { confirmDialog } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
-import { Button } from '../ui';
+import { BORDER, MONO, RADIUS, SCRIM, useTheme } from '../../ui/theme';
+import { Button, Chip, Heading } from '../ui';
 import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, Segmented, TextField } from './kit';
 import { clearCodeResults } from './CodeAnswer';
 import { enterFullscreen, exitFullscreen, fullscreenSupported, useExamLockdown } from './lockdown';
@@ -149,16 +150,18 @@ function JoinView() {
   );
 }
 
-/** Práctica individual para la certificación JavaScript de freeCodeCamp (sin maestro ni código de sala). */
+/** Práctica individual para una certificación incluida (sin maestro ni código de sala). */
 function PracticeCard({ name }: { name: string }) {
   const t = useTheme();
   const joining = useStudent((s) => s.joining);
   const [open, setOpen] = useState(false);
-  const { full, topics } = practiceOptions();
+  const [certId, setCertId] = useState(CERTIFICATIONS[0].id);
+  const cert = CERTIFICATIONS.find((c) => c.id === certId) ?? CERTIFICATIONS[0];
+  const { full, topics } = cert.practiceOptions();
   const go = (key: string) => {
     if (joining) return;
     rememberStudent({ name: name.trim(), group: rememberedStudent().group });
-    useStudent.getState().practice(key, name);
+    useStudent.getState().practice(practiceKey(cert.id, key), name);
   };
   return (
     <Card accent={t.accent}>
@@ -166,8 +169,13 @@ function PracticeCard({ name }: { name: string }) {
         <Ionicons name="ribbon-outline" size={22} color={t.accent} />
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', flex: 1 }}>Practicar por mi cuenta</Text>
       </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }} accessibilityRole="tablist">
+        {CERTIFICATIONS.map((c) => (
+          <Chip key={c.id} label={c.short} active={c.id === cert.id} onPress={() => setCertId(c.id)} />
+        ))}
+      </View>
       <Text style={{ color: t.textMuted, fontSize: 13, lineHeight: 19, marginBottom: 10 }}>
-        Prepárate para la certificación «JavaScript» de freeCodeCamp con las preguntas de sus cuestionarios (traducidas al español) y sus laboratorios. No necesitas código de sala; al terminar verás la respuesta correcta de cada pregunta.
+        {cert.studentSummary} No necesitas código de sala; al terminar verás la respuesta correcta de cada pregunta.
       </Text>
       {full.map((o) => (
         <BigChoice key={o.key} icon={o.key === 'simulacro' ? 'timer-outline' : 'barbell-outline'} color={t.accent} title={o.title} description={o.description} onPress={() => go(o.key)} disabled={joining} />
@@ -316,7 +324,7 @@ function EndedView() {
       <Narrow>
         <Card accent={t.textMuted} style={{ alignItems: 'center', paddingVertical: 24 }}>
           <Ionicons name="lock-closed-outline" size={44} color={t.textMuted} />
-          <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginTop: 8 }}>El examen terminó</Text>
+          <Heading style={{ marginTop: 8 }}>El examen terminó</Heading>
           <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
             El maestro cerró la sala antes de que comenzaras tu examen. Si crees que es un error, avísale.
           </Text>
@@ -667,7 +675,7 @@ function ExamView() {
             </View>
           </View>
         ) : (
-          <View style={{ backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }}>{nav}</View>
+          <View style={{ backgroundColor: t.surface, borderBottomWidth: BORDER, borderBottomColor: t.border }}>{nav}</View>
         )}
         <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, alignItems: 'center' }} keyboardShouldPersistTaps="handled">
           <View style={{ width: '100%', maxWidth: 900 }}>
@@ -752,7 +760,7 @@ function LockCover({ reason, onResume }: { reason: 'fullscreen' | 'away'; onResu
     <View style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: t.bg }]} accessibilityViewIsModal>
       <Card accent={t.danger} style={{ alignItems: 'center', padding: 24, maxWidth: 460, width: '100%' }}>
         <Ionicons name={fs ? 'expand-outline' : 'eye-off-outline'} size={44} color={t.danger} />
-        <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginTop: 8, textAlign: 'center' }}>{fs ? 'El examen se ocultó' : 'Regresa a tu examen'}</Text>
+        <Heading style={{ marginTop: 8, textAlign: 'center' }}>{fs ? 'El examen se ocultó' : 'Regresa a tu examen'}</Heading>
         <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
           {fs ? 'El examen solo se puede responder en pantalla completa.' : 'Cambiaste de ventana o de pestaña.'} Tu maestro ya recibió un aviso. El tiempo sigue corriendo y tus respuestas están guardadas.
         </Text>
@@ -766,7 +774,7 @@ function Legend({ color, text, filled, dot }: { color: string; text: string; fil
   const t = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-      <View style={{ width: dot ? 10 : 16, height: dot ? 10 : 16, borderRadius: dot ? 5 : 5, borderWidth: 1, borderColor: color, backgroundColor: filled || dot ? color : 'transparent', marginRight: 8, marginLeft: dot ? 3 : 0 }} />
+      <View style={{ width: dot ? 10 : 16, height: dot ? 10 : 16, borderRadius: dot ? 5 : 5, borderWidth: BORDER, borderColor: color, backgroundColor: filled || dot ? color : 'transparent', marginRight: 8, marginLeft: dot ? 3 : 0 }} />
       <Text style={{ color: t.textMuted, fontSize: 12 }}>{text}</Text>
     </View>
   );
@@ -784,7 +792,7 @@ function SubmitDialog({ questions, onCancel, onSubmit, onGo }: { questions: Pape
       <View style={styles.overlay}>
         <View style={[styles.dialog, { backgroundColor: t.surface, borderColor: t.border }]}>
           <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 4 }}>
-            <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>{all ? '¡Respondiste todo! ¿Terminar tu examen?' : '¿Terminar tu examen?'}</Text>
+            <Heading level="title" style={{ marginBottom: 6 }}>{all ? '¡Respondiste todo! ¿Terminar tu examen?' : '¿Terminar tu examen?'}</Heading>
             <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 12 }}>
               Se enviará a calificar y ya no podrás cambiar tus respuestas.
               {left !== null && left > 60_000 ? ` Aún te quedan ${formatDuration(left)}.` : ''}
@@ -838,6 +846,12 @@ const STATUS: Record<string, { icon: IconName; label: string; color: 'success' |
 
 type ResultFilter = 'all' | 'review' | 'correct';
 
+/** Certificación de una práctica individual («fcc/simulacro»; las claves sin prefijo son de freeCodeCamp). */
+function practiceCertification(key: string) {
+  const slash = key.indexOf('/');
+  return CERTIFICATIONS.find((c) => slash > 0 && c.id === key.slice(0, slash)) ?? CERTIFICATIONS.find((c) => c.id === 'fcc') ?? CERTIFICATIONS[0];
+}
+
 /** Vuelve a practicar (la misma práctica u otra, p. ej. un tema débil) con el mismo nombre. */
 function practiceAgain(key: string) {
   const name = useStudent.getState().session?.identity.name ?? '';
@@ -865,7 +879,10 @@ function ResultView() {
   const questions = (r?.questions ?? []).map((qr, i) => ({ qr, i, pq: s.paper?.questions.find((x) => x.id === qr.questionId) }));
   const toReview = questions.filter((x) => x.qr.status !== 'correct').length;
   const shown = questions.filter(({ qr, pq }) => (filter === 'all' || (filter === 'correct' ? qr.status === 'correct' : qr.status !== 'correct')) && (!topic || pq?.topic === topic));
-  const practiceTopics = s.practiceKey ? new Set(practiceOptions().topics.map((o) => o.key)) : null;
+  // temas de la misma certificación que se pueden practicar por separado
+  const cert = s.practiceKey ? practiceCertification(s.practiceKey) : null;
+  const practiceTopics = cert ? new Set(cert.practiceOptions().topics.map((o) => o.key)) : null;
+  const topicKey = (name: string) => (cert ? practiceKey(cert.id, `tema:${name}`) : '');
   const pickTopic = (name: string) => {
     setTopic((cur) => (cur === name ? null : name));
     // lleva al alumno a las preguntas de ese tema
@@ -885,7 +902,7 @@ function ResultView() {
             <>
               <Card accent={!graded ? t.success : r.passed ? t.success : t.danger} style={{ alignItems: 'center', paddingVertical: 24 }}>
                 <Ionicons name={!graded ? 'checkmark-done-circle' : r.passed ? 'ribbon' : 'school'} size={54} color={!graded || r.passed ? t.success : t.danger} />
-                <Text style={{ color: t.text, fontSize: 20, fontWeight: '800', marginTop: 6 }}>{s.practiceKey ? '¡Práctica terminada!' : '¡Examen enviado!'}</Text>
+                <Heading level="display" style={{ marginTop: 6, textAlign: 'center' }}>{s.practiceKey ? '¡Práctica terminada!' : '¡Examen enviado!'}</Heading>
                 <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 4, textAlign: 'center' }}>{reason}</Text>
                 {graded ? (
                   <>
@@ -909,7 +926,7 @@ function ResultView() {
                   </View>
                 ) : null}
               </Card>
-              {r.topics?.length ? <TopicsCard topics={r.topics} passPercent={s.paper?.settings.passPercent ?? 60} selected={topic} onPick={questions.length ? pickTopic : undefined} canPractice={(name) => !!practiceTopics?.has(`tema:${name}`) && s.practiceKey !== `tema:${name}`} onPractice={(name) => practiceAgain(`tema:${name}`)} /> : null}
+              {r.topics?.length ? <TopicsCard topics={r.topics} passPercent={s.paper?.settings.passPercent ?? 60} selected={topic} onPick={questions.length ? pickTopic : undefined} canPractice={(name) => !!practiceTopics?.has(`tema:${name}`) && s.practiceKey !== topicKey(name) && s.practiceKey !== `tema:${name}`} onPractice={(name) => practiceAgain(topicKey(name))} /> : null}
               {questions.length ? (
                 <View
                   onLayout={(e) => {
@@ -957,7 +974,8 @@ function ResultView() {
                     {pq ? (
                       review ? (
                         <View style={{ marginBottom: 6 }}>
-                          <RichText text={pq.prompt} style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }} />
+                          {/* en el repaso se muestra también el código de la pregunta */}
+                          <RichText text={pq.code ? `${pq.prompt}\n\n\`\`\`js\n${pq.code}\n\`\`\`` : pq.prompt} style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }} />
                         </View>
                       ) : (
                         <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 4 }} numberOfLines={3}>
@@ -1061,26 +1079,26 @@ function ChosenAnswer({ q, value }: { q: PaperQuestion; value: unknown }) {
 }
 
 const styles = StyleSheet.create({
-  examHeaderNarrow: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  examHeaderNarrow: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: BORDER },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  examHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, gap: 6 },
+  examHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: BORDER, gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-  fontBox: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, marginRight: 4 },
+  fontBox: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, marginRight: 4 },
   fontBtn: { paddingHorizontal: 8, height: 32, alignItems: 'center', justifyContent: 'center' },
-  timer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 18, paddingHorizontal: 10, paddingVertical: 5 },
-  side: { width: 210, padding: 14, borderRightWidth: StyleSheet.hairlineWidth },
+  timer: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.lg, paddingHorizontal: 10, paddingVertical: 5 },
+  side: { width: 210, padding: 14, borderRightWidth: BORDER },
   navGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   navRow: { paddingHorizontal: 10, paddingVertical: 8, gap: 8, flexDirection: 'row' },
-  navBtn: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  navBtn: { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
   flagDot: { position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: 6, borderWidth: 2 },
   footerNav: { flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 24 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  dialog: { width: '100%', maxWidth: 520, maxHeight: '90%', borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 20 },
-  topicRow: { flex: 1, borderWidth: 1, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 5 },
-  topicFilter: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4, marginTop: 8 },
-  practiceBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 6 },
-  topicBtn: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, flexGrow: 1, flexBasis: 160 },
-  jump: { minWidth: 36, height: 32, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  overlay: { flex: 1, backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  dialog: { width: '100%', maxWidth: 520, maxHeight: '90%', borderRadius: RADIUS.lg, borderWidth: BORDER, padding: 20 },
+  topicRow: { flex: 1, borderWidth: BORDER, borderRadius: RADIUS.sm, paddingHorizontal: 6, paddingVertical: 5 },
+  topicFilter: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 4, marginTop: 8 },
+  practiceBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 6 },
+  topicBtn: { borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 6, flexGrow: 1, flexBasis: 160 },
+  jump: { minWidth: 36, height: 32, borderWidth: BORDER, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   cover: { alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 },
-  sending: { backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  sending: { backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 20 },
 });

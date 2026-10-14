@@ -1,10 +1,12 @@
 /** Problemas: errores de sintaxis, advertencias del perfil y error de ejecución. */
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import type { ErrorHint } from '../../core/errors';
 import { useApp, useProfile } from '../../store/app';
-import { useTheme } from '../../ui/theme';
+import { BORDER, RADIUS, useTheme } from '../../ui/theme';
+import { usePanelBottomPad } from '../../ui/layout';
 import { Empty, SectionTitle } from '../ui';
 
 function Hint({ hint }: { hint: ErrorHint }) {
@@ -29,6 +31,8 @@ function Hint({ hint }: { hint: ErrorHint }) {
 
 export default function ProblemsPanel() {
   const t = useTheme();
+  // que la mascota no tape lo último en pantallas angostas
+  const bottomPad = usePanelBottomPad();
   const diagnostics = useApp((s) => s.diagnostics);
   const error = useApp((s) => s.run?.error ?? null);
   const profile = useProfile();
@@ -39,7 +43,7 @@ export default function ProblemsPanel() {
   const color = (sev: string) => (sev === 'error' ? t.danger : sev === 'warning' ? t.warning : t.info);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: t.surface }} contentContainerStyle={{ padding: 12 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: t.surface }} contentContainerStyle={{ padding: 12, paddingBottom: bottomPad }}>
       {error ? (
         <View style={[styles.card, { borderColor: t.danger, backgroundColor: t.errorLine }]}>
           <Pressable onPress={() => error.line && jump(error.line)} style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -89,6 +93,6 @@ export default function ProblemsPanel() {
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: 8, padding: 10 },
-  item: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  card: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10 },
+  item: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: BORDER },
 });
