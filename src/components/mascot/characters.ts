@@ -16,6 +16,7 @@ export interface Anchors {
   crown: Pt;
   /** Inclinación de la cabeza en grados. */
   rot: number;
+  /** Ojos [x, y, radio]; de perfil puede haber uno solo. */
   eyes: [number, number, number][];
   nose: Pt;
   mouth: Pt;
@@ -44,6 +45,8 @@ export interface Character {
   found: string;
   /** Qué asoma cuando se esconde («mi cola»). */
   peekPart: string;
+  /** Escala de sombreros y coronas (1 = tamaño hecho para la cabeza del gato). */
+  hatScale?: number;
 }
 
 const GATO: Character = {
@@ -111,7 +114,23 @@ const GATO: Character = {
   },
 };
 
-/** Anclas calculadas por scripts/generar_capibara.js (cabeza alargada, hocico a la derecha). */
+/** Reposo y error comparten silueta: sentado de perfil, se ve un solo ojo. */
+const CAPI_SITTING: Anchors = {
+  crown: [178, 33],
+  rot: 6,
+  eyes: [[168, 83, 11]],
+  nose: [247, 92],
+  mouth: [220, 118],
+  cheeks: [[190, 122]],
+  chin: [231, 153],
+  neck: [185, 161],
+  back: [82, 115],
+};
+
+/**
+ * Capi, estilo kawaii: sentado de perfil mirando a la derecha, hocico café y
+ * patitas cafés. Anclas calculadas por scripts/generar_capibara.js.
+ */
 const CAPIBARA: Character = {
   id: 'capibara',
   name: 'Capi',
@@ -122,57 +141,20 @@ const CAPIBARA: Character = {
   pettingLabel: 'relajada con las caricias',
   found: '¡Me encontraste! 🥰',
   peekPart: 'mi cabecita',
+  hatScale: 0.85,
   anchors: {
-    idle: {
-      crown: [195, 55],
-      rot: -4,
-      eyes: [
-        [195, 103, 17],
-        [256, 92, 14],
-      ],
-      nose: [264, 126],
-      mouth: [266, 154],
-      cheeks: [
-        [174, 146],
-        [281, 103],
-      ],
-      chin: [247, 185],
-      neck: [195, 193],
-      back: [104, 150],
-    },
-    error: {
-      crown: [177, 62],
-      rot: -9,
-      eyes: [
-        [181, 110, 17],
-        [241, 94, 14],
-      ],
-      nose: [253, 127],
-      mouth: [257, 154],
-      cheeks: [
-        [164, 155],
-        [267, 102],
-      ],
-      chin: [240, 188],
-      neck: [189, 200],
-      back: [98, 160],
-    },
+    idle: CAPI_SITTING,
+    error: CAPI_SITTING,
     running: {
-      crown: [180, 38],
-      rot: -3,
-      eyes: [
-        [179, 87, 17],
-        [241, 77, 14],
-      ],
-      nose: [248, 111],
-      mouth: [250, 139],
-      cheeks: [
-        [157, 130],
-        [265, 88],
-      ],
-      chin: [229, 170],
-      neck: [178, 177],
-      back: [100, 128],
+      crown: [174, 33],
+      rot: 6,
+      eyes: [[164, 83, 11]],
+      nose: [243, 92],
+      mouth: [216, 118],
+      cheeks: [[186, 122]],
+      chin: [227, 153],
+      neck: [181, 161],
+      back: [78, 115],
     },
   },
 };
