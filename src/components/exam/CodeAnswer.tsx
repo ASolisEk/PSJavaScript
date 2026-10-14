@@ -19,6 +19,17 @@ const MATCH_LABEL: Record<string, string> = {
   contains: 'la salida debe incluir el texto esperado',
 };
 
+/**
+ * Último resultado de «Probar con los ejemplos» y de «Ejecutar» por pregunta, para que no se
+ * pierdan al ir a otra pregunta y regresar. Solo se recuperan si el código no ha cambiado.
+ */
+const lastResults = new Map<string, { code: string; tests: TestResult[] | null; run: RunnerSnapshot | null }>();
+
+/** Olvida los resultados guardados (al terminar o salir de un examen). */
+export function clearCodeResults() {
+  lastResults.clear();
+}
+
 interface Props {
   q: PaperQuestion;
   value: string;
@@ -35,8 +46,14 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
   const t = useTheme();
   const profile = useMemo(() => getProfile(settings.profileId), [settings.profileId]);
   const [diags, setDiags] = useState<Diagnostic[]>([]);
-  const [run, setRun] = useState<RunnerSnapshot | null>(null);
-  const [tests, setTests] = useState<TestResult[] | null>(null);
+  const [saved] = useState(() => {
+    const prev = readOnly ? undefined : lastResults.get(q.id);
+    return prev && prev.code === value ? prev : null;
+  });
+  const [run, setRun] = useState<RunnerSnapshot | null>(saved?.run ?? null);
+  const [tests, setTests] = useState<TestResult[] | null>(saved?.tests ?? null);
+  /** Código con el que se obtuvo el resultado mostrado (para avisar si ya cambió). */
+  const [resultCode, setResultCode] = useState<string | null>(saved?.code ?? null);
   const [input, setInput] = useState('');
   const runner = useRef<Runner | null>(null);
   const scroll = useRef<ScrollView>(null);
@@ -55,11 +72,19 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
 
   useEffect(() => () => runner.current?.dispose(), []);
 
+  // guarda el resultado terminado para mostrarlo al volver a esta pregunta
+  const finishedRun = run && run.status !== 'running' && run.status !== 'input' && run.status !== 'paused' ? run : null;
+  useEffect(() => {
+    if (readOnly || resultCode === null || (!tests && !finishedRun)) return;
+    lastResults.set(q.id, { code: resultCode, tests, run: finishedRun });
+  }, [q.id, readOnly, resultCode, tests, finishedRun]);
+
   const running = run?.status === 'running' || run?.status === 'input' || run?.status === 'paused';
 
   const execute = () => {
     runner.current?.dispose();
     setTests(null);
+    setResultCode(value);
     const r = new Runner({
       code: value,
       profile,
@@ -106,12 +131,14 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
     setTimeout(() => {
       const res = runTests(value, q.tests ?? [], q.match ?? 'flexible', profile);
       setTests(res);
+      setResultCode(value);
       onBusy?.(null);
       onTest?.(`${res.filter((x) => x.passed).length}/${res.length} casos de ejemplo correctos`);
     }, 30);
   };
 
   const output = (run?.output ?? []).filter((l) => l.kind !== 'canvas');
+  const stale = !running && resultCode !== null && resultCode !== value && (!!tests || !!run);
   const req = run?.status === 'input' ? run.inputRequest : null;
 
   return (
@@ -179,6 +206,12 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
           {settings.allowRun && q.tests?.length ? <Button label="Probar con los ejemplos" icon="flask-outline" onPress={test} disabled={running} /> : null}
           {q.starter !== undefined && value !== q.starter ? <Button label="Código inicial" icon="refresh" onPress={() => onChange(q.starter ?? '')} disabled={running} /> : null}
         </View>
+      ) : null}
+
+      {stale ? (
+        <Text style={{ color: t.warning, fontSize: 12, marginTop: 8 }}>
+          <Ionicons name="information-circle-outline" size={13} /> Cambiaste el código después de este resultado: vuelve a {tests ? 'probar' : 'ejecutar'} para ver el resultado actual.
+        </Text>
       ) : null}
 
       {tests ? (
