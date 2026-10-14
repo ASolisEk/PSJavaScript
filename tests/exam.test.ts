@@ -8,7 +8,7 @@ import { ExamHost } from '../src/core/exam/host';
 import { ExamClient } from '../src/core/exam/client';
 import type { HostMsg } from '../src/core/exam/protocol';
 import { normalizeRoomCode, roomCode, seededRandom, isValidRoomCode } from '../src/core/exam/random';
-import { createRoom, RoomState } from '../src/core/exam/room';
+import { compactRoom, createRoom, RoomState } from '../src/core/exam/room';
 import { summarizeRoom, summaryCsv } from '../src/core/exam/summary';
 import { MemoryClient, MemoryHost, MemoryNetwork } from '../src/core/exam/transport/memory';
 import { normalizeRelayUrl, RelayClient, RelayHost } from '../src/core/exam/transport/relay';
@@ -372,6 +372,88 @@ test('calificación con ajustes y vista del alumno', () => {
   assert.equal(adj.score, 1);
   assert.ok(adj.questions.find((q) => q.questionId === q0)!.manual);
   assert.deepEqual(studentView(r, 'none'), { visibility: 'none' });
+});
+
+test('sala: cerrar el ingreso solo deja reconectarse a quienes ya entraron', async () => {
+  const net = new MemoryNetwork();
+  const host = new ExamHost({ transport: new MemoryHost(net), state: createRoom('LOCK22', sampleExam(), { kind: 'memory' }), tickMs: 0 });
+  await host.open();
+  const la: HostMsg[] = [];
+  const a = student(net, 'LOCK22', 'Ana', la);
+  await a.c.connect();
+  host.setLocked(true);
+  assert.equal(host.state.locked, true);
+  const lb: HostMsg[] = [];
+  const b = student(net, 'LOCK22', 'Beto', lb);
+  await b.c.connect();
+  const rej = lb.find((m) => m.t === 'rejected') as Extract<HostMsg, { t: 'rejected' }>;
+  assert.ok(rej && /no acepta alumnos nuevos/.test(rej.reason));
+  assert.equal(host.state.students['id-Beto'], undefined);
+  // Ana se cae y vuelve: sí puede
+  a.transports[0].drop();
+  la.length = 0;
+  await a.c.connect();
+  assert.ok(la.some((m) => m.t === 'welcome'));
+  host.setLocked(false);
+  await b.c.connect();
+  assert.ok(host.state.students['id-Beto']);
+  host.dispose();
+});
+
+test('sala: el maestro reabre un examen entregado por error', async () => {
+  const net = new MemoryNetwork();
+  let clock = 10_000;
+  const host = new ExamHost({ transport: new MemoryHost(net), state: createRoom('OPEN22', sampleExam(), { kind: 'memory' }, clock), now: () => clock, tickMs: 0 });
+  await host.open();
+  host.start();
+  const log: HostMsg[] = [];
+  const a = student(net, 'OPEN22', 'Ana', log);
+  await a.c.connect();
+  a.c.send({ t: 'begin' });
+  const paper = (log.find((m) => m.t === 'paper') as Extract<HostMsg, { t: 'paper' }>).paper;
+  const tf = paper.questions.find((q) => q.type === 'truefalse')!.id;
+  a.c.send({ t: 'progress', current: 0, activity: 'answering', focused: true, answers: { [tf]: true } });
+  a.c.send({ t: 'submit', answers: { [tf]: true }, reason: 'manual' });
+  assert.ok(host.state.students['id-Ana'].submittedAt);
+  log.length = 0;
+  clock += 60_000;
+  host.reopen('id-Ana', 10);
+  const st = host.state.students['id-Ana'];
+  assert.equal(st.submittedAt, null);
+  assert.equal(st.result, null);
+  assert.equal(st.deadline, clock + 10 * 60_000);
+  const w = log.find((m) => m.t === 'welcome') as Extract<HostMsg, { t: 'welcome' }>;
+  assert.ok(w && w.started && !w.submitted);
+  const again = log.find((m) => m.t === 'paper') as Extract<HostMsg, { t: 'paper' }>;
+  assert.equal(again.answers[tf], true);
+  // vuelve a enviar y obtiene calificación nueva
+  a.c.send({ t: 'submit', answers: { [tf]: true }, reason: 'manual' });
+  assert.ok(host.state.students['id-Ana'].result);
+  assert.ok(st.events.some((e) => e.kind === 'teacher' && /reabrió/.test(e.text)));
+  // con la sala cerrada ya no se puede reabrir
+  await host.close(0);
+  host.reopen('id-Ana');
+  assert.ok(host.state.students['id-Ana'].submittedAt);
+  host.dispose();
+});
+
+test('historial compacto: sin datos de conexión y con bitácora recortada', () => {
+  const room = createRoom('HIST22', sampleExam(), { kind: 'memory' });
+  room.students.x = {
+    id: 'x', token: 'secreto', name: 'Ana', group: '', peer: 'p1', connected: true, lastSeen: 0, joinedAt: 0, startedAt: 1, deadline: null,
+    submittedAt: 2, submitReason: 'manual', key: null, answers: { q: 'a' }, current: 0, activity: 'reading', activitySince: 0, focused: true,
+    focusLost: 3, awayMs: 0, pasteBlocked: 0, runs: 0, tests: 0, events: Array.from({ length: 200 }, (_, i) => ({ at: i, kind: 'run' as const, text: `e${i}` })), result: null, overrides: {},
+  };
+  const c = compactRoom(room, 40);
+  const st = c.students.x;
+  assert.equal(st.token, '');
+  assert.equal(st.peer, null);
+  assert.equal(st.connected, false);
+  assert.equal(st.events.length, 40);
+  assert.equal(st.events[39].text, 'e199');
+  assert.deepEqual(st.answers, { q: 'a' });
+  assert.equal(st.focusLost, 3);
+  assert.equal(room.students.x.events.length, 200);
 });
 
 // ───────────────────────────── servidor del aula ─────────────────────────────

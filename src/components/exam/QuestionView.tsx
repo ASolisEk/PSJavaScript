@@ -7,6 +7,7 @@ import type { AnswerValue, PaperQuestion, PaperSettings } from '../../core/exam/
 import { MONO, useTheme } from '../../ui/theme';
 import CodeAnswer from './CodeAnswer';
 import { CodeBlock, IconName, Pill, TextField } from './kit';
+import RichText from './RichText';
 
 interface Props {
   q: PaperQuestion;
@@ -20,12 +21,15 @@ interface Props {
   onRun?(detail: string): void;
   onTest?(detail: string): void;
   onBusy?(kind: 'running' | 'testing' | null): void;
+  /** Tamaño de letra base (14 = normal). */
+  fontSize?: number;
 }
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-export default function QuestionView({ q, index, total, value, onChange, settings, flagged, onToggleFlag, onRun, onTest, onBusy }: Props) {
+export default function QuestionView({ q, index, total, value, onChange, settings, flagged, onToggleFlag, onRun, onTest, onBusy, fontSize = 14 }: Props) {
   const t = useTheme();
+  const k = fontSize / 14;
   const info = questionTypeInfo(q.type);
   return (
     <View>
@@ -35,6 +39,7 @@ export default function QuestionView({ q, index, total, value, onChange, setting
         </Text>
         <Pill text={`${q.points} ${q.points === 1 ? 'punto' : 'puntos'}`} color={t.accent} icon="star-outline" />
         <Pill text={info.label} color={t.primary} icon={info.icon as IconName} />
+        {q.topic ? <Pill text={q.topic} icon="pricetag-outline" /> : null}
         <View style={{ flex: 1 }} />
         {onToggleFlag ? (
           <Pressable onPress={onToggleFlag} style={[styles.flag, { borderColor: flagged ? t.warning : t.border, backgroundColor: flagged ? t.warning + '20' : 'transparent' }]} accessibilityLabel="Marcar para revisar">
@@ -44,19 +49,20 @@ export default function QuestionView({ q, index, total, value, onChange, setting
         ) : null}
       </View>
 
-      <Text style={{ color: t.text, fontSize: 17, lineHeight: 25, fontWeight: '600', marginBottom: 8 }} selectable={false}>
-        {q.prompt}
-      </Text>
+      <View style={{ marginBottom: 8 }}>
+        <RichText text={q.prompt} style={{ color: t.text, fontSize: Math.round(17 * k), lineHeight: Math.round(25 * k), fontWeight: '600' }} />
+      </View>
 
       {q.code && q.type !== 'code' ? <CodeBlock code={q.code} /> : null}
 
-      <AnswerInput q={q} value={value} onChange={onChange} settings={settings} onRun={onRun} onTest={onTest} onBusy={onBusy} />
+      <AnswerInput q={q} value={value} onChange={onChange} settings={settings} onRun={onRun} onTest={onTest} onBusy={onBusy} fontSize={fontSize} />
     </View>
   );
 }
 
-function AnswerInput({ q, value, onChange, settings, onRun, onTest, onBusy }: Omit<Props, 'index' | 'total'>) {
+function AnswerInput({ q, value, onChange, settings, onRun, onTest, onBusy, fontSize = 14 }: Omit<Props, 'index' | 'total'>) {
   const t = useTheme();
+  const k = fontSize / 14;
   switch (q.type) {
     case 'single':
     case 'multiple': {
@@ -84,7 +90,9 @@ function AnswerInput({ q, value, onChange, settings, onRun, onTest, onBusy }: Om
                 <View style={[styles.letter, { backgroundColor: on ? t.primary : t.surfaceAlt, borderRadius: multi ? 6 : 14 }]}>
                   {on ? <Ionicons name="checkmark" size={16} color="#fff" /> : <Text style={{ color: t.textMuted, fontWeight: '800', fontSize: 13 }}>{LETTERS[i]}</Text>}
                 </View>
-                <Text style={{ color: t.text, fontSize: 15, flex: 1, lineHeight: 21 }}>{o.text}</Text>
+                <View style={{ flex: 1 }}>
+                  <RichText text={o.text} style={{ color: t.text, fontSize: Math.round(15 * k), lineHeight: Math.round(21 * k) }} />
+                </View>
               </Pressable>
             );
           })}
@@ -131,14 +139,14 @@ function AnswerInput({ q, value, onChange, settings, onRun, onTest, onBusy }: Om
         </View>
       );
     case 'code':
-      return <CodeAnswer key={q.id} q={q} value={typeof value === 'string' ? value : q.starter ?? ''} onChange={onChange} settings={settings} onRun={onRun} onTest={onTest} onBusy={onBusy} />;
+      return <CodeAnswer key={q.id} q={q} value={typeof value === 'string' ? value : q.starter ?? ''} onChange={onChange} settings={settings} onRun={onRun} onTest={onTest} onBusy={onBusy} fontSize={fontSize} />;
     case 'order':
-      return <OrderAnswer q={q} value={value} onChange={onChange} />;
+      return <OrderAnswer q={q} value={value} onChange={onChange} fontSize={fontSize} />;
   }
   return null;
 }
 
-function OrderAnswer({ q, value, onChange }: { q: PaperQuestion; value: AnswerValue | undefined; onChange(v: AnswerValue): void }) {
+function OrderAnswer({ q, value, onChange, fontSize }: { q: PaperQuestion; value: AnswerValue | undefined; onChange(v: AnswerValue): void; fontSize: number }) {
   const t = useTheme();
   const lines = q.lines ?? [];
   const byId = new Map(lines.map((l) => [l.id, l]));
@@ -170,7 +178,7 @@ function OrderAnswer({ q, value, onChange }: { q: PaperQuestion; value: AnswerVa
                 }
               }}
             >
-              <Text style={{ color: t.text, fontFamily: MONO, fontSize: 14 }}>{l.text.replace(/^\s+/, (m) => ' '.repeat(m.length))}</Text>
+              <Text style={{ color: t.text, fontFamily: MONO, fontSize }}>{l.text.replace(/^\s+/, (m) => ' '.repeat(m.length))}</Text>
             </Pressable>
             <Pressable onPress={() => move(i, i - 1)} disabled={i === 0} hitSlop={6} style={styles.arrow} accessibilityLabel="Subir línea">
               <Ionicons name="arrow-up" size={18} color={i === 0 ? t.border : t.text} />

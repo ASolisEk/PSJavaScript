@@ -2,6 +2,7 @@
  * Genera el examen de cada alumno: elige y mezcla preguntas y opciones con una
  * semilla propia y quita todo lo que revelaría las respuestas.
  */
+import { usesTopicPicks } from './config';
 import { hashString, seededRandom, shuffled } from './random';
 import type { ExamConfig, Paper, PaperKey, PaperQuestion, Question } from './types';
 
@@ -11,7 +12,7 @@ function lineId(seed: string, qid: string, index: number): string {
 }
 
 function sanitize(q: Question, seed: string, shuffleOptions: boolean, rand: () => number, key: PaperKey): PaperQuestion {
-  const base: PaperQuestion = { id: q.id, type: q.type, prompt: q.prompt, points: q.points, ...(q.code ? { code: q.code } : {}) };
+  const base: PaperQuestion = { id: q.id, type: q.type, prompt: q.prompt, points: q.points, ...(q.code ? { code: q.code } : {}), ...(q.topic ? { topic: q.topic } : {}) };
   switch (q.type) {
     case 'single':
     case 'multiple': {
@@ -29,7 +30,7 @@ function sanitize(q: Question, seed: string, shuffleOptions: boolean, rand: () =
       return {
         ...base,
         starter: q.starter,
-        tests: visible.map((t) => ({ id: t.id, name: t.name, inputs: t.inputs.slice(), expected: t.expected })),
+        tests: visible.map((t) => ({ id: t.id, name: t.name, inputs: t.inputs.slice(), expected: t.expected, ...(t.call ? { call: t.call } : {}) })),
         hiddenTests: q.tests.length - visible.length,
         match: q.match,
         rules: q.rules.filter((r) => r.pattern.trim()).map((r) => ({ kind: r.kind, pattern: r.pattern, message: r.message })),
@@ -51,12 +52,20 @@ function sanitize(q: Question, seed: string, shuffleOptions: boolean, rand: () =
 export function buildPaper(config: ExamConfig, seed: string): { paper: Paper; key: PaperKey } {
   const rand = seededRandom(`${config.id}|${seed}`);
   let qs = config.questions.slice();
-  const pick = config.pickCount > 0 ? Math.min(config.pickCount, qs.length) : qs.length;
-  if (pick < qs.length) {
-    // elige al azar pero conserva el orden original si no se mezclan
-    const chosen = new Set(shuffled(qs, rand).slice(0, pick).map((q) => q.id));
-    qs = qs.filter((q) => chosen.has(q.id));
+  let chosen: Set<string> | null = null;
+  if (usesTopicPicks(config)) {
+    // n preguntas al azar de cada tema
+    chosen = new Set();
+    for (const [topic, n] of Object.entries(config.topicPicks)) {
+      if (!(n > 0)) continue;
+      for (const q of shuffled(qs.filter((x) => (x.topic ?? '') === topic), rand).slice(0, n)) chosen.add(q.id);
+    }
+  } else {
+    const pick = config.pickCount > 0 ? Math.min(config.pickCount, qs.length) : qs.length;
+    if (pick < qs.length) chosen = new Set(shuffled(qs, rand).slice(0, pick).map((q) => q.id));
   }
+  // conserva el orden original si no se mezclan
+  if (chosen) qs = qs.filter((q) => chosen!.has(q.id));
   if (config.shuffleQuestions) qs = shuffled(qs, rand);
   const key: PaperKey = { seed, questionIds: qs.map((q) => q.id), lineIds: {} };
   const questions = qs.map((q) => sanitize(q, seed, config.shuffleOptions, rand, key));

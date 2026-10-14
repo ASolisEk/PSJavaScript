@@ -52,7 +52,27 @@ export default function Home() {
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', h);
-    return () => window.removeEventListener('beforeunload', h);
+    // evita que la pantalla se apague o el equipo se suspenda (la sala dejaría de recibir exámenes)
+    let lock: any = null;
+    let active = true;
+    const acquire = () => {
+      const wl = (navigator as any).wakeLock;
+      if (!wl || document.visibilityState !== 'visible') return;
+      wl.request('screen')
+        .then((l: any) => {
+          if (active) lock = l;
+          else l.release?.();
+        })
+        .catch(() => {});
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => {
+      active = false;
+      window.removeEventListener('beforeunload', h);
+      document.removeEventListener('visibilitychange', acquire);
+      lock?.release?.().catch?.(() => {});
+    };
   }, [roomLive]);
 
   return (

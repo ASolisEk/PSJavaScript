@@ -1,4 +1,4 @@
-/** Transporte en memoria (pruebas automáticas). */
+/** Transporte en memoria (pruebas automáticas y práctica del alumno en su dispositivo). */
 import { ClientTransport, HostTransport, TransportError } from './types';
 
 export class MemoryNetwork {
@@ -72,3 +72,6 @@ export class MemoryClient implements ClientTransport {
     this.onClose?.();
   }
 }
+
+/** Red de la práctica individual: anfitrión y alumno en la misma aplicación. */
+export const PRACTICE_NETWORK = new MemoryNetwork();

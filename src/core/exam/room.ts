@@ -65,6 +65,8 @@ export interface RoomState {
   closedAt: number | null;
   students: Record<string, StudentRecord>;
   notices: { at: number; text: string }[];
+  /** Ya no se aceptan alumnos nuevos (los que están pueden reconectarse). */
+  locked?: boolean;
 }
 
 export type StudentPhase = 'lobby' | 'ready' | 'working' | 'submitted';
@@ -102,3 +104,19 @@ export const ACTIVITY_LABEL: Record<Activity, string> = {
   idle: 'Sin actividad',
   away: 'Fuera de la ventana del examen',
 };
+
+/**
+ * Versión ligera de una sala para el historial: sin datos de conexión, con
+ * solo las preguntas que se usaron y los eventos más recientes de cada alumno (la bitácora completa ocupa
+ * la mayor parte del espacio y el almacenamiento del navegador es limitado).
+ */
+export function compactRoom(room: RoomState, maxEvents = 40): RoomState {
+  const students: Record<string, StudentRecord> = {};
+  for (const [id, s] of Object.entries(room.students)) {
+    students[id] = { ...s, token: '', peer: null, connected: false, events: s.events.slice(-maxEvents) };
+  }
+  // de un banco grande (p. ej. el simulacro de certificación) solo se guardan las preguntas que le tocaron a alguien
+  const used = new Set(Object.values(room.students).flatMap((s) => s.key?.questionIds ?? []));
+  const exam = used.size && used.size < room.exam.questions.length ? { ...room.exam, questions: room.exam.questions.filter((q) => used.has(q.id)) } : room.exam;
+  return { ...room, exam, students };
+}

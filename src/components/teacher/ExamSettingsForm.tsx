@@ -1,7 +1,7 @@
 /** Ajustes generales del examen (modo Maestro). */
 import React from 'react';
-import { Text, View } from 'react-native';
-import { questionsPerStudent, RESULTS_VISIBILITY, totalPoints } from '../../core/exam/config';
+import { StyleSheet, Text, View } from 'react-native';
+import { examTopics, questionsPerStudent, RESULTS_VISIBILITY, totalPoints, usesTopicPicks } from '../../core/exam/config';
 import { ALWAYS_LOCKED } from '../../core/exam/protocol';
 import type { ExamConfig } from '../../core/exam/types';
 import { PROFILES } from '../../core/profiles';
@@ -15,6 +15,9 @@ export default function ExamSettingsForm({ exam, onChange }: { exam: ExamConfig;
   const up = (p: Partial<ExamConfig>) => onChange({ ...exam, ...p });
   const n = exam.questions.length;
   const per = questionsPerStudent(exam);
+  const topics = examTopics(exam);
+  const mode: 'all' | 'pick' | 'topic' = usesTopicPicks(exam) ? 'topic' : exam.pickCount ? 'pick' : 'all';
+  const untagged = exam.questions.filter((q) => !q.topic?.trim()).length;
   return (
     <View>
       <Card>
@@ -38,18 +41,38 @@ export default function ExamSettingsForm({ exam, onChange }: { exam: ExamConfig;
             <NumberStepper value={exam.durationMin} onChange={(durationMin) => up({ durationMin: Math.round(durationMin) })} min={0} max={600} step={5} suffix="minutos (personalizado)" />
           </View>
         </Field>
-        <Field label="Preguntas por alumno" hint={exam.pickCount ? `Cada alumno recibe ${per} preguntas elegidas al azar de un banco de ${n}.` : `Todos reciben las ${n} preguntas.`}>
+        <Field label="Preguntas por alumno" hint={mode === 'topic' ? `Cada alumno recibe ${per} preguntas: las indicadas de cada tema, elegidas al azar.` : exam.pickCount ? `Cada alumno recibe ${per} preguntas elegidas al azar de un banco de ${n}.` : `Todos reciben las ${n} preguntas.`}>
           <Segmented
             options={[
               { id: 'all', label: 'Todas' },
               { id: 'pick', label: 'Elegir al azar del banco' },
+              ...(topics.length ? [{ id: 'topic' as const, label: 'Elegir por tema' }] : []),
             ]}
-            value={exam.pickCount ? 'pick' : 'all'}
-            onChange={(v) => up({ pickCount: v === 'all' ? 0 : Math.max(1, Math.min(n || 1, Math.ceil(n * 0.7) || 1)) })}
+            value={mode}
+            onChange={(v) =>
+              up(
+                v === 'topic'
+                  ? { pickCount: 0, topicPicks: Object.fromEntries(topics.map((x) => [x.topic, exam.topicPicks[x.topic] || 1])) }
+                  : { topicPicks: {}, pickCount: v === 'all' ? 0 : Math.max(1, Math.min(n || 1, Math.ceil(n * 0.7) || 1)) },
+              )
+            }
           />
-          {exam.pickCount ? (
+          {mode === 'pick' ? (
             <View style={{ marginTop: 8 }}>
               <NumberStepper value={exam.pickCount} onChange={(pickCount) => up({ pickCount: Math.round(pickCount) })} min={1} max={Math.max(1, n)} suffix={`de ${n} preguntas`} />
+            </View>
+          ) : null}
+          {mode === 'topic' ? (
+            <View style={{ marginTop: 10 }}>
+              {topics.map((x) => (
+                <View key={x.topic} style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingVertical: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }}>
+                  <Text style={{ color: t.text, fontSize: 13, flex: 1, minWidth: 160 }} numberOfLines={1}>
+                    {x.topic}
+                  </Text>
+                  <NumberStepper value={exam.topicPicks[x.topic] ?? 0} onChange={(v) => up({ topicPicks: { ...exam.topicPicks, [x.topic]: Math.max(0, Math.round(v)) } })} min={0} max={x.count} suffix={`de ${x.count}`} />
+                </View>
+              ))}
+              {untagged ? <Text style={{ color: t.warning, fontSize: 12, marginTop: 6 }}>{untagged} pregunta(s) sin tema no se usarán. Asígnales un tema al editarlas.</Text> : null}
             </View>
           ) : null}
         </Field>

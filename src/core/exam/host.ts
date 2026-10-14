@@ -66,6 +66,9 @@ export class ExamHost {
     if (tick > 0) this.timer = setInterval(() => this.tick(), tick);
   }
 
+  /** Tema de una pregunta (para el resultado por tema). */
+  private topicOf = (questionId: string) => this.state.exam.questions.find((q) => q.id === questionId)?.topic;
+
   dispose() {
     this.disposed = true;
     if (this.timer) clearInterval(this.timer);
@@ -144,7 +147,32 @@ export class ExamHost {
     else overrides[questionId] = points;
     const result = s.submittedAt ? gradePaper(this.state.exam, s.key, s.answers, overrides) : s.result;
     this.patch(studentId, { overrides, result });
-    if (result && s.submittedAt) this.sendTo(studentId, { t: 'result', result: studentView(result, this.state.exam.showResults), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
+    if (result && s.submittedAt) this.sendTo(studentId, { t: 'result', result: studentView(result, this.state.exam.showResults, this.topicOf), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
+  }
+
+  /** Cierra o abre el ingreso de alumnos nuevos. */
+  setLocked(locked: boolean) {
+    if (!!this.state.locked === locked) return;
+    this.set({ ...this.state, locked });
+  }
+
+  /**
+   * Reabre el examen ya entregado de un alumno (p. ej. lo envió por error):
+   * conserva sus respuestas y, si el examen tiene límite, le da `minutes` minutos.
+   */
+  reopen(studentId: string, minutes = 10) {
+    const s = this.state.students[studentId];
+    if (!s || !s.submittedAt || !s.key || this.state.status === 'closed') return;
+    const now = this.now();
+    const deadline = this.state.exam.durationMin > 0 ? now + minutes * 60_000 : null;
+    this.patch(
+      studentId,
+      { submittedAt: null, submitReason: null, result: null, deadline, activity: 'reading', activitySince: now },
+      { kind: 'teacher', text: `El maestro reabrió su examen${deadline ? ` (+${minutes} min)` : ''}` },
+    );
+    // el alumno vuelve a su examen con sus respuestas
+    this.sendTo(studentId, { t: 'welcome', now, room: this.roomInfo(), started: true, submitted: false });
+    this.sendPaper(studentId);
   }
 
   /** Quita a un alumno de la lista (p. ej. se unió por error). */
@@ -242,6 +270,10 @@ export class ExamHost {
       this.opts.transport.send(peer, { t: 'rejected', reason: 'El examen ya fue cerrado por el maestro.' } satisfies HostMsg);
       return;
     }
+    if (!s && this.state.locked) {
+      this.opts.transport.send(peer, { t: 'rejected', reason: 'La sala ya no acepta alumnos nuevos. Pide a tu maestro que abra el ingreso.' } satisfies HostMsg);
+      return;
+    }
     const name = msg.name.trim().slice(0, 80) || 'Alumno';
     const group = (msg.group ?? '').trim().slice(0, 40);
     if (s?.peer && s.peer !== peer) this.peers.delete(s.peer);
@@ -318,7 +350,7 @@ export class ExamHost {
   private sendResult(id: string) {
     const s = this.state.students[id];
     if (!s?.result || !s.submittedAt) return;
-    this.sendTo(id, { t: 'result', result: studentView(s.result, this.state.exam.showResults), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
+    this.sendTo(id, { t: 'result', result: studentView(s.result, this.state.exam.showResults, this.topicOf), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
   }
 
   private peerLeft(peer: string) {

@@ -28,9 +28,10 @@ interface Props {
   onRun?(detail: string): void;
   onTest?(detail: string): void;
   onBusy?(kind: 'running' | 'testing' | null): void;
+  fontSize?: number;
 }
 
-export default function CodeAnswer({ q, value, onChange, settings, readOnly, onRun, onTest, onBusy }: Props) {
+export default function CodeAnswer({ q, value, onChange, settings, readOnly, onRun, onTest, onBusy, fontSize = 14 }: Props) {
   const t = useTheme();
   const profile = useMemo(() => getProfile(settings.profileId), [settings.profileId]);
   const [diags, setDiags] = useState<Diagnostic[]>([]);
@@ -77,6 +78,26 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
 
   const stop = () => runner.current?.stop();
 
+  // Ctrl+Enter (o ⌘+Enter) ejecuta el programa
+  const executeRef = useRef(execute);
+  useEffect(() => {
+    executeRef.current = execute;
+  });
+  const canRun = settings.allowRun && !readOnly;
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !canRun || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        // en captura: antes de que el editor o un botón enfocado usen la tecla Enter
+        e.preventDefault();
+        e.stopPropagation();
+        executeRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [canRun]);
+
   const test = () => {
     runner.current?.stop();
     setRun(null);
@@ -108,14 +129,24 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
           <Text style={{ color: t.text, fontWeight: '700', fontSize: 13, marginBottom: 6 }}>
             <Ionicons name="flask-outline" size={13} /> Ejemplos{q.hiddenTests ? ` (además se usarán ${q.hiddenTests} casos ocultos al calificar)` : ''}
           </Text>
-          {q.tests.map((x, i) => (
-            <View key={x.id} style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 }}>
-              <Text style={{ color: t.textMuted, fontSize: 12, width: '100%' }}>{x.name || `Ejemplo ${i + 1}`}</Text>
-              <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO, marginRight: 14 }}>Datos: {x.inputs.length ? x.inputs.join(', ') : '(ninguno)'}</Text>
-              <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO }}>Salida: {x.expected.split('\n').join(' ⏎ ') || '(vacía)'}</Text>
-            </View>
-          ))}
-          <Text style={{ color: t.textMuted, fontSize: 11 }}>Comparación: {MATCH_LABEL[q.match ?? 'flexible']}.</Text>
+          {q.tests.map((x, i) =>
+            x.call ? (
+              <View key={x.id} style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 }}>
+                <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO }}>
+                  {x.call} <Text style={{ color: t.textMuted }}>debe devolver</Text> {x.expected}
+                </Text>
+              </View>
+            ) : (
+              <View key={x.id} style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 }}>
+                <Text style={{ color: t.textMuted, fontSize: 12, width: '100%' }}>{x.name || `Ejemplo ${i + 1}`}</Text>
+                <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO, marginRight: 14 }}>Datos: {x.inputs.length ? x.inputs.join(', ') : '(ninguno)'}</Text>
+                <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO }}>Salida: {x.expected.split('\n').join(' ⏎ ') || '(vacía)'}</Text>
+              </View>
+            ),
+          )}
+          <Text style={{ color: t.textMuted, fontSize: 11 }}>
+            {q.tests.every((x) => x.call) ? 'Cada prueba llama a tu función después de tu código y compara lo que devuelve (en JSON; los textos van entre comillas).' : `Comparación: ${MATCH_LABEL[q.match ?? 'flexible']}.`}
+          </Text>
         </View>
       ) : null}
 
@@ -128,7 +159,7 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
           execLine={null}
           errorLine={run?.status === 'error' ? run.error?.line ?? null : null}
           diagnostics={settings.showDiagnostics ? diags : []}
-          fontSize={14}
+          fontSize={fontSize}
           showSymbolBar={Platform.OS !== 'web'}
           assist={settings.allowAssist}
           blockPaste={settings.blockPaste}
@@ -142,7 +173,7 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
             running ? (
               <Button label="Detener" icon="stop" kind="danger" onPress={stop} />
             ) : (
-              <Button label="Ejecutar" icon="play" kind="primary" onPress={execute} />
+              <Button label={Platform.OS === 'web' ? 'Ejecutar (Ctrl+Enter)' : 'Ejecutar'} icon="play" kind="primary" onPress={execute} />
             )
           ) : null}
           {settings.allowRun && q.tests?.length ? <Button label="Probar con los ejemplos" icon="flask-outline" onPress={test} disabled={running} /> : null}
@@ -159,7 +190,7 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
             <View key={x.id} style={[styles.testRow, { borderColor: x.passed ? t.success + '66' : t.danger + '66', backgroundColor: (x.passed ? t.success : t.danger) + '10' }]}>
               <Ionicons name={x.passed ? 'checkmark-circle' : 'close-circle'} size={18} color={x.passed ? t.success : t.danger} />
               <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={{ color: t.text, fontWeight: '600', fontSize: 13 }}>{x.name}</Text>
+                <Text style={{ color: t.text, fontWeight: '600', fontSize: 13, fontFamily: x.call ? MONO : undefined }}>{x.name}</Text>
                 {!x.passed ? (
                   <>
                     <Text style={{ color: t.textMuted, fontSize: 12, fontFamily: MONO }}>Esperado: {x.expected?.split('\n').join(' ⏎ ') || '(vacío)'}</Text>

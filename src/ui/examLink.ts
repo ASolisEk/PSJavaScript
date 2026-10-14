@@ -64,3 +64,39 @@ export function rememberedMode(): string | null {
     return null;
   }
 }
+
+const STUDENT_KEY = 'psjs.student.lastName';
+
+/**
+ * Nombre y grupo del alumno solo para esta pestaña (sobrevive a una recarga).
+ * No se guarda de forma permanente: en computadoras compartidas el siguiente
+ * alumno no debe ver el nombre del anterior.
+ */
+export function rememberStudent(v: { name: string; group: string }) {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(STUDENT_KEY, JSON.stringify(v));
+  } catch {
+    /* sin almacenamiento */
+  }
+}
+
+export function rememberedStudent(): { name: string; group: string } {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return { name: '', group: '' };
+  try {
+    // versiones anteriores lo guardaban de forma permanente
+    window.localStorage.removeItem(STUDENT_KEY);
+    return JSON.parse(window.sessionStorage.getItem(STUDENT_KEY) ?? 'null') ?? { name: '', group: '' };
+  } catch {
+    return { name: '', group: '' };
+  }
+}
+
+export function forgetStudent() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(STUDENT_KEY);
+  } catch {
+    /* sin almacenamiento */
+  }
+}

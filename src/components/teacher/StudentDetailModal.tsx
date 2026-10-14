@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { questionTypeInfo } from '../../core/exam/config';
 import { ACTIVITY_LABEL, answeredCount, RoomState, StudentEventKind, StudentRecord, studentPhase } from '../../core/exam/room';
+import { plainText } from '../../core/exam/richText';
 import type { AnswerValue, Question, QuestionResult } from '../../core/exam/types';
 import { useTeacher } from '../../store/teacher';
 import { confirmDialog } from '../../ui/platform';
@@ -11,6 +12,7 @@ import { MONO, useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
 import { Button, Chip } from '../ui';
 import { Card, CodeBlock, formatDuration, formatSince, IconName, NumberStepper, Pill } from '../exam/kit';
+import RichText from '../exam/RichText';
 
 export const PHASE_INFO = {
   lobby: { label: 'En espera', icon: 'hourglass-outline' as IconName, color: 'info' as const },
@@ -122,6 +124,16 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
                   }}
                 />
               ) : null}
+              {s.submittedAt && room.status !== 'closed' ? (
+                <Button
+                  label={room.exam.durationMin ? 'Reabrir examen (+10 min)' : 'Reabrir examen'}
+                  icon="lock-open-outline"
+                  onPress={async () => {
+                    if (await confirmDialog('¿Reabrir el examen?', `${s.name} podrá seguir respondiendo con sus respuestas actuales y deberá volver a enviarlo. Su calificación actual se descarta.`, 'Reabrir'))
+                      st.reopenStudent(s.id, 10);
+                  }}
+                />
+              ) : null}
               <Button
                 label="Quitar de la sala"
                 icon="person-remove-outline"
@@ -200,7 +212,7 @@ function AnswerCard({ q, index, s, r, current }: { q: Question; index: number; s
         )}
       </View>
       <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 6 }} numberOfLines={3}>
-        {q.prompt}
+        {plainText(q.prompt)}
       </Text>
       {answer === null ? (
         <Text style={{ color: t.textMuted, fontStyle: 'italic' }}>Sin responder</Text>
@@ -211,10 +223,10 @@ function AnswerCard({ q, index, s, r, current }: { q: Question; index: number; s
       ) : (
         answer
       )}
-      {right && r && r.status !== 'correct' ? <Text style={{ color: t.success, fontSize: 12, marginTop: 4 }}>Correcta: {right}</Text> : null}
+      {right && r && r.status !== 'correct' ? <Text style={{ color: t.success, fontSize: 12, marginTop: 4 }}>Correcta: {plainText(right)}</Text> : null}
       {r ? (
         <View style={{ marginTop: 8 }}>
-          <Text style={{ color: t.text, fontSize: 13 }}>{r.feedback}</Text>
+          <RichText text={r.feedback} style={{ color: t.text, fontSize: 13 }} />
           {r.tests?.map((x) => (
             <Text key={x.id} style={{ color: x.passed ? t.success : t.danger, fontSize: 12, marginTop: 2 }}>
               {x.passed ? '✓' : '✗'} {x.name}

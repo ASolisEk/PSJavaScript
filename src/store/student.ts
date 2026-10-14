@@ -9,6 +9,9 @@ import { ClientNetStatus, ExamClient, StudentIdentity } from '../core/exam/clien
 import type { ClientEventKind, HostMsg, RoomInfo, SubmitReason } from '../core/exam/protocol';
 import { randomId } from '../core/exam/random';
 import { createClientTransport, TransportSpec } from '../core/exam/transport';
+import { forgetStudent } from '../ui/examLink';
+import { practiceExam } from '../core/exam/certs/fccJavascript';
+import { resumePractice, startPractice, stopPractice } from './practice';
 import type { Activity, AnswerValue, Answers, Paper, StudentResultView } from '../core/exam/types';
 
 const KEY = 'psjs.student.v1';
@@ -35,6 +38,10 @@ export interface StudentSession {
   notices: { at: number; text: string }[];
   rejectedReason: string | null;
   roomClosed: boolean;
+  /** Tamaño de letra elegido por el alumno para el examen. */
+  fontSize?: number;
+  /** Práctica individual (sin maestro): qué práctica es, para repetirla. */
+  practiceKey?: string;
 }
 
 interface StudentState {
@@ -46,12 +53,16 @@ interface StudentState {
   joinError: string | null;
   /** Último aviso del maestro aún no leído. */
   banner: string | null;
+  /** Hay respuestas cambiadas que aún no se envían al maestro. */
+  pendingSync: boolean;
   clockOffset: number;
 
   hydrate(): Promise<StudentSession | null>;
   /** Reconecta un examen en curso (al abrir la pantalla del alumno). */
   resume(): void;
   join(p: { code: string; name: string; group: string; transport: TransportSpec }): Promise<boolean>;
+  /** Comienza una práctica individual (la sala corre en este dispositivo). */
+  practice(key: string, name: string): Promise<boolean>;
   begin(): void;
   setAnswer(questionId: string, value: AnswerValue): void;
   goTo(index: number): void;
@@ -63,6 +74,7 @@ interface StudentState {
   submit(reason?: SubmitReason): void;
   retry(): void;
   dismissBanner(): void;
+  setFontSize(size: number): void;
   /** Sale del modo examen y borra la sesión. */
   leave(): void;
 }
@@ -99,6 +111,7 @@ export const useStudent = create<StudentState>((set, get) => {
       const answers = dirty;
       dirty = {};
       client.send({ t: 'progress', current: s.current, activity: lastActivity, focused: lastActivity !== 'away', ...(Object.keys(answers).length ? { answers } : {}) });
+      set({ pendingSync: false });
     };
     if (immediate) go();
     else progressTimer = setTimeout(go, 700);
@@ -109,13 +122,18 @@ export const useStudent = create<StudentState>((set, get) => {
     if (!s) return;
     set({ clockOffset: client?.clockOffset ?? 0 });
     switch (m.t) {
-      case 'welcome':
+      case 'welcome': {
+        // el maestro pudo reabrir un examen que este dispositivo tenía como entregado
+        const reopened = !m.submitted && m.started && s.phase === 'submitted';
         patch({
           room: m.room,
           roomClosed: m.room.status === 'closed',
-          phase: m.submitted ? 'submitted' : m.started ? s.phase : m.room.status === 'running' ? 'ready' : 'lobby',
+          phase: m.submitted ? 'submitted' : m.started ? (reopened ? 'exam' : s.phase) : m.room.status === 'running' ? 'ready' : 'lobby',
+          ...(reopened ? { result: null, submittedAt: null, submitReason: null, submitting: false } : {}),
         });
+        if (reopened) set({ banner: 'Tu maestro reabrió tu examen: puedes seguir respondiendo.' });
         break;
+      }
       case 'room':
         patch({
           room: s.room ? { ...s.room, status: m.status } : s.room,
@@ -179,6 +197,7 @@ export const useStudent = create<StudentState>((set, get) => {
     joining: false,
     joinError: null,
     banner: null,
+    pendingSync: false,
     clockOffset: 0,
 
     async hydrate() {
@@ -197,6 +216,17 @@ export const useStudent = create<StudentState>((set, get) => {
     resume() {
       const session = get().session;
       if (client || !hasActiveExam(session)) return;
+      if (session!.transport.kind === 'practice') {
+        // la sala de práctica corre aquí mismo: se vuelve a abrir antes de conectar
+        resumePractice(session!.code)
+          .then(() => connect(session!))
+          .catch((e) => {
+            // sin la sala no hay a quién entregar: se vuelve a la pantalla de inicio con el aviso
+            get().leave();
+            set({ joinError: `${e?.message ?? e} Comienza una práctica nueva.` });
+          });
+        return;
+      }
       // retoma la sesión; si el maestro no está disponible, el cliente reintenta solo
       connect(session!).catch((e) => {
         set({ net: 'offline', netDetail: e?.message ?? String(e) });
@@ -244,6 +274,25 @@ export const useStudent = create<StudentState>((set, get) => {
       return true;
     },
 
+    async practice(key, name) {
+      set({ joining: true, joinError: null });
+      let code: string;
+      try {
+        code = await startPractice(practiceExam(key));
+      } catch (e: any) {
+        set({ joining: false, joinError: e?.message ?? String(e) });
+        return false;
+      }
+      const ok = await get().join({ code, name: name.trim() || 'Alumno', group: '', transport: { kind: 'practice' } });
+      if (!ok) {
+        stopPractice(code);
+        return false;
+      }
+      patch({ practiceKey: key });
+      get().begin();
+      return true;
+    },
+
     begin() {
       client?.send({ t: 'begin' });
     },
@@ -253,6 +302,7 @@ export const useStudent = create<StudentState>((set, get) => {
       if (!s || s.phase !== 'exam') return;
       patch({ answers: { ...s.answers, [questionId]: value } });
       dirty[questionId] = value;
+      set({ pendingSync: true });
       sendProgress();
     },
 
@@ -305,6 +355,10 @@ export const useStudent = create<StudentState>((set, get) => {
       set({ banner: null });
     },
 
+    setFontSize(fontSize) {
+      patch({ fontSize: Math.max(12, Math.min(24, fontSize)) });
+    },
+
     leave() {
       const s = get().session;
       if (s && (s.phase === 'exam' || s.phase === 'ready' || s.phase === 'lobby')) client?.send({ t: 'event', kind: 'leave' });
@@ -315,7 +369,9 @@ export const useStudent = create<StudentState>((set, get) => {
       clearTimeout(progressTimer);
       dirty = {};
       lastActivity = 'reading';
+      if (s?.transport.kind === 'practice') setTimeout(() => stopPractice(s.code), 350);
       set({ session: null, banner: null, joinError: null, net: 'connecting' });
+      forgetStudent();
       persist();
     },
   };
@@ -333,5 +389,8 @@ export function serverNow(): number {
 
 /** ¿Hay un examen en curso que debe retomarse al abrir la aplicación? */
 export function hasActiveExam(s: StudentSession | null): boolean {
-  return !!s && s.phase !== 'rejected' && !(s.phase === 'submitted' && s.result);
+  if (!s || s.phase === 'rejected') return false;
+  if (s.phase === 'submitted' && s.result) return false;
+  // la sala se cerró antes de que comenzara: ya no hay nada que retomar
+  return !(s.roomClosed && !s.startedAt);
 }
