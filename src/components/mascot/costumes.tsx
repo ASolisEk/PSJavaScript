@@ -89,7 +89,7 @@ function Piece({
 }
 
 /** Grupo situado en un punto del sprite y girado como la cabeza. */
-function Anchor({ at, rot = 0, s, children }: { at: Pt; rot?: number; s: number; children: React.ReactNode }) {
+function Anchor({ at, rot = 0, scale = 1, s, children }: { at: Pt; rot?: number; scale?: number; s: number; children: React.ReactNode }) {
   return (
     <View
       style={{
@@ -99,7 +99,7 @@ function Anchor({ at, rot = 0, s, children }: { at: Pt; rot?: number; s: number;
         top: at[1] * s - 1,
         width: 2,
         height: 2,
-        transform: [{ rotate: `${rot}deg` }],
+        transform: [{ rotate: `${rot}deg` }, { scale }],
       }}
     >
       <View style={{ position: 'absolute', left: 1, top: 1 }}>{children}</View>
@@ -715,7 +715,7 @@ function OutfitImpl({ pose, part, s, w, h, active }: { pose: Pose; part: 'back' 
           )}
         </Anchor>
       ) : null}
-      <Anchor at={a.crown} rot={a.rot} s={s}>
+      <Anchor at={a.crown} rot={a.rot} scale={character.hatScale} s={s}>
         {id === 'halloween' ? (
           <Piece box={[-110, -160, 220, 186]} pivot={[0, 0]} s={s} transform={hatWobble(3)}>
             <WitchHat />

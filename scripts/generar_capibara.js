@@ -54,19 +54,19 @@ const stroke = (P, w = LW) => `fill="none" stroke="${P.line}" stroke-width="${w}
 
 /** Silueta de cabeza y cuerpo sentado, mirando a la izquierda. */
 const SILHOUETTE =
-  'M 780 300 C 776 240 800 190 850 160 C 900 128 970 112 1040 112 C 1110 112 1160 130 1195 170 ' +
-  'C 1270 214 1340 300 1380 410 C 1420 520 1434 640 1400 712 C 1376 758 1336 778 1290 778 ' +
-  'L 1000 780 C 970 780 940 776 932 760 C 926 744 932 720 944 700 C 950 640 938 560 940 500 ' +
-  'C 936 470 935 452 928 440 C 890 446 830 440 800 410 C 784 390 780 340 780 300 Z';
+  'M 776 300 C 772 232 806 176 864 150 C 916 126 980 112 1044 114 C 1114 116 1164 136 1196 172 ' +
+  'C 1236 214 1268 262 1300 312 C 1352 390 1426 470 1428 590 C 1430 690 1376 770 1290 778 ' +
+  'L 1000 780 C 970 780 940 776 932 760 C 926 744 932 720 944 700 C 954 650 926 570 936 500 ' +
+  'C 938 474 936 454 928 442 C 884 452 822 444 796 406 C 780 380 776 340 776 300 Z';
 
 /** Hocico café (se recorta con la silueta). */
 const MUZZLE = 'M 862 140 C 925 205 945 290 936 350 C 930 395 920 425 905 445 L 700 470 L 700 100 Z';
 
-const EYE = [1020, 250];
-const EAR_NEAR = [1150, 128];
-const EAR_FAR = [1068, 100];
+const EYE = [1036, 248];
+const EAR_NEAR = [1158, 122];
+const EAR_FAR = [1070, 88];
 
-function ear(P, [x, y], r = 37) {
+function ear(P, [x, y], r = 44) {
   return (
     `<circle cx="${x}" cy="${y}" r="${r}" fill="${P.fur}" stroke="${P.line}" stroke-width="${LW}"/>` +
     `<path d="M ${x - 18} ${y + 14} C ${x - 20} ${y - 10} ${x - 6} ${y - 24} ${x + 16} ${y - 24}" ${stroke(P, LW * 0.8)}/>`
@@ -81,7 +81,7 @@ function foot(P, x0, x1, y0, y1) {
   // contorno: frente redondeado, tres deditos abajo al frente y la planta hasta el talón
   const edge =
     `M ${x0 + 34} ${y0} C ${x0 + 8} ${y0 + 2} ${x0 - 4} ${y1 - 34} ${x0 + 2} ${y1 - 18} ` +
-    `a 10 10 0 0 0 16 13 a 10 10 0 0 0 20 4 a 10 10 0 0 0 20 1 L ${x1 - 14} ${y1} Q ${x1} ${y1} ${x1} ${y1 - 14}`;
+    `a 13 13 0 0 0 20 14 a 13 13 0 0 0 24 5 a 13 13 0 0 0 24 1 L ${x1 - 14} ${y1} Q ${x1} ${y1} ${x1} ${y1 - 14}`;
   // la orilla de arriba es una curva sin contorno que se funde con la pierna
   const top = ` L ${x1} ${y0 + 8} C ${x1 - 30} ${y0 - 6} ${x0 + 60} ${y0 - 6} ${x0 + 34} ${y0} Z`;
   return (
@@ -123,7 +123,7 @@ function eye(P, id, kind, look = 0) {
 
 /** Nariz y boca. mouth: smile | wavy | open */
 function face(P, mouth) {
-  let s = `<path d="M 800 272 C 812 256 838 254 852 268 C 857 274 856 281 850 284" ${stroke(P, 10)}/>`;
+  let s = `<path d="M 798 276 C 810 254 842 252 858 274" ${stroke(P, 10)}/>`;
   if (mouth === 'smile') {
     s += `<path d="M 818 296 L 818 350 C 832 372 862 378 885 366" ${stroke(P, 10)}/>`;
   } else if (mouth === 'wavy') {
@@ -142,46 +142,53 @@ function face(P, mouth) {
 /** Líneas de adentro: quijada, muslo y patas delanteras. */
 function inner(P, { frontLegs = true } = {}) {
   let s = `<path d="M 928 440 C 952 446 985 440 1002 426" ${stroke(P)}/>`;
-  s += `<path d="M 1256 560 C 1214 576 1194 640 1204 690 C 1210 718 1240 732 1300 730" ${stroke(P)}/>`;
+  s += `<path d="M 1276 536 C 1214 556 1180 640 1192 698 C 1200 734 1240 742 1300 736" ${stroke(P)}/>`;
   if (frontLegs) {
-    s += `<path d="M 1036 604 C 1030 652 1028 700 1022 734" ${stroke(P)}/>`;
-    s += `<path d="M 1162 600 C 1152 650 1134 700 1118 734" ${stroke(P)}/>`;
-    s += `<path d="M 966 612 C 976 650 984 678 994 704" ${stroke(P)}/>`;
+    s += `<path d="M 1040 610 C 1034 656 1030 700 1024 732" ${stroke(P)}/>`;
+    s += `<path d="M 1156 604 C 1148 652 1134 700 1120 732" ${stroke(P)}/>`;
   }
   return s;
 }
 
 /**
- * Brazo que sale del cuerpo: se rellena y solo se marcan sus dos orillas (sin
- * punta redonda adentro del cuerpo), como las patas de la ilustración.
+ * Antebrazo doblado: el codo redondo abajo y la mano café arriba (o al frente),
+ * como cuando se apoya la cara en la mano.
  */
-function limbEdges(P, [bx, by], [tx, ty], w) {
+function forearm(P, [ex, ey], [hx, hy], w) {
+  const len = Math.hypot(hx - ex, hy - ey);
+  const nx = ((hy - ey) / len) * (w / 2);
+  const ny = (-(hx - ex) / len) * (w / 2);
+  const d = `M ${hx + nx} ${hy + ny} L ${ex + nx} ${ey + ny} A ${w / 2} ${w / 2} 0 0 0 ${ex - nx} ${ey - ny} L ${hx - nx} ${hy - ny} Z`;
+  return (
+    `<path d="${d}" fill="${P.fur}" stroke="${P.line}" stroke-width="${LW}" stroke-linejoin="round"/>` +
+    `<ellipse cx="${hx}" cy="${hy}" rx="${w * 0.55}" ry="${w * 0.42}" transform="rotate(${(Math.atan2(hy - ey, hx - ex) * 180) / Math.PI + 90} ${hx} ${hy})" fill="${P.dark}" stroke="${P.line}" stroke-width="${LW}"/>`
+  );
+}
+
+/** Pata que baja del cuerpo: se rellena y solo se marcan sus dos orillas. */
+function legEdges(P, [bx, by], [tx, ty], w) {
   const len = Math.hypot(tx - bx, ty - by);
   const nx = ((ty - by) / len) * (w / 2);
   const ny = (-(tx - bx) / len) * (w / 2);
-  const a1 = [bx + nx, by + ny];
-  const a2 = [tx + nx, ty + ny];
-  const b1 = [bx - nx, by - ny];
-  const b2 = [tx - nx, ty - ny];
   return (
-    `<path d="M ${a1} L ${a2} L ${b2} L ${b1} Z" fill="${P.fur}"/>` +
-    `<path d="M ${a1} L ${a2} M ${b1} L ${b2}" ${stroke(P)}/>`
+    `<path d="M ${bx + nx} ${by + ny} L ${tx + nx} ${ty + ny} L ${tx - nx} ${ty - ny} L ${bx - nx} ${by - ny} Z" fill="${P.fur}"/>` +
+    `<path d="M ${bx + nx} ${by + ny} L ${tx + nx} ${ty + ny} M ${bx - nx} ${by - ny} L ${tx - nx} ${ty - ny}" ${stroke(P)}/>`
   );
 }
 
 /** Capibara completo (sin la oreja cercana, que va en su propia capa). */
 function capybara(P, id, { eyes = 'open', look = 0, mouth = 'smile', frontLegs = true, sweat = false } = {}) {
-  let s = ear(P, EAR_FAR, 34);
+  let s = ear(P, EAR_FAR, 40);
   s += `<clipPath id="sil${id}"><path d="${SILHOUETTE}"/></clipPath>`;
   s += `<path d="${SILHOUETTE}" fill="${P.fur}"/>`;
   s += `<g clip-path="url(#sil${id})"><path d="${MUZZLE}" fill="${P.dark}"/></g>`;
   s += `<path d="${SILHOUETTE}" fill="none" stroke="${P.line}" stroke-width="${LW}" stroke-linejoin="round"/>`;
   s += inner(P, { frontLegs });
   // patas: trasera, delantera lejana y delantera cercana
-  s += foot(P, 1168, 1300, 722, 782);
+  s += foot(P, 1150, 1310, 726, 782);
   if (frontLegs) {
-    s += foot(P, 924, 1008, 694, 766);
-    s += foot(P, 1000, 1122, 722, 784);
+    s += foot(P, 924, 1010, 694, 766);
+    s += foot(P, 1000, 1124, 722, 784);
   }
   s += eye(P, id, eyes, look);
   s += face(P, mouth);
@@ -206,17 +213,13 @@ const CONF = { w: 300, h: 300, o: [20, 12] };
 function confused(P, look = 0) {
   let s = capybara(P, 'c' + look, { eyes: 'worried', look, mouth: 'wavy', frontLegs: false, sweat: true });
   // la pata delantera lejana sigue en el suelo; la cercana sube al hocico
-  s += `<path d="M 966 612 C 976 650 984 678 994 704" ${stroke(P)}/>`;
-  s += foot(P, 924, 1008, 694, 766);
-  s += foot(P, 1006, 1104, 724, 782);
-  s += limbEdges(P, [1080, 630], [968, 476], 84);
-  s += `<ellipse cx="960" cy="462" rx="40" ry="34" transform="rotate(-40 960 462)" fill="${P.dark}" stroke="${P.line}" stroke-width="${LW}"/>`;
-  s += `<path d="M 930 450 l -10 -14 M 948 432 l -6 -16 M 970 426 l 0 -16" ${stroke(P, 8)}/>`;
+  s += foot(P, 924, 1010, 694, 766);
+  s += forearm(P, [1036, 648], [966, 478], 84);
   return svg(CONF.w, CONF.h, g(...CONF.o, s));
 }
 
 /** Corriendo: sentado y tecleando feliz con las dos patas. */
-const RUN = { w: 330, h: 300, o: [16, 12], kb: [240, 262, -6] };
+const RUN = { w: 330, h: 300, o: [16, 12], kb: [228, 264, -6] };
 const KEY_COLORS = ['#f6d743', '#4fc3f7', '#ef5350', '#66bb6a', '#ab47bc', '#ffa726'];
 
 function keyboard() {
@@ -249,22 +252,13 @@ function keyCenters() {
   return out.slice(0, 20);
 }
 
-/** Pata estirada hacia el teclado (coordenadas de referencia). */
-function arm(P, from, to) {
-  const [x2, y2] = to;
-  return (
-    limbEdges(P, from, to, 72) +
-    `<ellipse cx="${x2 - 8}" cy="${y2 + 14}" rx="44" ry="28" fill="${P.dark}" stroke="${P.line}" stroke-width="${LW}"/>` +
-    `<path d="M ${x2 - 30} ${y2 + 10} l -4 14 M ${x2 - 10} ${y2 + 4} l -2 16" ${stroke(P, 7)}/>`
-  );
-}
-
 function running(P) {
-  // pata lejana (detrás del cuerpo), cuerpo, teclado y pata cercana encima
-  let s = g(...RUN.o, arm(P, [1000, 560], [880, 650]));
-  s += g(...RUN.o, capybara(P, 'r', { eyes: 'happy', mouth: 'open', frontLegs: false }) + foot(P, 1050, 1150, 724, 782));
+  // cuerpo, la mano lejana sobre el teclado y la cercana encima
+  let s = g(...RUN.o, capybara(P, 'r', { eyes: 'happy', mouth: 'open', frontLegs: false }) + foot(P, 1040, 1150, 724, 782));
   s += keyboard();
-  s += g(...RUN.o, arm(P, [1110, 590], [1010, 690]));
+  s += g(...RUN.o, `<ellipse cx="872" cy="680" rx="44" ry="30" transform="rotate(-8 872 680)" fill="${P.dark}" stroke="${P.line}" stroke-width="${LW}"/>`);
+  // la pata cercana baja del pecho al teclado, dibujada con sus dos orillas como las patas de la ilustración
+  s += g(...RUN.o, legEdges(P, [1010, 560], [972, 676], 78) + `<ellipse cx="968" cy="690" rx="46" ry="30" transform="rotate(-8 968 690)" fill="${P.dark}" stroke="${P.line}" stroke-width="${LW}"/>`);
   return svg(RUN.w, RUN.h, s);
 }
 

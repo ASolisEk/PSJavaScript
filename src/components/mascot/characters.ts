@@ -45,6 +45,8 @@ export interface Character {
   found: string;
   /** Qué asoma cuando se esconde («mi cola»). */
   peekPart: string;
+  /** Escala de sombreros y coronas (1 = tamaño hecho para la cabeza del gato). */
+  hatScale?: number;
 }
 
 const GATO: Character = {
@@ -116,7 +118,7 @@ const GATO: Character = {
 const CAPI_SITTING: Anchors = {
   crown: [178, 33],
   rot: 6,
-  eyes: [[174, 84, 11]],
+  eyes: [[168, 83, 11]],
   nose: [247, 92],
   mouth: [230, 117],
   cheeks: [[190, 122]],
@@ -139,13 +141,14 @@ const CAPIBARA: Character = {
   pettingLabel: 'relajada con las caricias',
   found: '¡Me encontraste! 🥰',
   peekPart: 'mi cabecita',
+  hatScale: 0.85,
   anchors: {
     idle: CAPI_SITTING,
     error: CAPI_SITTING,
     running: {
       crown: [174, 33],
       rot: 6,
-      eyes: [[170, 84, 11]],
+      eyes: [[164, 83, 11]],
       nose: [243, 92],
       mouth: [226, 117],
       cheeks: [[186, 122]],
