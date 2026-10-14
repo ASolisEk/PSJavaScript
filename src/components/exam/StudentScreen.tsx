@@ -11,14 +11,14 @@ import { isAnswered } from '../../core/exam/paper';
 import { isValidRoomCode, normalizeRoomCode } from '../../core/exam/random';
 import { defaultTransport, transportOptions, TransportSpec } from '../../core/exam/transport';
 import { plainText } from '../../core/exam/richText';
-import { practiceOptions } from '../../core/exam/certs/fccJavascript';
+import { CERTIFICATIONS, practiceKey } from '../../core/exam/certs';
 import type { Activity, PaperQuestion, StudentResultView, TopicScore } from '../../core/exam/types';
 import { useApp } from '../../store/app';
 import { idleMs, serverNow, useStudent } from '../../store/student';
 import { clearExamLink, readExamLink, rememberedStudent, rememberStudent } from '../../ui/examLink';
 import { confirmDialog } from '../../ui/platform';
 import { MONO, useTheme } from '../../ui/theme';
-import { Button } from '../ui';
+import { Button, Chip } from '../ui';
 import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, TextField } from './kit';
 import QuestionView from './QuestionView';
 import RichText from './RichText';
@@ -146,16 +146,18 @@ function JoinView() {
   );
 }
 
-/** Práctica individual para la certificación JavaScript de freeCodeCamp (sin maestro ni código de sala). */
+/** Práctica individual para una certificación incluida (sin maestro ni código de sala). */
 function PracticeCard({ name }: { name: string }) {
   const t = useTheme();
   const joining = useStudent((s) => s.joining);
   const [open, setOpen] = useState(false);
-  const { full, topics } = practiceOptions();
+  const [certId, setCertId] = useState(CERTIFICATIONS[0].id);
+  const cert = CERTIFICATIONS.find((c) => c.id === certId) ?? CERTIFICATIONS[0];
+  const { full, topics } = cert.practiceOptions();
   const go = (key: string) => {
     if (joining) return;
     rememberStudent({ name: name.trim(), group: rememberedStudent().group });
-    useStudent.getState().practice(key, name);
+    useStudent.getState().practice(practiceKey(cert.id, key), name);
   };
   return (
     <Card accent={t.accent}>
@@ -163,8 +165,13 @@ function PracticeCard({ name }: { name: string }) {
         <Ionicons name="ribbon-outline" size={22} color={t.accent} />
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', flex: 1 }}>Practicar por mi cuenta</Text>
       </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }} accessibilityRole="tablist">
+        {CERTIFICATIONS.map((c) => (
+          <Chip key={c.id} label={c.short} active={c.id === cert.id} onPress={() => setCertId(c.id)} />
+        ))}
+      </View>
       <Text style={{ color: t.textMuted, fontSize: 13, lineHeight: 19, marginBottom: 10 }}>
-        Prepárate para la certificación «JavaScript» de freeCodeCamp con las preguntas de sus cuestionarios (traducidas al español) y sus laboratorios. No necesitas código de sala; al terminar verás la respuesta correcta de cada pregunta.
+        {cert.studentSummary} No necesitas código de sala; al terminar verás la respuesta correcta de cada pregunta.
       </Text>
       {full.map((o) => (
         <BigChoice key={o.key} icon={o.key === 'simulacro' ? 'timer-outline' : 'barbell-outline'} color={t.accent} title={o.title} description={o.description} onPress={() => go(o.key)} disabled={joining} />
@@ -749,7 +756,8 @@ function ResultView() {
                   {pq ? (
                     review ? (
                       <View style={{ marginBottom: 6 }}>
-                        <RichText text={pq.prompt} style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }} />
+                        {/* en el repaso se muestra también el código de la pregunta */}
+                        <RichText text={pq.code ? `${pq.prompt}\n\n\`\`\`js\n${pq.code}\n\`\`\`` : pq.prompt} style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }} />
                       </View>
                     ) : (
                       <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 4 }} numberOfLines={3}>

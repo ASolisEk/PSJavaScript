@@ -10,7 +10,7 @@ import type { ClientEventKind, HostMsg, RoomInfo, SubmitReason } from '../core/e
 import { randomId } from '../core/exam/random';
 import { createClientTransport, TransportSpec } from '../core/exam/transport';
 import { forgetStudent } from '../ui/examLink';
-import { practiceExam } from '../core/exam/certs/fccJavascript';
+import { practiceExam } from '../core/exam/certs';
 import { resumePractice, startPractice, stopPractice } from './practice';
 import type { Activity, AnswerValue, Answers, Paper, StudentResultView } from '../core/exam/types';
 
