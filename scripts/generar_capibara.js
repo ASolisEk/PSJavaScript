@@ -33,7 +33,8 @@ const PALETTES = {
   // Halloween: pelaje morado y ojos verdes brillantes (como el gato oscuro)
   dark: { line: '#140f1c', fur: '#5a4a7e', dark: '#2f2645', eye: '#9ed12a', tongue: '#c75b84' },
   // Día de Muertos: capibara negro con ojos ámbar
-  black: { line: '#060408', fur: '#2e2834', dark: '#17131b', eye: '#d39a3c', tongue: '#b9576f' },
+  // (un poco aclarado para que se distinga sobre el tema oscuro)
+  black: { line: '#060408', fur: '#4a4156', dark: '#2a2332', eye: '#d39a3c', tongue: '#b9576f' },
 };
 
 // referencia → sprite: se refleja (mira a la derecha) y se escala
@@ -278,7 +279,7 @@ function anchors(pose) {
     eyes: [[...T(EYE), 11]],
     nose: T([828, 270]),
     // bigote, barba y boca cosida: un poco detrás de la boca (de perfil el hocico es angosto)
-    mouth: T([872, 336]),
+    mouth: T([900, 340]),
     cheeks: [T([978, 350])],
     chin: T([870, 430]),
     neck: T([990, 452]),
