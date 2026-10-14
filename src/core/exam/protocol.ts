@@ -8,7 +8,8 @@ export const PROTOCOL_VERSION = 1;
 
 export type RoomStatus = 'lobby' | 'running' | 'closed';
 export type SubmitReason = 'manual' | 'timeout' | 'closed' | 'teacher';
-export type ClientEventKind = 'blur' | 'focus' | 'paste' | 'run' | 'test' | 'leave';
+/** `lockdown`: algo que el examen bloqueado impidió o detectó (detalle en `detail`). */
+export type ClientEventKind = 'blur' | 'focus' | 'paste' | 'run' | 'test' | 'leave' | 'lockdown';
 
 export interface RoomInfo {
   status: RoomStatus;

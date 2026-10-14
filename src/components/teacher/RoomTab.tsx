@@ -169,7 +169,7 @@ function LiveRoom({ room }: { room: RoomState }) {
       working: phases.filter((p) => p === 'working').length,
       submitted: phases.filter((p) => p === 'submitted').length,
       offline: students.filter((s) => !s.connected && !s.submittedAt).length,
-      alerts: students.filter((s) => s.focusLost || s.pasteBlocked).length,
+      alerts: students.filter((s) => s.focusLost || s.pasteBlocked || s.lockdown).length,
       avg: graded.length ? Math.round((graded.reduce((a, s) => a + s.result!.grade, 0) / graded.length) * 10) / 10 : null,
     };
   }, [students, room]);
@@ -187,7 +187,7 @@ function LiveRoom({ room }: { room: RoomState }) {
       const p = studentPhase(s, room);
       if (filter === 'working') return p === 'working';
       if (filter === 'submitted') return p === 'submitted';
-      if (filter === 'alerts') return s.focusLost > 0 || s.pasteBlocked > 0;
+      if (filter === 'alerts') return s.focusLost > 0 || s.pasteBlocked > 0 || !!s.lockdown;
       if (filter === 'offline') return !s.connected && !s.submittedAt;
       return true;
     })
@@ -415,11 +415,12 @@ function StudentCard({ s, room, now, duplicate, onPress }: { s: StudentRecord; r
         </View>
       ) : null}
 
-      {s.focusLost || s.pasteBlocked || duplicate ? (
+      {s.focusLost || s.pasteBlocked || s.lockdown || duplicate ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
           {duplicate ? <Pill icon="people-outline" color={t.danger} text="Nombre repetido" /> : null}
           {s.focusLost ? <Pill icon="eye-off-outline" color={t.warning} text={`Salió ${s.focusLost}× · ${formatSince(s.awayMs)}`} /> : null}
           {s.pasteBlocked ? <Pill icon="clipboard-outline" color={t.danger} text={`Pegar ${s.pasteBlocked}×`} /> : null}
+          {s.lockdown ? <Pill icon="lock-open-outline" color={t.danger} text={`Bloqueo ${s.lockdown}×`} /> : null}
         </View>
       ) : null}
     </Pressable>

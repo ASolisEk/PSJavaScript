@@ -21,6 +21,7 @@ import { MONO, useTheme } from '../../ui/theme';
 import { Button } from '../ui';
 import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, Segmented, TextField } from './kit';
 import { clearCodeResults } from './CodeAnswer';
+import { enterFullscreen, exitFullscreen, fullscreenSupported, useExamLockdown } from './lockdown';
 import QuestionView from './QuestionView';
 import RichText from './RichText';
 
@@ -225,6 +226,7 @@ async function confirmLeave() {
     ? await confirmDialog('¿Salir de la práctica?', 'Se perderán las respuestas de este intento.', 'Salir')
     : await confirmDialog('¿Abandonar el examen?', 'Tu maestro verá que saliste. Si ya comenzaste, lo que no hayas enviado no se calificará.', 'Abandonar');
   if (!ok) return;
+  exitFullscreen();
   useStudent.getState().leave();
   useApp.getState().setAppMode('ide');
 }
@@ -234,6 +236,7 @@ function WaitingView() {
   const s = useStudent((x) => x.session)!;
   const room = s.room;
   const ready = s.phase === 'ready';
+  const lockable = Platform.OS === 'web' && s.transport.kind !== 'practice';
   if (s.roomClosed) return <EndedView />;
   return (
     <View style={{ flex: 1 }}>
@@ -274,8 +277,24 @@ function WaitingView() {
               <Text style={{ color: t.textMuted, fontSize: 13, marginTop: 4 }}>• Las preguntas aparecen en orden aleatorio.</Text>
               <Text style={{ color: t.textMuted, fontSize: 13 }}>• Tu maestro ve tu avance en tiempo real.</Text>
               {room.durationMin ? <Text style={{ color: t.textMuted, fontSize: 13 }}>• El tiempo empieza a contar al presionar «Comenzar». Al terminarse, tu examen se envía solo.</Text> : null}
+              {lockable ? (
+                <Text style={{ color: t.textMuted, fontSize: 13 }}>
+                  • {fullscreenSupported() ? 'El examen se abre en pantalla completa hasta que lo termines. ' : ''}Si cambias de pestaña o ventana, intentas abrir las herramientas del navegador o tomar capturas, el examen se oculta y tu maestro recibe un aviso.
+                </Text>
+              ) : null}
             </Card>
-            <Button label="Comenzar examen" icon="play" kind="primary" onPress={() => useStudent.getState().begin()} disabled={!ready} style={{ height: 50 }} />
+            <Button
+              label="Comenzar examen"
+              icon="play"
+              kind="primary"
+              onPress={() => {
+                // la pantalla completa solo se puede pedir dentro del clic
+                if (lockable) enterFullscreen();
+                useStudent.getState().begin();
+              }}
+              disabled={!ready}
+              style={{ height: 50 }}
+            />
           </>
         )}
       </Narrow>
@@ -454,6 +473,8 @@ function ExamView() {
     setTimeout(() => setToast(null), 2500);
   }, []);
   useExamGuards(paper.settings.trackFocus, paper.settings.blockPaste, onPasteBlocked);
+  // examen bloqueado (en la sala del maestro; la práctica individual queda libre)
+  const lock = useExamLockdown(s.transport.kind !== 'practice', useCallback((detail: string) => useStudent.getState().report('lockdown', detail), []));
 
   // sin actividad por un rato
   useEffect(() => {
@@ -599,7 +620,7 @@ function ExamView() {
     setConfirm(true);
     touch('reviewing');
   };
-  const sendButton = <Button label={narrow ? 'Enviar' : 'Enviar a calificar'} icon="paper-plane-outline" kind="primary" onPress={openSubmit} style={{ marginLeft: narrow ? 0 : 8 }} disabled={s.submitting} />;
+  const sendButton = <Button label={narrow ? 'Terminar' : 'Terminar examen'} icon="checkmark-done-outline" kind="primary" onPress={openSubmit} style={{ marginLeft: narrow ? 0 : 8 }} disabled={s.submitting} />;
   const title = (
     <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, flexShrink: 1 }} numberOfLines={1}>
       {paper.title}
@@ -654,6 +675,7 @@ function ExamView() {
             {banner ? <Banner icon="megaphone-outline" color={t.accent} text={`Aviso del maestro: ${banner}`} onClose={() => st.dismissBanner()} /> : null}
             {timeWarning ? <Banner icon="alarm-outline" color={t.danger} text={timeWarning} onClose={() => setTimeWarning(null)} /> : null}
             {toast ? <Banner icon="hand-left-outline" color={t.danger} text={toast} /> : null}
+            {lock.devtools ? <Banner icon="construct-outline" color={t.danger} text="Cierra las herramientas de desarrollo del navegador. Tu maestro ya recibió un aviso." /> : null}
             <Card>
               <QuestionView
                 q={q}
@@ -679,7 +701,7 @@ function ExamView() {
               {s.current < paper.questions.length - 1 ? (
                 <Button label="Siguiente" icon="chevron-forward" kind="primary" onPress={() => go(s.current + 1)} />
               ) : (
-                <Button label="Revisar y enviar" icon="checkmark-done-outline" kind="primary" onPress={openSubmit} />
+                <Button label="Revisar y terminar" icon="checkmark-done-outline" kind="primary" onPress={openSubmit} />
               )}
             </View>
             {wide && Platform.OS === 'web' ? (
@@ -691,7 +713,8 @@ function ExamView() {
           </View>
         </ScrollView>
       </View>
-      {confirm ? (
+      {lock.cover && !s.submitting ? <LockCover reason={lock.cover} onResume={lock.resume} /> : null}
+      {confirm && !lock.cover ? (
         <SubmitDialog
           questions={paper.questions}
           onCancel={() => {
@@ -721,6 +744,24 @@ function ExamView() {
   );
 }
 
+/** Oculta el examen mientras el alumno no está en pantalla completa o está en otra ventana. */
+function LockCover({ reason, onResume }: { reason: 'fullscreen' | 'away'; onResume(): void }) {
+  const t = useTheme();
+  const fs = reason === 'fullscreen';
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: t.bg }]} accessibilityViewIsModal>
+      <Card accent={t.danger} style={{ alignItems: 'center', padding: 24, maxWidth: 460, width: '100%' }}>
+        <Ionicons name={fs ? 'expand-outline' : 'eye-off-outline'} size={44} color={t.danger} />
+        <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginTop: 8, textAlign: 'center' }}>{fs ? 'El examen se ocultó' : 'Regresa a tu examen'}</Text>
+        <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
+          {fs ? 'El examen solo se puede responder en pantalla completa.' : 'Cambiaste de ventana o de pestaña.'} Tu maestro ya recibió un aviso. El tiempo sigue corriendo y tus respuestas están guardadas.
+        </Text>
+        <Button label={fs ? 'Volver a pantalla completa' : 'Continuar el examen'} icon={fs ? 'expand-outline' : 'play'} kind="primary" onPress={onResume} style={{ marginTop: 16, height: 46 }} />
+      </Card>
+    </View>
+  );
+}
+
 function Legend({ color, text, filled, dot }: { color: string; text: string; filled?: boolean; dot?: boolean }) {
   const t = useTheme();
   return (
@@ -743,9 +784,9 @@ function SubmitDialog({ questions, onCancel, onSubmit, onGo }: { questions: Pape
       <View style={styles.overlay}>
         <View style={[styles.dialog, { backgroundColor: t.surface, borderColor: t.border }]}>
           <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 4 }}>
-            <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>{all ? '¡Respondiste todo! ¿Enviar a calificar?' : '¿Enviar tu examen a calificar?'}</Text>
+            <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>{all ? '¡Respondiste todo! ¿Terminar tu examen?' : '¿Terminar tu examen?'}</Text>
             <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 12 }}>
-              Una vez enviado ya no podrás cambiar tus respuestas.
+              Se enviará a calificar y ya no podrás cambiar tus respuestas.
               {left !== null && left > 60_000 ? ` Aún te quedan ${formatDuration(left)}.` : ''}
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -756,7 +797,7 @@ function SubmitDialog({ questions, onCancel, onSubmit, onGo }: { questions: Pape
           </ScrollView>
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
             <Button label="Seguir respondiendo" onPress={onCancel} />
-            <Button label="Sí, enviar" icon="paper-plane" kind="primary" onPress={onSubmit} />
+            <Button label="Sí, terminar y enviar" icon="paper-plane" kind="primary" onPress={onSubmit} />
           </View>
         </View>
       </View>
@@ -809,6 +850,8 @@ function ResultView() {
   const s = useStudent((x) => x.session)!;
   const r: StudentResultView | null = s.result;
   const [filter, setFilter] = useState<ResultFilter>('all');
+  // el examen terminó: se sale del modo bloqueado
+  useEffect(() => exitFullscreen(), []);
   const [topic, setTopic] = useState<string | null>(null);
   const scroll = useRef<ScrollView>(null);
   const listY = useRef(0);
@@ -1038,5 +1081,6 @@ const styles = StyleSheet.create({
   practiceBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 6 },
   topicBtn: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, flexGrow: 1, flexBasis: 160 },
   jump: { minWidth: 36, height: 32, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  cover: { alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 },
   sending: { backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 },
 });
