@@ -112,6 +112,16 @@ En **Mis exámenes → Agregar simulacro y práctica** se crean dos configuracio
 
 El banco se genera con `node scripts/importar-fcc-javascript.js` (descarga los cuestionarios del repositorio de freeCodeCamp y escribe `src/core/exam/certs/fccJavascriptQuizzes.ts`); los laboratorios están en `src/core/exam/certs/fccJavascriptLabs.ts` y `tests/certification.test.ts` comprueba que cada solución pasa sus pruebas. Contenido © freeCodeCamp.org, licencia CC BY-SA 4.0.
 
+### Curso Learn JavaScript de web.dev (simulacro y práctica)
+
+Simulacro del curso [Learn JavaScript de web.dev](https://web.dev/learn/javascript?hl=es-419). El curso no tiene examen oficial (cada lección termina con una autoevaluación), así que el simulacro toma **sus 26 lecciones como temas**, en español:
+
+- **217 preguntas** sobre las definiciones y los ejemplos de código de cada lección: introducción, tipos de datos (números, cadenas, booleanos, `null`/`undefined`, BigInt, Symbol), variables, operadores de comparación, flujo de control, funciones (expresiones, `new`, `return`, `this`), objetos (accesores, descriptores, herencia de prototipos), colecciones (indexadas y con clave) y clases (`extends`, campos privados y estáticos, bloques `static`). Son de opción única, opción múltiple, verdadero o falso y «¿qué muestra este programa?».
+- **14 ejercicios de programación** (p. ej. *Valor predeterminado con `??`*, *Plantilla etiquetada*, *Propiedad de solo lectura*, *Contar con Map*, *Subclase con extends*, *Campo privado y método estático*); cada prueba llama a la función o clase y compara lo que devuelve.
+- **Criterios**: cada alumno recibe **2 preguntas por lección y 3 ejercicios** (55), tiene **90 minutos** y aprueba con **80 %**. Cada pregunta vale 1 punto y cada ejercicio 4.
+
+Se agrega igual que el de freeCodeCamp (**Mis exámenes → Agregar simulacro y práctica**) y en **Practicar por mi cuenta** el alumno elige **freeCodeCamp** o **web.dev**. El banco está en `src/core/exam/certs/webdevJavascriptBank.ts`; `tests/webdev_certification.test.ts` ejecuta el código de cada pregunta en Node y en el intérprete de PSJavaScript para comprobar cada respuesta. Contenido basado en web.dev, licencia CC BY 4.0.
+
 ### Conexión de la sala
 
 El equipo del maestro es el anfitrión: recibe, guarda y califica. Hay tres formas de conectarse:
@@ -126,7 +136,7 @@ El equipo del maestro es el anfitrión: recibe, guarda y califica. Hay tres form
 - **Este dispositivo**: pestañas del mismo navegador (para probar un examen sin red).
 - **Práctica individual**: el alumno practica solo; la sala corre dentro de su propia aplicación.
 
-Código: `src/core/exam/` (tipos, generación del examen por alumno, calificación, protocolo, anfitrión, cliente, transportes y concentrado; probado en `tests/exam.test.ts` y `tests/certification.test.ts`), `src/core/exam/certs/` (certificación de freeCodeCamp), `src/store/teacher.ts`, `src/store/student.ts`, `src/store/practice.ts`, `src/components/teacher/`, `src/components/exam/` y `scripts/sala-servidor.js`.
+Código: `src/core/exam/` (tipos, generación del examen por alumno, calificación, protocolo, anfitrión, cliente, transportes y concentrado; probado en `tests/exam.test.ts` y `tests/certification.test.ts`), `src/core/exam/certs/` (certificaciones de freeCodeCamp y web.dev), `src/store/teacher.ts`, `src/store/student.ts`, `src/store/practice.ts`, `src/components/teacher/`, `src/components/exam/` y `scripts/sala-servidor.js`.
 
 ## Arquitectura
 

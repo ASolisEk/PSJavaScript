@@ -167,3 +167,24 @@ test('explicación en lenguaje natural', () => {
   assert.ok(texts.some((t) => t.startsWith('La condición (x > 2) es verdadera')));
   assert.ok(texts.includes('x ← 6'));
 });
+
+test('plantillas etiquetadas: textos, raw y valores', () => {
+  const code = `
+function tag(textos, ...valores) { return textos.join("|") + " " + textos.raw[1] + " " + valores.join(","); }
+console.log(tag\`a\${1}b\\\\n\${2}c\`);
+console.log(String.raw\`x\\\\ty\`);
+const o = { pre: "¡", f(t, v) { return this.pre + t[0] + v; } };
+console.log(o.f\`hola \${"ana"}\`);`;
+  assert.equal(out(code, [], flex), 'a|b\\n|c b\\\\n 1,2\nx\\\\ty\n¡hola ana');
+});
+
+test('propiedades de solo lectura: se ignoran fuera de "use strict" y lanzan TypeError dentro', () => {
+  const code = 'const o = Object.freeze({ a: 1 });\no.a = 2;\nconst d = {};\nObject.defineProperty(d, "x", { value: 1 });\nd.x = 5;\nconsole.log(o.a, d.x);';
+  assert.equal(out(code, [], flex), '1 1');
+  assert.match(out('"use strict";\n' + code, [], flex), /^ERROR\(3\): No se puede asignar 'a': la propiedad es de solo lectura/);
+});
+
+test('campos estáticos y bloques static se ejecutan en el orden en que aparecen', () => {
+  const code = 'class A {\n  static a = 1;\n  static { console.log(this.a, this.b); }\n  static b = 2;\n  static { console.log(this.b); }\n}';
+  assert.equal(out(code, [], flex), '1 undefined\n2');
+});
