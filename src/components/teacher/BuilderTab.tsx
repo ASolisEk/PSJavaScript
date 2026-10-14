@@ -2,8 +2,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { cloneQuestion, createQuestion, examFileName, questionsPerStudent, questionTypeInfo, QUESTION_TYPES, serializeExam, totalPoints, validateExam } from '../../core/exam/config';
+import { cloneQuestion, createQuestion, examFileName, examTopics, questionsPerStudent, questionTypeInfo, QUESTION_TYPES, serializeExam, totalPoints, validateExam } from '../../core/exam/config';
 import type { ExamConfig, Question, QuestionType } from '../../core/exam/types';
+import { plainText } from '../../core/exam/richText';
 import { useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
 import { useTheme } from '../../ui/theme';
@@ -24,7 +25,9 @@ export default function BuilderTab() {
   const [sel, setSel] = useState<Sel | null>(wide ? 'settings' : null);
   const [preview, setPreview] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
+  const [topic, setTopic] = useState<string | null>(null);
   const issues = useMemo(() => (exam ? validateExam(exam) : []), [exam]);
+  const topics = useMemo(() => (exam ? examTopics(exam) : []), [exam]);
 
   if (!exam || !editingId) {
     return (
@@ -42,7 +45,7 @@ export default function BuilderTab() {
   const warnings = issues.filter((i) => i.severity === 'warning');
 
   const addQuestion = (type: QuestionType) => {
-    const q = createQuestion(type);
+    const q = { ...createQuestion(type), ...(topic ? { topic } : {}) };
     setQuestions([...exam.questions, q]);
     setSel(q.id);
   };
@@ -56,7 +59,22 @@ export default function BuilderTab() {
       <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 12, marginBottom: 6 }}>
         PREGUNTAS ({exam.questions.length}) · {totalPoints(exam)} PTS
       </Text>
+      {topics.length > 1 ? (
+        <View style={styles.chips}>
+          {[{ topic: null as string | null, count: exam.questions.length }, ...topics].map((x) => {
+            const on = topic === x.topic;
+            return (
+              <Pressable key={x.topic ?? '*'} onPress={() => setTopic(x.topic)} style={[styles.chip, { borderColor: on ? t.primary : t.border, backgroundColor: on ? t.primary + '18' : t.surface }]}>
+                <Text style={{ color: on ? t.primary : t.textMuted, fontSize: 11, fontWeight: '700' }} numberOfLines={1}>
+                  {x.topic ?? 'Todos'} ({x.count})
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
       {exam.questions.map((q, i) => {
+        if (topic && q.topic !== topic && sel !== q.id) return null;
         const info = questionTypeInfo(q.type);
         const qIssues = issues.filter((x) => x.questionId === q.id);
         const bad = qIssues.some((x) => x.severity === 'error');
@@ -65,8 +83,8 @@ export default function BuilderTab() {
             key={q.id}
             icon={info.icon as IconName}
             number={i + 1}
-            title={q.prompt.trim() || '(sin enunciado)'}
-            subtitle={`${info.label} · ${q.points} pts`}
+            title={plainText(q.prompt).trim() || '(sin enunciado)'}
+            subtitle={`${info.label} · ${q.points} pts${q.topic && !topic ? ` · ${q.topic}` : ''}`}
             active={sel === q.id}
             warn={bad ? 'error' : qIssues.length ? 'warning' : undefined}
             onPress={() => setSel(q.id)}
@@ -219,6 +237,8 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   item: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 8, marginBottom: 6 },
   itemIcon: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 },
+  chip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, maxWidth: 200 },
   addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 10, padding: 12, marginTop: 6 },
   typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   typeCard: { flexBasis: 220, flexGrow: 1, borderWidth: 1, borderRadius: 12, padding: 14 },

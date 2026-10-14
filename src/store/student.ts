@@ -10,6 +10,8 @@ import type { ClientEventKind, HostMsg, RoomInfo, SubmitReason } from '../core/e
 import { randomId } from '../core/exam/random';
 import { createClientTransport, TransportSpec } from '../core/exam/transport';
 import { forgetStudent } from '../ui/examLink';
+import { practiceExam } from '../core/exam/certs/fccJavascript';
+import { resumePractice, startPractice, stopPractice } from './practice';
 import type { Activity, AnswerValue, Answers, Paper, StudentResultView } from '../core/exam/types';
 
 const KEY = 'psjs.student.v1';
@@ -38,6 +40,8 @@ export interface StudentSession {
   roomClosed: boolean;
   /** Tamaño de letra elegido por el alumno para el examen. */
   fontSize?: number;
+  /** Práctica individual (sin maestro): qué práctica es, para repetirla. */
+  practiceKey?: string;
 }
 
 interface StudentState {
@@ -57,6 +61,8 @@ interface StudentState {
   /** Reconecta un examen en curso (al abrir la pantalla del alumno). */
   resume(): void;
   join(p: { code: string; name: string; group: string; transport: TransportSpec }): Promise<boolean>;
+  /** Comienza una práctica individual (la sala corre en este dispositivo). */
+  practice(key: string, name: string): Promise<boolean>;
   begin(): void;
   setAnswer(questionId: string, value: AnswerValue): void;
   goTo(index: number): void;
@@ -210,6 +216,17 @@ export const useStudent = create<StudentState>((set, get) => {
     resume() {
       const session = get().session;
       if (client || !hasActiveExam(session)) return;
+      if (session!.transport.kind === 'practice') {
+        // la sala de práctica corre aquí mismo: se vuelve a abrir antes de conectar
+        resumePractice(session!.code)
+          .then(() => connect(session!))
+          .catch((e) => {
+            // sin la sala no hay a quién entregar: se vuelve a la pantalla de inicio con el aviso
+            get().leave();
+            set({ joinError: `${e?.message ?? e} Comienza una práctica nueva.` });
+          });
+        return;
+      }
       // retoma la sesión; si el maestro no está disponible, el cliente reintenta solo
       connect(session!).catch((e) => {
         set({ net: 'offline', netDetail: e?.message ?? String(e) });
@@ -254,6 +271,25 @@ export const useStudent = create<StudentState>((set, get) => {
       }
       persist();
       set({ joining: false });
+      return true;
+    },
+
+    async practice(key, name) {
+      set({ joining: true, joinError: null });
+      let code: string;
+      try {
+        code = await startPractice(practiceExam(key));
+      } catch (e: any) {
+        set({ joining: false, joinError: e?.message ?? String(e) });
+        return false;
+      }
+      const ok = await get().join({ code, name: name.trim() || 'Alumno', group: '', transport: { kind: 'practice' } });
+      if (!ok) {
+        stopPractice(code);
+        return false;
+      }
+      patch({ practiceKey: key });
+      get().begin();
       return true;
     },
 
@@ -333,6 +369,7 @@ export const useStudent = create<StudentState>((set, get) => {
       clearTimeout(progressTimer);
       dirty = {};
       lastActivity = 'reading';
+      if (s?.transport.kind === 'practice') setTimeout(() => stopPractice(s.code), 350);
       set({ session: null, banner: null, joinError: null, net: 'connecting' });
       forgetStudent();
       persist();

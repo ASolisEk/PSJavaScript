@@ -1,5 +1,6 @@
 /** Elección del transporte de la sala según la plataforma. */
 import { BroadcastClient, BroadcastHost, broadcastAvailable } from './broadcast';
+import { MemoryClient, MemoryHost, PRACTICE_NETWORK } from './memory';
 import { PeerClient, PeerHost, peerAvailable } from './peer';
 import { defaultRelayUrl, normalizeRelayUrl, RelayClient, RelayHost } from './relay';
 import { ClientTransport, HostTransport, TransportError, TransportKind, TransportSpec } from './types';
@@ -8,7 +9,7 @@ export * from './types';
 export { defaultRelayUrl, normalizeRelayUrl } from './relay';
 
 export interface TransportOption {
-  kind: Exclude<TransportKind, 'memory'>;
+  kind: Exclude<TransportKind, 'memory' | 'practice'>;
   label: string;
   description: string;
   icon: string;
@@ -63,6 +64,8 @@ export function createHostTransport(spec: TransportSpec): HostTransport {
       return new RelayHost(relayUrl(spec));
     case 'device':
       return new BroadcastHost();
+    case 'practice':
+      return new MemoryHost(PRACTICE_NETWORK);
   }
   throw new TransportError('Tipo de conexión no disponible.');
 }
@@ -75,6 +78,8 @@ export function createClientTransport(spec: TransportSpec): ClientTransport {
       return new RelayClient(relayUrl(spec));
     case 'device':
       return new BroadcastClient();
+    case 'practice':
+      return new MemoryClient(PRACTICE_NETWORK);
   }
   throw new TransportError('Tipo de conexión no disponible.');
 }
@@ -83,5 +88,6 @@ export function transportLabel(spec: TransportSpec): string {
   if (spec.kind === 'internet') return 'Internet';
   if (spec.kind === 'lan') return `Red del aula (${normalizeRelayUrl(spec.url ?? '')})`;
   if (spec.kind === 'device') return 'Este dispositivo';
+  if (spec.kind === 'practice') return 'Práctica individual';
   return 'Memoria';
 }

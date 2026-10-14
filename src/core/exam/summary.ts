@@ -1,5 +1,6 @@
 /** Concentrado de resultados de una sala: estadísticas, análisis por pregunta y CSV. */
 import { answeredCount, RoomState, StudentRecord } from './room';
+import { questionsPerStudent } from './config';
 import type { QuestionType } from './types';
 
 export interface SummaryRow {
@@ -37,6 +38,16 @@ export interface QuestionStat {
   correct: number;
   /** Promedio de aciertos (0–100). */
   avgPercent: number;
+  topic?: string;
+}
+
+export interface TopicStat {
+  topic: string;
+  /** Preguntas de este tema calificadas (sumando a todos los alumnos). */
+  attempts: number;
+  correct: number;
+  /** Promedio de aciertos (0–100). */
+  avgPercent: number;
 }
 
 export interface RoomSummary {
@@ -58,6 +69,8 @@ export interface RoomSummary {
   /** Cantidad de alumnos por rango de calificación (10 rangos). */
   histogram: number[];
   questions: QuestionStat[];
+  /** Análisis por tema (si las preguntas tienen tema). */
+  topics: TopicStat[];
   rows: SummaryRow[];
 }
 
@@ -105,7 +118,7 @@ export function summarizeRoom(room: RoomState): RoomSummary {
   const histogram = new Array(10).fill(0);
   for (const r of graded) histogram[Math.min(9, Math.floor((r.percent ?? 0) / 10))]++;
 
-  const questions: QuestionStat[] = exam.questions.map((q, index) => {
+  const all: QuestionStat[] = exam.questions.map((q, index) => {
     let attempts = 0;
     let answered = 0;
     let correct = 0;
@@ -118,8 +131,22 @@ export function summarizeRoom(room: RoomState): RoomSummary {
       if (qr.status === 'correct') correct++;
       sum += qr.max > 0 ? qr.score / qr.max : 0;
     }
-    return { questionId: q.id, index, type: q.type, prompt: q.prompt, points: q.points, attempts, answered, correct, avgPercent: attempts ? round1((sum / attempts) * 100) : 0 };
+    return { questionId: q.id, index, type: q.type, prompt: q.prompt, points: q.points, attempts, answered, correct, avgPercent: attempts ? round1((sum / attempts) * 100) : 0, ...(q.topic ? { topic: q.topic } : {}) };
   });
+  // con un banco de preguntas solo se analizan las que le tocaron a alguien
+  const subset = questionsPerStudent(exam) < exam.questions.length && graded.length > 0;
+  const questions = subset ? all.filter((q) => q.attempts > 0) : all;
+
+  const byTopic = new Map<string, { attempts: number; correct: number; sum: number }>();
+  for (const q of all) {
+    if (!q.topic || !q.attempts) continue;
+    const t = byTopic.get(q.topic) ?? { attempts: 0, correct: 0, sum: 0 };
+    t.attempts += q.attempts;
+    t.correct += q.correct;
+    t.sum += (q.avgPercent / 100) * q.attempts;
+    byTopic.set(q.topic, t);
+  }
+  const topics: TopicStat[] = [...byTopic].map(([topic, t]) => ({ topic, attempts: t.attempts, correct: t.correct, avgPercent: round1((t.sum / t.attempts) * 100) }));
 
   return {
     title: exam.title,
@@ -139,6 +166,7 @@ export function summarizeRoom(room: RoomState): RoomSummary {
     avgMinutes: times.length ? round1(times.reduce((a, b) => a + b, 0) / times.length) : null,
     histogram,
     questions,
+    topics,
     rows,
   };
 }

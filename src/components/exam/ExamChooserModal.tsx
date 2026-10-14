@@ -24,7 +24,7 @@ export default function ExamChooserModal() {
           icon="school-outline"
           color={t.success}
           title="Soy alumno"
-          description="Entra con el código de la sala que te dio tu maestro y presenta tu examen."
+          description="Entra con el código de la sala que te dio tu maestro, o practica por tu cuenta para la certificación JavaScript de freeCodeCamp."
           onPress={() => setAppMode('student')}
         />
       </ScrollView>

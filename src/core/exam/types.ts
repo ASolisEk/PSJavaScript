@@ -30,6 +30,12 @@ export interface CodeTest {
   expected: string;
   /** Los casos ocultos no se muestran al alumno (solo se usan al calificar). */
   hidden: boolean;
+  /**
+   * Llamada que se evalúa después del programa del alumno, p. ej. `reverseString("hola")`.
+   * Si existe, se compara su valor (en JSON) con `expected` en lugar de la salida del programa,
+   * como en los laboratorios de freeCodeCamp («reverseString("hola") debe devolver "aloh"»).
+   */
+  call?: string;
 }
 
 /** Requisito sobre el código del alumno (p. ej. "debe usar for"). */
@@ -48,6 +54,8 @@ interface QuestionBase {
   points: number;
   /** Fragmento de código que acompaña al enunciado (opcional). */
   code?: string;
+  /** Tema o módulo (p. ej. "Arreglos"); permite elegir preguntas por tema y ver resultados por tema. */
+  topic?: string;
 }
 
 export interface SingleQuestion extends QuestionBase {
@@ -116,7 +124,8 @@ export type Question =
   | CodeQuestion
   | OrderQuestion;
 
-export type ResultsVisibility = 'none' | 'score' | 'detailed';
+/** `review`: calificación, detalle y respuesta correcta de cada pregunta (para practicar). */
+export type ResultsVisibility = 'none' | 'score' | 'detailed' | 'review';
 
 export interface ExamConfig {
   format: 'psjavascript-exam';
@@ -130,6 +139,12 @@ export interface ExamConfig {
   durationMin: number;
   /** Cuántas preguntas se le muestran a cada alumno (0 = todas). */
   pickCount: number;
+  /**
+   * Preguntas por tema. Si algún tema tiene un valor mayor que 0, cada alumno recibe
+   * esa cantidad de preguntas al azar de cada tema (y `pickCount` no se usa); los
+   * temas que no aparecen o valen 0 no se incluyen.
+   */
+  topicPicks: Record<string, number>;
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
   /** Porcentaje mínimo para aprobar. */
@@ -165,11 +180,12 @@ export interface PaperQuestion {
   prompt: string;
   points: number;
   code?: string;
+  topic?: string;
   options?: { id: string; text: string }[];
   inputs?: string[];
   starter?: string;
   /** Casos de prueba visibles (de ejemplo). */
-  tests?: { id: string; name: string; inputs: string[]; expected: string }[];
+  tests?: { id: string; name: string; inputs: string[]; expected: string; call?: string }[];
   hiddenTests?: number;
   match?: OutputMatch;
   rules?: { kind: CodeRule['kind']; pattern: string; message: string }[];
@@ -214,6 +230,7 @@ export interface TestResult {
   hidden: boolean;
   passed: boolean;
   inputs?: string[];
+  call?: string;
   expected?: string;
   actual?: string;
   error?: string;
@@ -255,6 +272,17 @@ export interface StudentResultView {
   score?: number;
   max?: number;
   questions?: { questionId: string; status: QuestionStatus; score: number; max: number; feedback: string; tests?: TestResult[] }[];
+  /** Resultado por tema (si las preguntas tienen tema). */
+  topics?: TopicScore[];
+}
+
+export interface TopicScore {
+  topic: string;
+  score: number;
+  max: number;
+  /** Preguntas correctas y total de preguntas del tema. */
+  correct: number;
+  total: number;
 }
 
 /** Qué está haciendo el alumno en este momento. */

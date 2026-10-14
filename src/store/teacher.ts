@@ -5,6 +5,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { cloneExam, createExam, parseExam, sampleExam } from '../core/exam/config';
+import { fccJavascriptPractica, fccJavascriptSimulacro } from '../core/exam/certs/fccJavascript';
 import { gradePaper } from '../core/exam/grading';
 import { ExamHost } from '../core/exam/host';
 import { roomCode } from '../core/exam/random';
@@ -60,6 +61,8 @@ interface TeacherState {
   deleteExam(id: string): void;
   duplicateExam(id: string): void;
   importExam(text: string): ExamConfig;
+  /** Agrega el simulacro de la certificación JavaScript de freeCodeCamp y su copia de práctica. */
+  addFccJavascript(): ExamConfig[];
 
   openRoom(examId: string, transport: TransportSpec): Promise<boolean>;
   reopenRoom(): Promise<boolean>;
@@ -295,6 +298,13 @@ export const useTeacher = create<TeacherState>((set, get) => {
       set((s) => ({ exams: [exam, ...s.exams] }));
       persistExams();
       return exam;
+    },
+
+    addFccJavascript() {
+      const list = [fccJavascriptSimulacro(), fccJavascriptPractica()];
+      set((s) => ({ exams: [...list, ...s.exams] }));
+      persistExams();
+      return list;
     },
 
     async openRoom(examId, transport) {

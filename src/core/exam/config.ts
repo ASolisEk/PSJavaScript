@@ -42,6 +42,7 @@ export const RESULTS_VISIBILITY: { id: ResultsVisibility; label: string; descrip
   { id: 'score', label: 'Solo la calificación', description: 'El alumno ve su calificación al enviar.' },
   { id: 'detailed', label: 'Calificación y detalle', description: 'Ve la calificación y qué preguntas acertó.' },
   { id: 'none', label: 'Nada', description: 'Solo se le confirma que su examen fue entregado.' },
+  { id: 'review', label: 'Todo, con respuestas', description: 'Para practicar: ve su calificación por tema, qué acertó y la respuesta correcta de cada pregunta.' },
 ];
 
 export const option = (text = '', correct = false): ChoiceOption => ({ id: randomId('o'), text, correct });
@@ -92,6 +93,7 @@ export function createExam(p: Partial<ExamConfig> = {}): ExamConfig {
     author: '',
     durationMin: 45,
     pickCount: 0,
+    topicPicks: {},
     shuffleQuestions: true,
     shuffleOptions: true,
     passPercent: 60,
@@ -125,12 +127,25 @@ export function cloneExam(e: ExamConfig, title = `${e.title} (copia)`): ExamConf
   return { ...JSON.parse(JSON.stringify(e)), id: randomId('ex'), title, createdAt: now, updatedAt: now, questions: e.questions.map(cloneQuestion) };
 }
 
-export function totalPoints(e: Pick<ExamConfig, 'questions' | 'pickCount'>): number {
+export function totalPoints(e: Pick<ExamConfig, 'questions'>): number {
   return e.questions.reduce((s, q) => s + q.points, 0);
 }
 
+/** ¿Cada alumno recibe preguntas elegidas por tema? */
+export function usesTopicPicks(e: Pick<ExamConfig, 'topicPicks'>): boolean {
+  return Object.values(e.topicPicks ?? {}).some((n) => n > 0);
+}
+
+/** Temas del examen en el orden en que aparecen, con cuántas preguntas tiene cada uno. */
+export function examTopics(e: Pick<ExamConfig, 'questions'>): { topic: string; count: number }[] {
+  const map = new Map<string, number>();
+  for (const q of e.questions) if (q.topic?.trim()) map.set(q.topic, (map.get(q.topic) ?? 0) + 1);
+  return [...map].map(([topic, count]) => ({ topic, count }));
+}
+
 /** Cuántas preguntas recibe cada alumno. */
-export function questionsPerStudent(e: Pick<ExamConfig, 'questions' | 'pickCount'>): number {
+export function questionsPerStudent(e: Pick<ExamConfig, 'questions' | 'pickCount' | 'topicPicks'>): number {
+  if (usesTopicPicks(e)) return examTopics(e).reduce((s, t) => s + Math.min(t.count, Math.max(0, e.topicPicks[t.topic] ?? 0)), 0);
   return e.pickCount > 0 ? Math.min(e.pickCount, e.questions.length) : e.questions.length;
 }
 
@@ -146,10 +161,25 @@ export function validateExam(e: ExamConfig): ExamIssue[] {
   const issues: ExamIssue[] = [];
   if (!e.title.trim()) issues.push({ severity: 'error', message: 'El examen necesita un título.' });
   if (!e.questions.length) issues.push({ severity: 'error', message: 'Agrega al menos una pregunta.' });
-  if (e.pickCount > e.questions.length) issues.push({ severity: 'warning', message: `Pediste mostrar ${e.pickCount} preguntas pero solo hay ${e.questions.length}; se mostrarán todas.` });
-  if (e.pickCount > 0 && e.pickCount < e.questions.length) {
-    const pts = new Set(e.questions.map((q) => q.points));
-    if (pts.size > 1) issues.push({ severity: 'warning', message: 'Las preguntas valen distinto y cada alumno recibe una selección al azar: el total de puntos puede variar entre alumnos (la calificación se calcula en porcentaje).' });
+  if (usesTopicPicks(e)) {
+    const topics = examTopics(e);
+    const missing = topics.filter((t) => !(e.topicPicks[t.topic] > 0));
+    const noTopic = e.questions.filter((q) => !q.topic?.trim()).length;
+    if (!questionsPerStudent(e)) issues.push({ severity: 'error', message: 'Elegiste preguntas por tema, pero ningún tema con preguntas tiene una cantidad mayor que 0.' });
+    for (const t of topics) {
+      const n = e.topicPicks[t.topic] ?? 0;
+      if (n > t.count) issues.push({ severity: 'warning', message: `Tema «${t.topic}»: pediste ${n} preguntas pero solo hay ${t.count}; se usarán todas.` });
+    }
+    for (const topic of Object.keys(e.topicPicks)) {
+      if (e.topicPicks[topic] > 0 && !topics.some((t) => t.topic === topic)) issues.push({ severity: 'warning', message: `El tema «${topic}» ya no tiene preguntas.` });
+    }
+    if (missing.length) issues.push({ severity: 'warning', message: `${missing.length === 1 ? 'El tema' : 'Los temas'} ${missing.map((t) => `«${t.topic}»`).join(', ')} no ${missing.length === 1 ? 'aparecerá' : 'aparecerán'} en el examen (0 preguntas).` });
+    if (noTopic) issues.push({ severity: 'warning', message: `${noTopic} pregunta(s) sin tema no aparecerán: con la selección por tema solo se eligen preguntas que tienen tema.` });
+  } else if (e.pickCount > e.questions.length) issues.push({ severity: 'warning', message: `Pediste mostrar ${e.pickCount} preguntas pero solo hay ${e.questions.length}; se mostrarán todas.` });
+  if (usesTopicPicks(e) || (e.pickCount > 0 && e.pickCount < e.questions.length)) {
+    // con selección por tema solo importa que varíen dentro de un mismo tema
+    const groups = usesTopicPicks(e) ? examTopics(e).map((t) => e.questions.filter((q) => q.topic === t.topic)) : [e.questions];
+    if (groups.some((g) => new Set(g.map((q) => q.points)).size > 1)) issues.push({ severity: 'warning', message: 'Las preguntas valen distinto y cada alumno recibe una selección al azar: el total de puntos puede variar entre alumnos (la calificación se calcula en porcentaje).' });
   }
   e.questions.forEach((q, i) => {
     const n = `Pregunta ${i + 1}`;
@@ -230,7 +260,14 @@ function normalizeQuestion(raw: any): Question | null {
   if (!raw || typeof raw !== 'object') return null;
   const type = raw.type as QuestionType;
   if (!QUESTION_TYPES.some((t) => t.type === type)) return null;
-  const base = { id: str(raw.id) || randomId('q'), type, prompt: str(raw.prompt), points: Math.max(0, num(raw.points, 1)), ...(raw.code ? { code: str(raw.code) } : {}) };
+  const base = {
+    id: str(raw.id) || randomId('q'),
+    type,
+    prompt: str(raw.prompt),
+    points: Math.max(0, num(raw.points, 1)),
+    ...(raw.code ? { code: str(raw.code) } : {}),
+    ...(typeof raw.topic === 'string' && raw.topic.trim() ? { topic: raw.topic.trim() } : {}),
+  };
   const options = (): ChoiceOption[] =>
     (Array.isArray(raw.options) ? raw.options : []).map((o: any) => ({ id: str(o?.id) || randomId('o'), text: str(o?.text), correct: bool(o?.correct, false) }));
   switch (type) {
@@ -259,6 +296,7 @@ function normalizeQuestion(raw: any): Question | null {
           inputs: strList(t?.inputs),
           expected: str(t?.expected),
           hidden: bool(t?.hidden, false),
+          ...(typeof t?.call === 'string' && t.call.trim() ? { call: t.call } : {}),
         })),
         rules: (Array.isArray(raw.rules) ? raw.rules : []).map((r: any) => ({
           id: str(r?.id) || randomId('r'),
@@ -291,7 +329,11 @@ export function parseExam(text: string): ExamConfig {
     if (ids.has(q.id)) q.id = randomId('q');
     ids.add(q.id);
   }
-  const vis: ResultsVisibility[] = ['none', 'score', 'detailed'];
+  const vis: ResultsVisibility[] = ['none', 'score', 'detailed', 'review'];
+  const topicPicks: Record<string, number> = {};
+  if (raw.topicPicks && typeof raw.topicPicks === 'object' && !Array.isArray(raw.topicPicks)) {
+    for (const [k, v] of Object.entries(raw.topicPicks)) if (k.trim()) topicPicks[k.trim()] = Math.max(0, Math.round(num(v, 0)));
+  }
   return {
     ...d,
     id: str(raw.id) || d.id,
@@ -300,6 +342,7 @@ export function parseExam(text: string): ExamConfig {
     author: str(raw.author),
     durationMin: Math.max(0, Math.round(num(raw.durationMin, d.durationMin))),
     pickCount: Math.max(0, Math.round(num(raw.pickCount, 0))),
+    topicPicks,
     shuffleQuestions: bool(raw.shuffleQuestions, d.shuffleQuestions),
     shuffleOptions: bool(raw.shuffleOptions, d.shuffleOptions),
     passPercent: Math.min(100, Math.max(0, num(raw.passPercent, d.passPercent))),

@@ -66,6 +66,9 @@ export class ExamHost {
     if (tick > 0) this.timer = setInterval(() => this.tick(), tick);
   }
 
+  /** Tema de una pregunta (para el resultado por tema). */
+  private topicOf = (questionId: string) => this.state.exam.questions.find((q) => q.id === questionId)?.topic;
+
   dispose() {
     this.disposed = true;
     if (this.timer) clearInterval(this.timer);
@@ -144,7 +147,7 @@ export class ExamHost {
     else overrides[questionId] = points;
     const result = s.submittedAt ? gradePaper(this.state.exam, s.key, s.answers, overrides) : s.result;
     this.patch(studentId, { overrides, result });
-    if (result && s.submittedAt) this.sendTo(studentId, { t: 'result', result: studentView(result, this.state.exam.showResults), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
+    if (result && s.submittedAt) this.sendTo(studentId, { t: 'result', result: studentView(result, this.state.exam.showResults, this.topicOf), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
   }
 
   /** Cierra o abre el ingreso de alumnos nuevos. */
@@ -347,7 +350,7 @@ export class ExamHost {
   private sendResult(id: string) {
     const s = this.state.students[id];
     if (!s?.result || !s.submittedAt) return;
-    this.sendTo(id, { t: 'result', result: studentView(s.result, this.state.exam.showResults), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
+    this.sendTo(id, { t: 'result', result: studentView(s.result, this.state.exam.showResults, this.topicOf), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
   }
 
   private peerLeft(peer: string) {

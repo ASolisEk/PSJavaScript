@@ -18,6 +18,7 @@ import type {
   QuestionResult,
   StudentResultView,
   TestResult,
+  TopicScore,
 } from './types';
 
 /** Pasos máximos por ejecución al calificar (evita que un ciclo infinito congele al maestro). */
@@ -103,22 +104,37 @@ export function ruleSatisfied(code: string, rule: Pick<CodeRule, 'kind' | 'patte
   return rule.kind === 'contains' ? found : !found;
 }
 
+/** Programa que se ejecuta para un caso: con `call`, se agrega la llamada y se muestra su valor. */
+export function testProgram(code: string, call?: string): string {
+  if (!call?.trim()) return code;
+  return `${code}\n;(function (__valor) { console.log(__valor === undefined ? "undefined" : typeof __valor === "function" ? "[Function]" : JSON.stringify(__valor)); })(${call.trim()});\n`;
+}
+
+/** Ejecuta un caso de prueba. Con `call` el resultado es el valor devuelto (última línea), no toda la salida. */
+export function runTestCase(code: string, t: { inputs: string[]; call?: string }, profile: Profile): { actual: string; error: string | null } {
+  const r = runProgram(testProgram(code, t.call), profile, t.inputs);
+  const error = r.error ?? (r.needsInput ? 'El programa pidió más datos (prompt) de los que trae este caso.' : r.tooLong ? 'El programa no terminó (¿ciclo infinito?).' : null);
+  if (!t.call?.trim()) return { actual: r.output, error };
+  const lines = cleanLines(r.output);
+  return { actual: error ? '' : lines[lines.length - 1] ?? '', error };
+}
+
 /** Salidas esperadas calculadas con la solución del maestro (para llenar los casos). */
 export function expectedFromSolution(q: Pick<CodeQuestion, 'solution' | 'tests'>, profile: Profile): { id: string; output: string; error: string | null }[] {
   return q.tests.map((t) => {
-    const r = runProgram(q.solution, profile, t.inputs);
-    return { id: t.id, output: r.output, error: r.error ?? (r.needsInput ? 'El programa pidió más datos de los que tiene el caso.' : r.tooLong ? 'El programa tardó demasiado (¿ciclo infinito?).' : null) };
+    const r = runTestCase(q.solution, t, profile);
+    return { id: t.id, output: r.actual, error: r.error };
   });
 }
 
-/** Ejecuta un programa contra casos de prueba. */
-export function runTests(code: string, tests: { id: string; name: string; inputs: string[]; expected: string; hidden?: boolean }[], match: OutputMatch, profile: Profile): TestResult[] {
+/** Ejecuta un programa contra casos de prueba. Los casos con `call` comparan el valor devuelto de forma exacta. */
+export function runTests(code: string, tests: { id: string; name: string; inputs: string[]; expected: string; hidden?: boolean; call?: string }[], match: OutputMatch, profile: Profile): TestResult[] {
   return tests.map((t) => {
-    const r = runProgram(code, profile, t.inputs);
-    const error = r.error ?? (r.needsInput ? 'El programa pidió más datos (prompt) de los que trae este caso.' : r.tooLong ? 'El programa no terminó (¿ciclo infinito?).' : undefined);
-    const passed = !error && outputMatches(r.output, t.expected, match);
+    const r = runTestCase(code, t, profile);
+    const call = t.call?.trim() || undefined;
+    const passed = !r.error && outputMatches(r.actual, t.expected, call ? 'exact' : match);
     const hidden = !!t.hidden;
-    return { id: t.id, name: t.name, hidden, passed, inputs: t.inputs, expected: t.expected, actual: r.output, ...(error ? { error } : {}) };
+    return { id: t.id, name: t.name, hidden, passed, inputs: t.inputs, ...(call ? { call } : {}), expected: t.expected, actual: r.actual, ...(r.error ? { error: r.error } : {}) };
   });
 }
 
@@ -164,7 +180,7 @@ export function gradeQuestion(q: Question, answer: AnswerValue | undefined, prof
     case 'single': {
       const ok = q.options.find((o) => o.id === answer)?.correct ?? false;
       const right = q.options.find((o) => o.correct);
-      return result(q, ok ? 1 : 0, ok ? '¡Correcto!' : `Incorrecto. La respuesta correcta era: ${right?.text ?? '—'}.`);
+      return result(q, ok ? 1 : 0, ok ? '¡Correcto!' : `Incorrecto. La respuesta correcta es:\n\n${right?.text ?? '—'}`);
     }
     case 'multiple': {
       const chosen = new Set(Array.isArray(answer) ? answer : [String(answer)]);
@@ -262,22 +278,42 @@ export function summarize(questions: QuestionResult[], scale: number, passPercen
   return { score, max, percent, grade, scale, passed: percent >= passPercent, questions, gradedAt: Date.now() };
 }
 
-/** Lo que puede ver el alumno de su resultado. */
-export function studentView(r: GradeResult, visibility: ExamConfig['showResults']): StudentResultView {
+/** Puntos por tema (solo preguntas con tema). */
+export function topicScores(questions: QuestionResult[], topicOf: (questionId: string) => string | undefined): TopicScore[] {
+  const map = new Map<string, TopicScore>();
+  for (const q of questions) {
+    const topic = topicOf(q.questionId);
+    if (!topic) continue;
+    const t = map.get(topic) ?? { topic, score: 0, max: 0, correct: 0, total: 0 };
+    t.score = round2(t.score + q.score);
+    t.max = round2(t.max + q.max);
+    t.total++;
+    if (q.status === 'correct') t.correct++;
+    map.set(topic, t);
+  }
+  return [...map.values()];
+}
+
+/** Lo que puede ver el alumno de su resultado. `topicOf` permite agregar el resultado por tema. */
+export function studentView(r: GradeResult, visibility: ExamConfig['showResults'], topicOf?: (questionId: string) => string | undefined): StudentResultView {
   if (visibility === 'none') return { visibility };
   const head = { visibility, grade: r.grade, scale: r.scale, percent: r.percent, passed: r.passed, score: r.score, max: r.max };
   if (visibility === 'score') return head;
+  const topics = topicOf ? topicScores(r.questions, topicOf) : [];
+  // al repasar (práctica) se muestra todo: la respuesta correcta y los casos ocultos
+  const review = visibility === 'review';
   return {
     ...head,
+    ...(topics.length ? { topics } : {}),
     questions: r.questions.map((q) => ({
       questionId: q.questionId,
       status: q.status,
       score: q.score,
       max: q.max,
       // en preguntas de programación solo se detallan los casos visibles
-      feedback: q.type === 'single' || q.type === 'short' || q.type === 'numeric' || q.type === 'truefalse' ? (q.status === 'correct' ? '¡Correcto!' : 'Incorrecto.') : q.feedback,
+      feedback: review || !(q.type === 'single' || q.type === 'short' || q.type === 'numeric' || q.type === 'truefalse') ? q.feedback : q.status === 'correct' ? '¡Correcto!' : 'Incorrecto.',
       // los casos ocultos y la salida de «¿Qué imprime?» no se revelan (otros alumnos pueden seguir en el examen)
-      tests: q.tests?.map((t) => (t.hidden || q.type === 'output' ? { id: t.id, name: t.name, hidden: t.hidden, passed: t.passed } : t)),
+      tests: review ? q.tests : q.tests?.map((t) => (t.hidden || q.type === 'output' ? { id: t.id, name: t.name, hidden: t.hidden, passed: t.passed } : t)),
     })),
   };
 }

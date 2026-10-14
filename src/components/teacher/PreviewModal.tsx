@@ -11,6 +11,7 @@ import ModalShell from '../modals/ModalShell';
 import { Button } from '../ui';
 import { Banner, Card, Pill } from '../exam/kit';
 import QuestionView from '../exam/QuestionView';
+import RichText from '../exam/RichText';
 
 export default function PreviewModal({ exam, onClose }: { exam: ExamConfig; onClose(): void }) {
   const t = useTheme();
@@ -69,8 +70,9 @@ export default function PreviewModal({ exam, onClose }: { exam: ExamConfig; onCl
               return (
                 <View style={[styles.feedback, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
                   <Text style={{ color: t.text, fontWeight: '700' }}>
-                    {r.score}/{r.max} · {r.feedback}
+                    {r.score}/{r.max} puntos
                   </Text>
+                  <RichText text={r.feedback} style={{ color: t.text }} />
                   {r.tests?.map((x) => (
                     <Text key={x.id} style={{ color: x.passed ? t.success : t.danger, fontSize: 12, marginTop: 3 }}>
                       {x.passed ? '✓' : '✗'} {x.name}
