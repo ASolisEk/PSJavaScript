@@ -445,7 +445,8 @@ function HeartPendant() {
 
 function CalaveraPaint({ a }: { a: Anchors }) {
   const colors = ['#ff5fa2', '#ffd23f', '#29c5d8', '#9b6bff', '#7bd389'];
-  const [e1, e2] = a.eyes;
+  const e1 = a.eyes[0];
+  const e2 = a.eyes[1] ?? e1;
   const fx = (e1[0] + e2[0]) / 2;
   const fy = Math.min(e1[1], e2[1]) - 34;
   const [nx, ny] = a.nose;
@@ -517,19 +518,39 @@ function RoundGlasses({ a }: { a: Anchors }) {
       {a.eyes.map(([cx, cy, r], i) => (
         <Circle key={i} cx={cx} cy={cy} r={r + 4} fill="rgba(200,230,255,0.15)" stroke="#3a2a20" strokeWidth={4.5} />
       ))}
-      <Path
-        d={`M ${e1[0] + e1[2] + 4} ${e1[1] - 2} Q ${(e1[0] + e2[0]) / 2} ${Math.min(e1[1], e2[1]) - 14} ${e2[0] - e2[2] - 4} ${e2[1] - 2}`}
-        stroke="#3a2a20"
-        strokeWidth={4}
-        fill="none"
-      />
+      {e2 ? (
+        <Path
+          d={`M ${e1[0] + e1[2] + 4} ${e1[1] - 2} Q ${(e1[0] + e2[0]) / 2} ${Math.min(e1[1], e2[1]) - 14} ${e2[0] - e2[2] - 4} ${e2[1] - 2}`}
+          stroke="#3a2a20"
+          strokeWidth={4}
+          fill="none"
+        />
+      ) : (
+        // de perfil: la patita del lente va hacia la oreja
+        <Line x1={e1[0] - e1[2] - 4} y1={e1[1] - 2} x2={e1[0] - e1[2] - 46} y2={e1[1] - 10} stroke="#3a2a20" strokeWidth={4} strokeLinecap="round" />
+      )}
     </G>
   );
 }
 
 function PixelShades({ a }: { a: Anchors }) {
-  const [e1, e2] = a.eyes;
+  const e1 = a.eyes[0];
+  // de perfil (un solo ojo) la barra llega hasta la oreja
+  const e2 = a.eyes[1];
   const p = 8;
+  if (!e2) {
+    const [x, y, r] = e1;
+    const top = y - 3 * p + 2;
+    return (
+      <G transform={`rotate(${a.rot} ${x} ${y})`}>
+        <Rect x={x - r - 44} y={top} width={2 * r + 52} height={p} fill="#111" />
+        <Rect x={x - r - 4} y={top + p} width={2 * r + 8} height={p * 3} fill="#111" />
+        <Rect x={x - r + p - 4} y={top + p * 4} width={Math.max(0, 2 * r + 8 - 2 * p)} height={p} fill="#111" />
+        <Rect x={x - r + 2} y={top + p} width={p} height={p} fill="#ffffff" />
+        <Rect x={x - r + 2 + p} y={top + p * 2} width={p} height={p} fill="#ffffff" />
+      </G>
+    );
+  }
   const cx = (e1[0] + e2[0]) / 2;
   const cy = (e1[1] + e2[1]) / 2;
   // centrados en la línea de los ojos (se giran con ella)
@@ -542,7 +563,7 @@ function PixelShades({ a }: { a: Anchors }) {
         <G key={i}>
           <Rect x={x - r - 4} y={top + p} width={2 * r + 8} height={p * 3} fill="#111" />
           <Rect x={x - r + p - 4} y={top + p * 4} width={2 * r + 8 - 2 * p} height={p} fill="#111" />
-          <Rect x={x - r + 2 * p - 4} y={top + p * 5} width={2 * r + 8 - 4 * p} height={p} fill="#111" />
+          <Rect x={x - r + 2 * p - 4} y={top + p * 5} width={Math.max(0, 2 * r + 8 - 4 * p)} height={p} fill="#111" />
           <Rect x={x - r + 2} y={top + p} width={p} height={p} fill="#ffffff" />
           <Rect x={x - r + 2 + p} y={top + p * 2} width={p} height={p} fill="#ffffff" />
         </G>

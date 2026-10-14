@@ -1,23 +1,24 @@
 #!/usr/bin/env node
 /**
- * Genera los sprites de Capi, el capibara (segunda mascota), con el mismo
- * estilo que Michi: contorno café grueso, colores planos, chapitas rosas y
- * ojos grandes con brillo. Se dibuja en SVG y se exporta a PNG con el
- * Chromium de Playwright, con las mismas capas que el gato:
+ * Genera los sprites de Capi, el capibara (segunda mascota), al estilo de una
+ * ilustración kawaii: sentado de perfil, una sola silueta naranja con contorno
+ * café, hocico café oscuro, ojito con brillo, orejas redondas y patas cafés
+ * con deditos. Se dibuja en SVG y se exporta a PNG con el Chromium de
+ * Playwright, con las mismas capas que el gato:
  *
- *   reposo: cuerpo, cola, parpadeo a medias y ojos cerrados
- *   confundido: cuerpo, cola y mirada a la izquierda / derecha
- *   corriendo: cuerpo (con teclado) y cola
+ *   reposo: cuerpo, oreja (capa "cola", se mueve), parpadeo a medias y ojos cerrados
+ *   confundido: cuerpo, oreja y mirada a la izquierda / derecha
+ *   corriendo: cuerpo (tecleando) y oreja
  *   asomarse: cabeza que se asoma por el borde (en lugar de la cola del gato)
  *
  * y las pieles de temporada (oscura para Halloween, negra para Día de Muertos).
  *
- *   npx playwright --version   # necesita Playwright con Chromium
- *   node scripts/generar_capibara.js
+ *   node scripts/generar_capibara.js   # necesita Playwright con Chromium (CHROMIUM_PATH opcional)
  *
  * Escribe assets/mascot/capibara/<sprite>.png y assets/mascot/capibara/skins/<piel>/<sprite>.png.
- * Las anclas (ojos, coronilla, teclas…) usadas en el código salen de las
- * mismas constantes de este archivo (ver la tabla al final de la ejecución).
+ * El dibujo se traza mirando a la izquierda en coordenadas de referencia
+ * (lienzo de 1500 px) y se refleja y escala al sprite, que mira a la derecha
+ * como el gato. Las anclas para los vestuarios y las teclas se imprimen al final.
  */
 'use strict';
 const fs = require('fs');
@@ -28,273 +29,206 @@ const OUT = path.join(__dirname, '..', 'assets', 'mascot', 'capibara');
 // ───────────────────────────── paletas ─────────────────────────────
 
 const PALETTES = {
-  normal: {
-    line: '#3b1f10',
-    fur: '#c98d5c',
-    furDark: '#a8703f',
-    furLight: '#e3b98d',
-    muzzle: '#b27648',
-    tuft: '#8a5430',
-    nose: '#4a2716',
-    ear: '#e89a8f',
-    blush: '#f39a9a',
-    iris: '#3a1d0e',
-    ring: '#7d4626',
-  },
-  // Halloween: pelaje morado oscuro y ojos verdes brillantes (como el gato oscuro)
-  dark: {
-    line: '#120d18',
-    fur: '#3d3356',
-    furDark: '#2a2239',
-    furLight: '#5a4c7c',
-    muzzle: '#30284a',
-    tuft: '#1e182b',
-    nose: '#120d18',
-    ear: '#c98aa8',
-    blush: '#d77b9c',
-    iris: '#3f5a00',
-    ring: '#b5e33a',
-  },
-  // Día de Muertos: capibara negro
-  black: {
-    line: '#060408',
-    fur: '#25202c',
-    furDark: '#16131b',
-    furLight: '#3a3445',
-    muzzle: '#1c1822',
-    tuft: '#0c0a0f',
-    nose: '#060408',
-    ear: '#b97f92',
-    blush: '#c96f8a',
-    iris: '#3a1d0e',
-    ring: '#a0662f',
-  },
+  normal: { line: '#3b2412', fur: '#e0904c', dark: '#8e4b2c', eye: '#3b2412', tongue: '#e8737a' },
+  // Halloween: pelaje morado y ojos verdes brillantes (como el gato oscuro)
+  dark: { line: '#140f1c', fur: '#5a4a7e', dark: '#2f2645', eye: '#9ed12a', tongue: '#c75b84' },
+  // Día de Muertos: capibara negro con ojos ámbar
+  black: { line: '#060408', fur: '#2e2834', dark: '#17131b', eye: '#d39a3c', tongue: '#b9576f' },
 };
 
-const LW = 5.5; // grosor del contorno
+// referencia → sprite: se refleja (mira a la derecha) y se escala
+const K = 0.38;
+const X1 = 1425; // borde derecho de la referencia (la cadera)
+const Y0 = 60; // borde de arriba de la referencia (las orejas)
+const LW = 13; // grosor del contorno en la referencia (≈ 5 px en el sprite)
 
-// ───────────────────────────── piezas ─────────────────────────────
+const g = (ox, oy, inner, mirror = true) =>
+  mirror
+    ? `<g transform="translate(${ox + X1 * K} ${oy - Y0 * K}) scale(${-K} ${K})">${inner}</g>`
+    : `<g transform="translate(${ox - 760 * K} ${oy - Y0 * K}) scale(${K})">${inner}</g>`;
+const toSprite = (ox, oy) => ([x, y]) => [Math.round(ox + (X1 - x) * K), Math.round(oy + (y - Y0) * K)];
 
-/** Extremidad redondeada (cápsula con contorno). */
-function limb(P, x1, y1, x2, y2, w, fill = P.fur, toes = true) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const len = Math.hypot(dx, dy) || 1;
-  // dedos: dos rayitas en la punta, perpendiculares a la extremidad
-  const nx = -dy / len;
-  const ny = dx / len;
-  const ux = dx / len;
-  const uy = dy / len;
-  const toe = (k) => {
-    const bx = x2 + nx * k * w * 0.22 + ux * w * 0.18;
-    const by = y2 + ny * k * w * 0.22 + uy * w * 0.18;
-    return `<path d="M ${bx} ${by} l ${-ux * w * 0.26} ${-uy * w * 0.26}" stroke="${P.line}" stroke-width="3" stroke-linecap="round"/>`;
-  };
+const stroke = (P, w = LW) => `fill="none" stroke="${P.line}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"`;
+
+// ───────────────────────────── piezas (coordenadas de referencia) ─────────────────────────────
+
+/** Silueta de cabeza y cuerpo sentado, mirando a la izquierda. */
+const SILHOUETTE =
+  'M 780 300 C 776 240 800 190 850 160 C 900 128 970 112 1040 112 C 1110 112 1160 130 1195 170 ' +
+  'C 1270 214 1340 300 1380 410 C 1420 520 1434 640 1400 712 C 1376 758 1336 778 1290 778 ' +
+  'L 1000 780 C 970 780 940 776 932 760 C 926 744 932 720 944 700 C 950 640 938 560 940 500 ' +
+  'C 936 470 935 452 928 440 C 890 446 830 440 800 410 C 784 390 780 340 780 300 Z';
+
+/** Hocico café (se recorta con la silueta). */
+const MUZZLE = 'M 862 140 C 925 205 945 290 936 350 C 930 395 920 425 905 445 L 700 470 L 700 100 Z';
+
+const EYE = [1020, 250];
+const EAR_NEAR = [1150, 128];
+const EAR_FAR = [1068, 100];
+
+function ear(P, [x, y], r = 37) {
   return (
-    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${P.line}" stroke-width="${w + LW * 2}" stroke-linecap="round"/>` +
-    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${fill}" stroke-width="${w}" stroke-linecap="round"/>` +
-    (toes ? toe(-1) + toe(1) : '')
+    `<circle cx="${x}" cy="${y}" r="${r}" fill="${P.fur}" stroke="${P.line}" stroke-width="${LW}"/>` +
+    `<path d="M ${x - 18} ${y + 14} C ${x - 20} ${y - 10} ${x - 6} ${y - 24} ${x + 16} ${y - 24}" ${stroke(P, LW * 0.8)}/>`
   );
 }
 
 /**
- * Ojo. kind: open | half | closed | worried | happy. look: desplazamiento de la pupila en x.
+ * Pata: la punta café de la pierna con deditos al frente (a la izquierda). El
+ * borde de arriba no lleva contorno: se funde con la pierna como en la ilustración.
  */
-function eye(P, id, cx, cy, r, kind, look = 0) {
-  if (kind === 'closed') {
-    return `<path d="M ${cx - r * 0.95} ${cy - r * 0.05} Q ${cx} ${cy + r * 0.75} ${cx + r * 0.95} ${cy - r * 0.05}" fill="none" stroke="${P.line}" stroke-width="4.5" stroke-linecap="round"/>`;
-  }
-  if (kind === 'happy') {
-    return `<path d="M ${cx - r * 0.95} ${cy + r * 0.35} Q ${cx} ${cy - r * 0.85} ${cx + r * 0.95} ${cy + r * 0.35}" fill="none" stroke="${P.line}" stroke-width="5" stroke-linecap="round"/>`;
-  }
-  if (kind === 'worried') {
-    const R = r * 1.18;
-    const px = cx + look;
+function foot(P, x0, x1, y0, y1) {
+  // contorno: frente redondeado, tres deditos abajo al frente y la planta hasta el talón
+  const edge =
+    `M ${x0 + 34} ${y0} C ${x0 + 8} ${y0 + 2} ${x0 - 4} ${y1 - 34} ${x0 + 2} ${y1 - 18} ` +
+    `a 10 10 0 0 0 16 13 a 10 10 0 0 0 20 4 a 10 10 0 0 0 20 1 L ${x1 - 14} ${y1} Q ${x1} ${y1} ${x1} ${y1 - 14}`;
+  // la orilla de arriba es una curva sin contorno que se funde con la pierna
+  const top = ` L ${x1} ${y0 + 8} C ${x1 - 30} ${y0 - 6} ${x0 + 60} ${y0 - 6} ${x0 + 34} ${y0} Z`;
+  return (
+    `<path d="${edge}${top}" fill="${P.dark}"/>` +
+    `<path d="${edge}" fill="none" stroke="${P.line}" stroke-width="${LW}" stroke-linecap="round" stroke-linejoin="round"/>`
+  );
+}
+
+/**
+ * Ojo. kind: open | half | closed | happy | worried. look: desplazamiento de
+ * la pupila (en la referencia, + hacia atrás).
+ */
+function eye(P, id, kind, look = 0) {
+  const [cx, cy] = EYE;
+  const rx = 20;
+  const ry = 27;
+  const shine = `<circle cx="${cx - 6}" cy="${cy - 10}" r="7.5" fill="#ffffff"/>`;
+  const open = `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${P.eye}" stroke="${P.line}" stroke-width="5"/>` + shine;
+  if (kind === 'open') return open;
+  if (kind === 'half') {
     return (
-      `<circle cx="${cx}" cy="${cy}" r="${R}" fill="#ffffff" stroke="${P.line}" stroke-width="4"/>` +
-      `<circle cx="${px}" cy="${cy + 1}" r="${r * 0.46}" fill="${P.iris}"/>` +
-      `<circle cx="${px - r * 0.16}" cy="${cy - r * 0.14}" r="${r * 0.15}" fill="#ffffff"/>`
+      `<clipPath id="lid${id}"><rect x="${cx - 40}" y="${cy - 2}" width="80" height="60"/></clipPath>` +
+      `<g clip-path="url(#lid${id})">${open}</g>` +
+      `<path d="M ${cx - 24} ${cy - 2} Q ${cx} ${cy - 8} ${cx + 24} ${cy - 2}" ${stroke(P, 10)}/>`
     );
   }
-  const open =
-    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${P.iris}" stroke="${P.line}" stroke-width="3"/>` +
-    `<circle cx="${cx + r * 0.1}" cy="${cy + r * 0.2}" r="${r * 0.62}" fill="${P.ring}" opacity="0.55"/>` +
-    `<circle cx="${cx + r * 0.08}" cy="${cy + r * 0.12}" r="${r * 0.4}" fill="${P.iris}"/>` +
-    `<circle cx="${cx - r * 0.34}" cy="${cy - r * 0.36}" r="${r * 0.34}" fill="#ffffff"/>` +
-    `<circle cx="${cx + r * 0.36}" cy="${cy + r * 0.3}" r="${r * 0.15}" fill="#ffffff"/>`;
-  if (kind === 'open') return open;
-  // a medias: párpado de pelaje sobre la mitad de arriba
+  if (kind === 'closed') return `<path d="M ${cx - 22} ${cy + 2} Q ${cx} ${cy + 22} ${cx + 22} ${cy + 2}" ${stroke(P, 10)}/>`;
+  if (kind === 'happy') return `<path d="M ${cx - 24} ${cy + 10} Q ${cx} ${cy - 22} ${cx + 24} ${cy + 10}" ${stroke(P, 10)}/>`;
+  // worried: ojo grande con blanco, pupila que mira y ceja levantada
+  const px = cx + look;
   return (
-    `<clipPath id="lid${id}"><rect x="${cx - r - 4}" y="${cy - r * 0.05}" width="${r * 2 + 8}" height="${r * 2}"/></clipPath>` +
-    `<g clip-path="url(#lid${id})">${open}</g>` +
-    `<path d="M ${cx - r * 1.05} ${cy - r * 0.05} Q ${cx} ${cy - r * 0.2} ${cx + r * 1.05} ${cy - r * 0.05}" fill="none" stroke="${P.line}" stroke-width="4.5" stroke-linecap="round"/>`
+    `<circle cx="${cx}" cy="${cy}" r="33" fill="#ffffff" stroke="${P.line}" stroke-width="${LW * 0.8}"/>` +
+    `<circle cx="${px}" cy="${cy + 3}" r="15" fill="${P.line}"/>` +
+    `<circle cx="${px}" cy="${cy + 3}" r="9" fill="${P.eye}"/>` +
+    `<circle cx="${px - 5}" cy="${cy - 3}" r="5" fill="#ffffff"/>` +
+    `<path d="M ${cx - 34} ${cy - 50} Q ${cx - 4} ${cy - 66} ${cx + 30} ${cy - 54}" ${stroke(P, 10)}/>`
   );
 }
 
-/** Mechón de pelo (rayita curva). */
-const tuft = (P, x, y, k = 1, rot = 0) =>
-  `<path transform="rotate(${rot} ${x} ${y})" d="M ${x} ${y} q ${7 * k} ${-7 * k} ${14 * k} ${1 * k}" fill="none" stroke="${P.tuft}" stroke-width="3" stroke-linecap="round"/>`;
-
-/**
- * Cabeza en coordenadas propias (centro aprox. 0,0; mira hacia la derecha de
- * tres cuartos). Devuelve también las anclas de la cara.
- */
-const HEAD = {
-  // cabeza alargada con el hocico hacia adelante (rasgo del capibara)
-  outline: 'M -70 -30 C -68 -58 -40 -68 -6 -68 C 30 -68 60 -60 74 -36 C 90 -12 98 14 92 36 C 86 58 60 68 30 68 C -10 68 -50 66 -66 46 C -78 28 -74 -6 -70 -30 Z',
-  ears: [
-    [-46, -60, 15, 13, -24],
-    [22, -64, 13, 12, 14],
-  ],
-  eyes: [
-    [-10, -20, 17],
-    [52, -26, 14],
-  ],
-  nose: [58, 8],
-  mouth: [58, 36],
-  // la chapita lejana no se dibuja (queda tras el hocico); su ancla sirve a los vestuarios
-  cheeks: [
-    [-34, 22, 14, 8],
-    [76, -14, 7, 6],
-  ],
-  chin: [36, 66],
-  crown: [-6, -68],
-  /** Donde la cabeza se une al cuerpo (moños, paliacate, dije). */
-  neck: [-16, 70],
-};
-
-function head(P, id, { eyes = 'open', look = 0, mouth = 'smile', brows = false, sweat = false } = {}) {
-  const H = HEAD;
-  let s = '';
-  // orejas (detrás de la cabeza)
-  for (const [x, y, rx, ry, rot] of H.ears) {
-    s += `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" transform="rotate(${rot} ${x} ${y})" fill="${P.fur}" stroke="${P.line}" stroke-width="${LW}"/>`;
-    s += `<ellipse cx="${x + (x < 0 ? 1 : -1)}" cy="${y + 2}" rx="${rx * 0.5}" ry="${ry * 0.45}" transform="rotate(${rot} ${x} ${y})" fill="${P.ear}"/>`;
-  }
-  s += `<clipPath id="head${id}"><path d="${H.outline}"/></clipPath>`;
-  s += `<path d="${H.outline}" fill="${P.fur}"/>`;
-  s += `<g clip-path="url(#head${id})">`;
-  // luz arriba, sombra abajo y hocico más oscuro
-  s += `<ellipse cx="-16" cy="-56" rx="60" ry="22" fill="${P.furLight}" opacity="0.55"/>`;
-  s += `<ellipse cx="0" cy="82" rx="100" ry="24" fill="${P.furDark}" opacity="0.5"/>`;
-  s += `<ellipse cx="54" cy="26" rx="48" ry="34" fill="${P.muzzle}" opacity="0.85"/>`;
-  s += `</g>`;
-  s += `<path d="${H.outline}" fill="none" stroke="${P.line}" stroke-width="${LW}" stroke-linejoin="round"/>`;
-  // mechones en la coronilla
-  s += `<path d="M -22 -66 q 4 -14 10 -3 q 4 -12 10 1" fill="none" stroke="${P.line}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`;
-  s += tuft(P, -58, -22, 0.9, -40) + tuft(P, -44, -46, 0.8, -10);
-  // chapitas
-  // solo se ve la chapita cercana (la lejana queda detrás del hocico)
-  const [cx0, cy0, crx, cry] = H.cheeks[0];
-  s += `<ellipse cx="${cx0}" cy="${cy0}" rx="${crx}" ry="${cry}" fill="${P.blush}" opacity="0.75"/>`;
-  // ojos
-  H.eyes.forEach(([x, y, r], i) => (s += eye(P, `${id}e${i}`, x, y, r, eyes, look)));
-  if (brows) {
-    s += `<path d="M -30 -48 Q -16 -54 0 -58" fill="none" stroke="${P.line}" stroke-width="4" stroke-linecap="round"/>`;
-    s += `<path d="M 40 -60 Q 56 -58 68 -48" fill="none" stroke="${P.line}" stroke-width="4" stroke-linecap="round"/>`;
-  }
-  // nariz grande de capibara
-  const [nx, ny] = H.nose;
-  s += `<rect x="${nx - 22}" y="${ny - 12}" width="44" height="24" rx="12" fill="${P.nose}" stroke="${P.line}" stroke-width="3"/>`;
-  s += `<ellipse cx="${nx - 8}" cy="${ny - 4}" rx="7" ry="3.5" fill="#ffffff" opacity="0.45"/>`;
-  s += `<path d="M ${nx - 9} ${ny + 4} q 3 3 6 0 M ${nx + 3} ${ny + 4} q 3 3 6 0" fill="none" stroke="${P.line}" stroke-width="2" stroke-linecap="round"/>`;
-  // boca
-  const [mx, my] = H.mouth;
-  s += `<path d="M ${nx} ${ny + 12} L ${mx} ${my - 4}" stroke="${P.line}" stroke-width="3.5" stroke-linecap="round"/>`;
+/** Nariz y boca. mouth: smile | wavy | open */
+function face(P, mouth) {
+  let s = `<path d="M 800 272 C 812 256 838 254 852 268 C 857 274 856 281 850 284" ${stroke(P, 10)}/>`;
   if (mouth === 'smile') {
-    s += `<path d="M ${mx - 15} ${my - 6} Q ${mx - 7} ${my + 4} ${mx} ${my - 4} Q ${mx + 7} ${my + 4} ${mx + 15} ${my - 6}" fill="none" stroke="${P.line}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s += `<path d="M 818 296 L 818 350 C 832 372 862 378 885 366" ${stroke(P, 10)}/>`;
   } else if (mouth === 'wavy') {
-    s += `<path d="M ${mx - 18} ${my + 2} q 4.5 -6 9 0 q 4.5 6 9 0 q 4.5 -6 9 0 q 4.5 6 9 0" fill="none" stroke="${P.line}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>`;
-  } else if (mouth === 'open') {
-    s += `<path d="M ${mx - 18} ${my - 5} Q ${mx} ${my + 26} ${mx + 18} ${my - 5} Q ${mx} ${my} ${mx - 18} ${my - 5} Z" fill="#7a2e2e" stroke="${P.line}" stroke-width="3.5" stroke-linejoin="round"/>`;
-    s += `<ellipse cx="${mx}" cy="${my + 10}" rx="9" ry="5.5" fill="#f08a8a"/>`;
-  }
-  if (sweat) {
-    s += `<path d="M -52 -40 C -60 -28 -62 -18 -54 -14 C -46 -10 -40 -20 -46 -30 Z" fill="#8fd3ff" stroke="#2a6fa8" stroke-width="2.5"/>`;
+    s += `<path d="M 818 296 L 818 340" ${stroke(P, 10)}/>`;
+    s += `<path d="M 812 362 q 12 -12 24 0 q 12 12 24 0 q 12 -12 24 0" ${stroke(P, 10)}/>`;
+  } else {
+    s += `<path d="M 818 296 L 818 334" ${stroke(P, 10)}/>`;
+    s += `<path d="M 808 340 C 812 398 878 404 894 352 C 866 362 836 356 808 340 Z" fill="#6b1f24" stroke="${P.line}" stroke-width="10" stroke-linejoin="round"/>`;
+    s += `<ellipse cx="848" cy="378" rx="22" ry="11" fill="${P.tongue}"/>`;
+    // los dientes de enfrente de roedor
+    s += `<path d="M 812 343 L 838 352 L 836 368 Q 822 368 812 358 Z" fill="#ffffff" stroke="${P.line}" stroke-width="5" stroke-linejoin="round"/>`;
   }
   return s;
 }
 
-/** Cuerpo de "pan" del capibara (sin cabeza ni patas). */
-function body(P, id, d, extra = '') {
+/** Líneas de adentro: quijada, muslo y patas delanteras. */
+function inner(P, { frontLegs = true } = {}) {
+  let s = `<path d="M 928 440 C 952 446 985 440 1002 426" ${stroke(P)}/>`;
+  s += `<path d="M 1256 560 C 1214 576 1194 640 1204 690 C 1210 718 1240 732 1300 730" ${stroke(P)}/>`;
+  if (frontLegs) {
+    s += `<path d="M 1036 604 C 1030 652 1028 700 1022 734" ${stroke(P)}/>`;
+    s += `<path d="M 1162 600 C 1152 650 1134 700 1118 734" ${stroke(P)}/>`;
+    s += `<path d="M 966 612 C 976 650 984 678 994 704" ${stroke(P)}/>`;
+  }
+  return s;
+}
+
+/**
+ * Brazo que sale del cuerpo: se rellena y solo se marcan sus dos orillas (sin
+ * punta redonda adentro del cuerpo), como las patas de la ilustración.
+ */
+function limbEdges(P, [bx, by], [tx, ty], w) {
+  const len = Math.hypot(tx - bx, ty - by);
+  const nx = ((ty - by) / len) * (w / 2);
+  const ny = (-(tx - bx) / len) * (w / 2);
+  const a1 = [bx + nx, by + ny];
+  const a2 = [tx + nx, ty + ny];
+  const b1 = [bx - nx, by - ny];
+  const b2 = [tx - nx, ty - ny];
   return (
-    `<clipPath id="body${id}"><path d="${d}"/></clipPath>` +
-    `<path d="${d}" fill="${P.fur}"/>` +
-    `<g clip-path="url(#body${id})">` +
-    `<ellipse cx="130" cy="276" rx="150" ry="40" fill="${P.furDark}" opacity="0.55"/>` +
-    `<ellipse cx="150" cy="246" rx="70" ry="16" fill="${P.furLight}" opacity="0.55"/>` +
-    `<ellipse cx="100" cy="132" rx="80" ry="22" fill="${P.furLight}" opacity="0.35"/>` +
-    extra +
-    `</g>` +
-    `<path d="${d}" fill="none" stroke="${P.line}" stroke-width="${LW}" stroke-linejoin="round"/>`
+    `<path d="M ${a1} L ${a2} L ${b2} L ${b1} Z" fill="${P.fur}"/>` +
+    `<path d="M ${a1} L ${a2} M ${b1} L ${b2}" ${stroke(P)}/>`
   );
 }
 
-const svg = (w, h, inner) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${inner}</svg>`;
+/** Capibara completo (sin la oreja cercana, que va en su propia capa). */
+function capybara(P, id, { eyes = 'open', look = 0, mouth = 'smile', frontLegs = true, sweat = false } = {}) {
+  let s = ear(P, EAR_FAR, 34);
+  s += `<clipPath id="sil${id}"><path d="${SILHOUETTE}"/></clipPath>`;
+  s += `<path d="${SILHOUETTE}" fill="${P.fur}"/>`;
+  s += `<g clip-path="url(#sil${id})"><path d="${MUZZLE}" fill="${P.dark}"/></g>`;
+  s += `<path d="${SILHOUETTE}" fill="none" stroke="${P.line}" stroke-width="${LW}" stroke-linejoin="round"/>`;
+  s += inner(P, { frontLegs });
+  // patas: trasera, delantera lejana y delantera cercana
+  s += foot(P, 1168, 1300, 722, 782);
+  if (frontLegs) {
+    s += foot(P, 924, 1008, 694, 766);
+    s += foot(P, 1000, 1122, 722, 784);
+  }
+  s += eye(P, id, eyes, look);
+  s += face(P, mouth);
+  if (sweat) {
+    s += `<path d="M 1150 205 C 1134 232 1130 254 1148 262 C 1166 270 1178 248 1166 226 Z" fill="#8fd3ff" stroke="#2a6fa8" stroke-width="6"/>`;
+  }
+  return s;
+}
+
+const svg = (w, h, body) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`;
 
 // ───────────────────────────── poses ─────────────────────────────
 
-/** Reposo: de pie, de tres cuartos mirando a la derecha. */
-const IDLE = { w: 309, h: 303, head: [206, 122], rot: -4, tail: [30, 192], pivot: [38, 196], back: [104, 150] };
+/** Reposo: sentado de perfil, mirando a la derecha. */
+const IDLE = { w: 300, h: 300, o: [20, 12] };
+const idle = (P, eyes = 'open') => svg(IDLE.w, IDLE.h, g(...IDLE.o, capybara(P, 'i' + eyes, { eyes })));
+/** La oreja cercana se mueve como la cola del gato. */
+const earLayer = (pose) => (P) => svg(pose.w, pose.h, g(...pose.o, ear(P, EAR_NEAR)));
 
-function idle(P, eyes = 'open') {
-  const [hx, hy] = IDLE.head;
-  const bodyD = 'M 42 242 C 14 218 18 164 60 146 C 102 128 172 130 208 154 C 242 178 246 226 226 248 C 206 268 74 272 42 242 Z';
-  let s = '';
-  // patas de atrás (más oscuras)
-  s += limb(P, 106, 250, 108, 280, 30, P.furDark);
-  s += limb(P, 226, 246, 230, 276, 30, P.furDark);
-  s += body(P, 'i', bodyD, tuft(P, 72, 160) + tuft(P, 104, 148) + tuft(P, 54, 188, 0.9, 20) + tuft(P, 140, 150, 0.9));
-  // patas de adelante
-  s += limb(P, 70, 256, 70, 284, 32);
-  s += limb(P, 190, 256, 194, 286, 32);
-  s += `<g transform="translate(${hx} ${hy}) rotate(${IDLE.rot})">${head(P, 'i' + eyes, { eyes })}</g>`;
-  return svg(IDLE.w, IDLE.h, s);
-}
-
-const idleTail = (P) => svg(IDLE.w, IDLE.h, tailTuft(P, ...IDLE.tail));
-
-function tailTuft(P, x, y) {
-  // colita mínima de capibara: un mechón redondo
-  return `<path d="M ${x + 10} ${y - 12} C ${x - 6} ${y - 16} ${x - 14} ${y + 2} ${x - 4} ${y + 12} C ${x + 4} ${y + 18} ${x + 16} ${y + 10} ${x + 16} ${y}" fill="${P.fur}" stroke="${P.line}" stroke-width="${LW}" stroke-linejoin="round" stroke-linecap="round"/>` +
-    `<path d="M ${x - 2} ${y - 2} q 6 -4 10 2" fill="none" stroke="${P.tuft}" stroke-width="2.5" stroke-linecap="round"/>`;
-}
-
-/** Confundido: cabeza ladeada, ojos de susto, rascándose la cabeza. */
-const CONF = { w: 297, h: 311, head: [194, 128], rot: -9, tail: [24, 204], pivot: [32, 208], back: [98, 160] };
-
+/** Confundido: ojos de susto y la patita en el hocico, pensando. */
+const CONF = { w: 300, h: 300, o: [20, 12] };
 function confused(P, look = 0) {
-  const [hx, hy] = CONF.head;
-  const bodyD = 'M 38 252 C 10 228 14 174 56 156 C 98 138 168 140 204 164 C 238 188 242 236 222 258 C 202 278 70 282 38 252 Z';
-  let s = '';
-  s += limb(P, 102, 260, 104, 290, 30, P.furDark);
-  s += limb(P, 222, 256, 226, 286, 30, P.furDark);
-  s += body(P, 'c', bodyD, tuft(P, 66, 170) + tuft(P, 98, 158) + tuft(P, 50, 198, 0.9, 20) + tuft(P, 134, 160, 0.9));
-  s += limb(P, 66, 266, 66, 294, 32);
-  s += `<g transform="translate(${hx} ${hy}) rotate(${CONF.rot})">${head(P, 'c' + look, { eyes: 'worried', look, mouth: 'wavy', brows: true, sweat: true })}</g>`;
-  // pata levantada rascándose la cabeza
-  s += limb(P, 200, 240, 244, 190, 32, P.fur, false);
-  s += `<circle cx="248" cy="184" r="20" fill="${P.fur}" stroke="${P.line}" stroke-width="${LW}"/>`;
-  s += `<path d="M 237 177 l 6 -7 M 248 173 l 5 -7 M 259 177 l 5 -6" stroke="${P.line}" stroke-width="3" stroke-linecap="round"/>`;
-  return svg(CONF.w, CONF.h, s);
+  let s = capybara(P, 'c' + look, { eyes: 'worried', look, mouth: 'wavy', frontLegs: false, sweat: true });
+  // la pata delantera lejana sigue en el suelo; la cercana sube al hocico
+  s += `<path d="M 966 612 C 976 650 984 678 994 704" ${stroke(P)}/>`;
+  s += foot(P, 924, 1008, 694, 766);
+  s += foot(P, 1006, 1104, 724, 782);
+  s += limbEdges(P, [1080, 630], [968, 476], 84);
+  s += `<ellipse cx="960" cy="462" rx="40" ry="34" transform="rotate(-40 960 462)" fill="${P.dark}" stroke="${P.line}" stroke-width="${LW}"/>`;
+  s += `<path d="M 930 450 l -10 -14 M 948 432 l -6 -16 M 970 426 l 0 -16" ${stroke(P, 8)}/>`;
+  return svg(CONF.w, CONF.h, g(...CONF.o, s));
 }
 
-const confusedTail = (P) => svg(CONF.w, CONF.h, tailTuft(P, ...CONF.tail));
-
-/** Corriendo y tecleando feliz. */
-const RUN = { w: 313, h: 305, head: [190, 106], rot: -3, tail: [22, 170], pivot: [30, 174], kb: [212, 264, -13], back: [100, 128] };
+/** Corriendo: sentado y tecleando feliz con las dos patas. */
+const RUN = { w: 330, h: 300, o: [16, 12], kb: [240, 262, -6] };
 const KEY_COLORS = ['#f6d743', '#4fc3f7', '#ef5350', '#66bb6a', '#ab47bc', '#ffa726'];
 
 function keyboard() {
   const [kx, ky, rot] = RUN.kb;
   let s = `<g transform="translate(${kx} ${ky}) rotate(${rot})">`;
-  s += `<rect x="-98" y="-24" width="196" height="48" rx="9" fill="#2b2d42" stroke="#1a1020" stroke-width="5"/>`;
-  s += `<rect x="-92" y="-19" width="184" height="38" rx="6" fill="#3d405b"/>`;
+  s += `<rect x="-90" y="-22" width="180" height="44" rx="9" fill="#2b2d42" stroke="#1a1020" stroke-width="5"/>`;
+  s += `<rect x="-84" y="-17" width="168" height="34" rx="6" fill="#3d405b"/>`;
   for (let r = 0; r < 3; r++)
     for (let c = 0; c < 10; c++) {
-      const x = -86 + c * 17.6;
-      const y = -15 + r * 11.4;
-      s += `<rect x="${x}" y="${y}" width="14" height="9" rx="2" fill="${KEY_COLORS[(c + r * 3) % KEY_COLORS.length]}" opacity="${r === 1 ? 0.9 : 1}"/>`;
+      const x = -79 + c * 16;
+      const y = -14 + r * 10.2;
+      s += `<rect x="${x}" y="${y}" width="13" height="8" rx="2" fill="${KEY_COLORS[(c + r * 3) % KEY_COLORS.length]}" opacity="${r === 1 ? 0.9 : 1}"/>`;
     }
   return s + '</g>';
 }
@@ -306,63 +240,56 @@ function keyCenters() {
   const out = [];
   // 20 de las 30 teclas, repartidas por todo el teclado
   for (let r = 0; r < 3; r++)
-    for (let c = 0; c < 10; c += 1) {
+    for (let c = 0; c < 10; c++) {
       if ((r * 10 + c) % 3 === 2) continue;
-      const x = -86 + c * 17.6 + 7;
-      const y = -15 + r * 11.4 + 4.5;
+      const x = -79 + c * 16 + 6.5;
+      const y = -14 + r * 10.2 + 4;
       out.push([Math.round(kx + x * Math.cos(a) - y * Math.sin(a)), Math.round(ky + x * Math.sin(a) + y * Math.cos(a))]);
     }
   return out.slice(0, 20);
 }
 
+/** Pata estirada hacia el teclado (coordenadas de referencia). */
+function arm(P, from, to) {
+  const [x2, y2] = to;
+  return (
+    limbEdges(P, from, to, 72) +
+    `<ellipse cx="${x2 - 8}" cy="${y2 + 14}" rx="44" ry="28" fill="${P.dark}" stroke="${P.line}" stroke-width="${LW}"/>` +
+    `<path d="M ${x2 - 30} ${y2 + 10} l -4 14 M ${x2 - 10} ${y2 + 4} l -2 16" ${stroke(P, 7)}/>`
+  );
+}
+
 function running(P) {
-  const [hx, hy] = RUN.head;
-  const bodyD = 'M 30 206 C 6 184 16 136 60 122 C 104 108 170 116 204 140 C 234 162 236 206 214 226 C 192 246 62 240 30 206 Z';
-  let s = '';
-  // patas estiradas (galope)
-  s += limb(P, 90, 214, 54, 248, 28, P.furDark);
-  s += body(P, 'r', bodyD, tuft(P, 70, 136) + tuft(P, 102, 124) + tuft(P, 52, 162, 0.9, 20) + tuft(P, 136, 128, 0.9));
-  s += limb(P, 56, 212, 22, 240, 30);
+  // pata lejana (detrás del cuerpo), cuerpo, teclado y pata cercana encima
+  let s = g(...RUN.o, arm(P, [1000, 560], [880, 650]));
+  s += g(...RUN.o, capybara(P, 'r', { eyes: 'happy', mouth: 'open', frontLegs: false }) + foot(P, 1050, 1150, 724, 782));
   s += keyboard();
-  s += `<g transform="translate(${hx} ${hy}) rotate(${RUN.rot})">${head(P, 'r', { eyes: 'happy', mouth: 'open' })}</g>`;
-  // patitas sobre el teclado
-  s += limb(P, 240, 214, 254, 236, 30, P.furDark, false);
-  s += `<ellipse cx="258" cy="242" rx="18" ry="12" fill="${P.furDark}" stroke="${P.line}" stroke-width="${LW}"/>`;
-  s += limb(P, 172, 222, 184, 244, 32, P.fur, false);
-  s += `<ellipse cx="188" cy="252" rx="20" ry="13" fill="${P.fur}" stroke="${P.line}" stroke-width="${LW}"/>`;
-  s += `<path d="M 180 252 l 2 -6 M 191 254 l 2 -6" stroke="${P.line}" stroke-width="2.5" stroke-linecap="round"/>`;
+  s += g(...RUN.o, arm(P, [1110, 590], [1010, 690]));
   return svg(RUN.w, RUN.h, s);
 }
 
-const runningTail = (P) => svg(RUN.w, RUN.h, tailTuft(P, ...RUN.tail));
-
-/** Cabeza asomándose por el borde (se ve la mitad izquierda; mira hacia adentro). */
-const PEEK = { w: 150, h: 180 };
-function peek(P) {
-  return svg(PEEK.w, PEEK.h, `<g transform="translate(78 100) rotate(-14) scale(-1 1)">${head(P, 'p', { eyes: 'open' })}</g>`);
-}
+/** Cabeza asomándose por el borde (mira hacia adentro, con el hocico por delante). */
+const PEEK = { w: 180, h: 165 };
+const peek = (P) => svg(PEEK.w, PEEK.h, g(4, 4, ear(P, EAR_NEAR) + capybara(P, 'p'), false));
 
 // ───────────────────────────── anclas para el código ─────────────────────────────
 
-function toSprite([ox, oy], rot, [x, y]) {
-  const a = (rot * Math.PI) / 180;
-  return [Math.round(ox + x * Math.cos(a) - y * Math.sin(a)), Math.round(oy + x * Math.sin(a) + y * Math.cos(a))];
-}
-
 function anchors(pose) {
-  const o = pose.head;
-  const r = pose.rot;
-  const T = (p) => toSprite(o, r, p);
+  const T = toSprite(...pose.o);
   return {
-    crown: T(HEAD.crown),
-    rot: r,
-    eyes: HEAD.eyes.map(([x, y, rr]) => [...T([x, y]), rr]),
-    nose: T(HEAD.nose),
-    mouth: T(HEAD.mouth),
-    cheeks: HEAD.cheeks.map(([x, y]) => T([x, y])),
-    chin: T(HEAD.chin),
-    neck: T(HEAD.neck),
-    back: pose.back,
+    // un poco detrás de la frente: ahí se apoya el sombrero
+    crown: T([1010, 114]),
+    rot: 6,
+    // de perfil se ve un solo ojo
+    eyes: [[...T(EYE), 11]],
+    nose: T([828, 270]),
+    // bigote, barba y boca cosida: un poco detrás de la boca (de perfil el hocico es angosto)
+    mouth: T([872, 336]),
+    cheeks: [T([978, 350])],
+    chin: T([870, 430]),
+    neck: T([990, 452]),
+    back: T([1262, 330]),
+    pivot: T([EAR_NEAR[0], EAR_NEAR[1] + 30]),
   };
 }
 
@@ -397,22 +324,22 @@ async function main() {
       idle_body: [idle(P, 'open'), IDLE],
       idle_blink_half: [idle(P, 'half'), IDLE],
       idle_blink: [idle(P, 'closed'), IDLE],
-      idle_tail: [idleTail(P), IDLE],
+      idle_tail: [earLayer(IDLE)(P), IDLE],
       confused_body: [confused(P, 0), CONF],
-      confused_look_left: [confused(P, -7), CONF],
-      confused_look_right: [confused(P, 7), CONF],
-      confused_tail: [confusedTail(P), CONF],
+      confused_look_left: [confused(P, -12), CONF],
+      confused_look_right: [confused(P, 12), CONF],
+      confused_tail: [earLayer(CONF)(P), CONF],
       running_body: [running(P), RUN],
-      running_tail: [runningTail(P), RUN],
+      running_tail: [earLayer(RUN)(P), RUN],
       peek: [peek(P), PEEK],
     };
     for (const [name, [markup, size]] of Object.entries(frames)) await render(path.join(dir, `${name}.png`), markup, size.w, size.h);
     console.log(`✓ ${skin}: ${Object.keys(frames).length} sprites`);
   }
   await browser.close();
-  console.log('\nAnclas (para src/components/mascot/sprites.ts):');
-  console.log(JSON.stringify({ idle: anchors(IDLE), error: anchors(CONF), running: anchors(RUN), keys: keyCenters() }, null, 1));
+  console.log('\nAnclas (para src/components/mascot/characters.ts y sprites.ts):');
+  console.log(JSON.stringify({ idle: anchors(IDLE), error: anchors(CONF), running: anchors(RUN), keys: keyCenters() }));
 }
 
 if (require.main === module) main();
-module.exports = { PALETTES, idle, confused, running, peek, anchors, IDLE, CONF, RUN, PEEK };
+module.exports = { PALETTES, idle, confused, running, peek, earLayer, anchors, keyCenters, IDLE, CONF, RUN, PEEK };

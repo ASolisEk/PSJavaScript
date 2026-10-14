@@ -143,12 +143,14 @@ export const SKINS: Record<Skin, SpriteSet> = {
 };
 
 // ───────────────────────────── Capi, el capibara ─────────────────────────────
-// Generado con scripts/generar_capibara.js (mismas capas y poses que el gato).
+// Generado con scripts/generar_capibara.js (mismas capas y poses que el gato;
+// en lugar de la cola, la capa que se mueve es la oreja).
 
 const CAPI_IDLE: typeof IDLE = {
-  w: 309,
-  h: 303,
-  pivot: [38, 196],
+  w: 300,
+  h: 300,
+  // la "cola" del capibara es su oreja: se mueve desde la base
+  pivot: [125, 49],
   body: require('../../../assets/mascot/capibara/idle_body.png'),
   tail: require('../../../assets/mascot/capibara/idle_tail.png'),
   blinkHalf: require('../../../assets/mascot/capibara/idle_blink_half.png'),
@@ -156,34 +158,34 @@ const CAPI_IDLE: typeof IDLE = {
 };
 
 const CAPI_ERROR: typeof ERROR = {
-  w: 297,
-  h: 311,
-  pivot: [32, 208],
+  w: 300,
+  h: 300,
+  pivot: [125, 49],
   body: require('../../../assets/mascot/capibara/confused_body.png'),
   tail: require('../../../assets/mascot/capibara/confused_tail.png'),
   lookLeft: require('../../../assets/mascot/capibara/confused_look_left.png'),
   lookRight: require('../../../assets/mascot/capibara/confused_look_right.png'),
   // mismas decoraciones que el gato, alrededor de la cabeza del capibara
-  questions: ERROR.questions.map((q, i) => ({ ...q, x: 126 + i * 32, y: -26 + (i === 2 ? 4 : 0) })),
-  drop: { ...ERROR.drop, x: 108, y: 84 },
-  sweat: { ...ERROR.sweat, x: 268, y: 40 },
-  fly: { ...ERROR.fly, x: 280, y: 60 },
+  questions: ERROR.questions.map((q, i) => ({ ...q, x: 150 + i * 30, y: -36 + (i === 2 ? 4 : 0) })),
+  drop: { ...ERROR.drop, x: 88, y: 70 },
+  sweat: { ...ERROR.sweat, x: 240, y: 26 },
+  fly: { ...ERROR.fly, x: 40, y: 20 },
 };
 
 const CAPI_RUNNING: typeof RUNNING = {
-  w: 313,
-  h: 305,
-  pivot: [30, 174],
+  w: 330,
+  h: 300,
+  pivot: [121, 49],
   body: require('../../../assets/mascot/capibara/running_body.png'),
   tail: require('../../../assets/mascot/capibara/running_tail.png'),
   keys: [
-    [133, 272], [150, 268], [184, 260], [201, 256], [236, 248], [253, 244], [287, 236], [135, 283], [170, 275], [187, 271],
-    [221, 263], [238, 259], [272, 251], [290, 247], [155, 290], [172, 286], [206, 278], [224, 274], [258, 266], [275, 262],
+    [167, 260], [183, 258], [215, 255], [231, 253], [262, 250], [278, 248], [310, 245], [168, 270], [200, 266], [216, 265],
+    [247, 261], [263, 260], [295, 256], [311, 255], [185, 278], [201, 277], [233, 273], [249, 272], [280, 268], [296, 267],
   ],
 };
 
 /** El capibara asoma la cabeza (mirando hacia adentro de la pantalla). */
-const headPeek = (src: ImageSourcePropType): Peek => ({ src, w: 150, h: 180, view: [86, 150], offset: [0, -14] });
+const headPeek = (src: ImageSourcePropType): Peek => ({ src, w: 180, h: 165, view: [150, 150], offset: [0, -6] });
 
 const CAPI_DARK = {
   idle: {
