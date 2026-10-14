@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../../ui/text';
 import { useApp } from '../../store/app';
-import { MONO, useTheme } from '../../ui/theme';
-import { Chip, Empty, IconButton, SectionTitle } from '../ui';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
+import { Chip, Empty, IconButton, SectionTitle, Switch } from '../ui';
 
 export default function VariablesPanel() {
   const t = useTheme();
@@ -123,10 +124,10 @@ export default function VariablesPanel() {
 }
 
 const styles = StyleSheet.create({
-  watchAdd: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, marginBottom: 6 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  watchAdd: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, marginBottom: 6 },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderBottomWidth: BORDER },
   name: { fontFamily: MONO, fontSize: 13, fontWeight: '700', width: '34%' },
   value: { fontFamily: MONO, fontSize: 13, flex: 1 },
-  scope: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, overflow: 'hidden', marginBottom: 10 },
+  scope: { borderWidth: BORDER, borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: 10 },
   scopeHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 5 },
 });

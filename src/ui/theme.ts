@@ -3,21 +3,52 @@ import { DARK_PALETTE, FlowPalette, LIGHT_PALETTE } from '../core/flowchart/svg'
 import type { TokType } from '../core/editor/tokenizer';
 import { useApp } from '../store/app';
 
+/**
+ * Sistema de diseño de PSJavaScript (estilo "cuaderno de cuentos": lienzo
+ * blanco, un verde de progreso, un azul para lo interactivo, tipografía
+ * redondeada, componentes con bordes gruesos y esquinas redondeadas, sin
+ * sombras ni degradados). Todos los módulos toman de aquí colores, radios,
+ * bordes, espaciado y tipografía.
+ */
 export interface Theme {
   dark: boolean;
+  /** Lienzo de la página. */
   bg: string;
+  /** Tarjetas, paneles y barras. */
   surface: string;
+  /** Fondos secundarios: campos, filas alternas, botones neutros. */
   surfaceAlt: string;
+  /** Bordes de tarjetas y separadores. */
   border: string;
+  /** Bordes de botones y etiquetas delineados. */
+  borderStrong: string;
+  /** Texto principal (Charcoal). */
   text: string;
+  /** Texto secundario (Pencil Gray). */
   textMuted: string;
+  /** Texto deshabilitado o de poco énfasis (Faded Gray). */
+  textFaint: string;
+  /** Verde de progreso: acciones principales, títulos y estados correctos. */
   primary: string;
+  /** Verde presionado / borde inferior de botones verdes. */
+  primaryDark: string;
+  /** Lavado verde suave para resaltar. */
+  primarySoft: string;
   primaryText: string;
+  /** Azul interactivo: enlaces, selección y acciones secundarias. */
   accent: string;
+  accentDark: string;
+  accentSoft: string;
   danger: string;
+  dangerSoft: string;
   warning: string;
+  warningSoft: string;
   success: string;
   info: string;
+  /** Fondo de globos de ayuda (Night Ink). */
+  ink: string;
+  /** Consola tipo terminal. */
+  terminal: { bg: string; text: string; muted: string; error: string; warn: string; input: string; prompt: string };
   execLine: string;
   errorLine: string;
   warnLine: string;
@@ -31,26 +62,36 @@ export interface Theme {
 
 const light: Theme = {
   dark: false,
-  bg: '#f4f6fa',
+  bg: '#ffffff',
   surface: '#ffffff',
-  surfaceAlt: '#eef1f6',
-  border: '#d9dee7',
-  text: '#1d2433',
-  textMuted: '#6b7487',
-  primary: '#2f6fed',
+  surfaceAlt: '#f7f7f7',
+  border: '#e5e5e5',
+  borderStrong: '#afafaf',
+  text: '#4b4b4b',
+  textMuted: '#777777',
+  textFaint: '#afafaf',
+  primary: '#58cc02',
+  primaryDark: '#58a700',
+  primarySoft: '#d7ffb8',
   primaryText: '#ffffff',
-  accent: '#7c4dff',
-  danger: '#d64545',
-  warning: '#c77800',
-  success: '#1f9d55',
-  info: '#2f6fed',
-  execLine: 'rgba(255, 196, 0, 0.30)',
-  errorLine: 'rgba(214, 69, 69, 0.12)',
-  warnLine: 'rgba(199, 120, 0, 0.10)',
-  bracket: 'rgba(47, 111, 237, 0.22)',
-  gutter: '#eef1f6',
-  gutterText: '#9aa3b5',
-  selection: 'rgba(47, 111, 237, 0.30)',
+  accent: '#1cb0f6',
+  accentDark: '#1899d6',
+  accentSoft: '#ddf4ff',
+  danger: '#ff4b4b',
+  dangerSoft: '#ffdfe0',
+  warning: '#ff9600',
+  warningSoft: '#fff1dc',
+  success: '#58cc02',
+  info: '#1cb0f6',
+  ink: '#000437',
+  terminal: { bg: '#131f24', text: '#f1f7fb', muted: '#8aa0aa', error: '#ff7676', warn: '#ffc800', input: '#89e219', prompt: '#49c0f8' },
+  execLine: 'rgba(255, 200, 0, 0.30)',
+  errorLine: 'rgba(255, 75, 75, 0.12)',
+  warnLine: 'rgba(255, 150, 0, 0.12)',
+  bracket: 'rgba(28, 176, 246, 0.22)',
+  gutter: '#f7f7f7',
+  gutterText: '#afafaf',
+  selection: 'rgba(28, 176, 246, 0.28)',
   syntax: {
     keyword: '#8b2fc9',
     string: '#0f8a5f',
@@ -72,26 +113,36 @@ const light: Theme = {
 
 const dark: Theme = {
   dark: true,
-  bg: '#14171c',
-  surface: '#1b1f26',
-  surfaceAlt: '#232831',
-  border: '#2e3440',
-  text: '#dfe5ee',
-  textMuted: '#8b95a7',
-  primary: '#5b8cff',
-  primaryText: '#0b1020',
-  accent: '#b388ff',
+  bg: '#131f24',
+  surface: '#131f24',
+  surfaceAlt: '#202f36',
+  border: '#37464f',
+  borderStrong: '#52656d',
+  text: '#f1f7fb',
+  textMuted: '#a3b6bf',
+  textFaint: '#52656d',
+  primary: '#58cc02',
+  primaryDark: '#58a700',
+  primarySoft: 'rgba(88, 204, 2, 0.18)',
+  primaryText: '#ffffff',
+  accent: '#49c0f8',
+  accentDark: '#1cb0f6',
+  accentSoft: 'rgba(28, 176, 246, 0.18)',
   danger: '#ff6b6b',
-  warning: '#f0b44c',
-  success: '#4cc38a',
-  info: '#5b8cff',
-  execLine: 'rgba(255, 196, 0, 0.22)',
-  errorLine: 'rgba(255, 107, 107, 0.14)',
-  warnLine: 'rgba(240, 180, 76, 0.10)',
-  bracket: 'rgba(91, 140, 255, 0.30)',
-  gutter: '#181c22',
-  gutterText: '#5c6678',
-  selection: 'rgba(91, 140, 255, 0.35)',
+  dangerSoft: 'rgba(255, 75, 75, 0.18)',
+  warning: '#ffb020',
+  warningSoft: 'rgba(255, 150, 0, 0.18)',
+  success: '#79d634',
+  info: '#49c0f8',
+  ink: '#000437',
+  terminal: { bg: '#0d171b', text: '#f1f7fb', muted: '#7f949e', error: '#ff7676', warn: '#ffc800', input: '#89e219', prompt: '#49c0f8' },
+  execLine: 'rgba(255, 200, 0, 0.22)',
+  errorLine: 'rgba(255, 107, 107, 0.16)',
+  warnLine: 'rgba(255, 176, 32, 0.12)',
+  bracket: 'rgba(73, 192, 248, 0.30)',
+  gutter: '#18262d',
+  gutterText: '#52656d',
+  selection: 'rgba(73, 192, 248, 0.32)',
   syntax: {
     keyword: '#c792ea',
     string: '#a5d68a',
@@ -110,6 +161,35 @@ const dark: Theme = {
   },
   flow: DARK_PALETTE,
 };
+
+/** Radios: controles 12 (botones, campos, etiquetas), superficies 16 (tarjetas, modales). */
+export const RADIUS = { sm: 8, md: 12, lg: 16, pill: 999 } as const;
+
+/** Grosor de borde de todos los componentes ("estampa" sobre el papel). */
+export const BORDER = 2;
+
+/** Velo detrás de diálogos (tinta de la marca). */
+export const SCRIM = 'rgba(0, 4, 55, 0.4)';
+
+/** Escala de espaciado (base 4 px). */
+export const SPACE = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
+
+/** Tipografía redondeada (Nunito en web; fuente del sistema en móvil). */
+export const FONT = Platform.select({
+  web: 'Nunito, "Nunito Sans", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  default: undefined,
+}) as string | undefined;
+
+/** Escala tipográfica de la interfaz (adaptada a una herramienta de trabajo). */
+export const TYPE = {
+  caption: { fontSize: 12, lineHeight: 16 },
+  label: { fontSize: 13, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
+  bodySm: { fontSize: 13, lineHeight: 18 },
+  body: { fontSize: 15, lineHeight: 21 },
+  subheading: { fontSize: 17, fontWeight: '800', lineHeight: 23 },
+  heading: { fontSize: 22, fontWeight: '800', lineHeight: 28 },
+  display: { fontSize: 30, fontWeight: '900', lineHeight: 36, letterSpacing: -0.6 },
+} as const;
 
 export function useTheme(): Theme {
   const scheme = useColorScheme();

@@ -1,10 +1,11 @@
 /** Muestra una pregunta del examen y el control para responderla. */
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
 import type { AnswerValue, PaperQuestion, PaperSettings } from '../../core/exam/types';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import CodeAnswer from './CodeAnswer';
 import { CodeBlock, IconName, Pill, TextField } from './kit';
 import RichText from './RichText';
@@ -85,9 +86,9 @@ function AnswerInput({ q, value, onChange, settings, onRun, onTest, onBusy, font
                 }}
                 accessibilityRole={multi ? 'checkbox' : 'radio'}
                 accessibilityState={{ checked: on }}
-                style={({ pressed }) => [styles.option, { borderColor: on ? t.primary : t.border, backgroundColor: on ? t.primary + '14' : pressed ? t.surfaceAlt : t.surface }]}
+                style={({ pressed }) => [styles.option, { borderColor: on ? t.accent : t.border, backgroundColor: on ? t.accentSoft : pressed ? t.surfaceAlt : t.surface }]}
               >
-                <View style={[styles.letter, { backgroundColor: on ? t.primary : t.surfaceAlt, borderRadius: multi ? 6 : 14 }]}>
+                <View style={[styles.letter, { backgroundColor: on ? t.accent : t.surfaceAlt, borderRadius: multi ? RADIUS.sm : 14 }]}>
                   {on ? <Ionicons name="checkmark" size={16} color="#fff" /> : <Text style={{ color: t.textMuted, fontWeight: '800', fontSize: 13 }}>{LETTERS[i]}</Text>}
                 </View>
                 <View style={{ flex: 1 }}>
@@ -166,7 +167,7 @@ function OrderAnswer({ q, value, onChange, fontSize }: { q: PaperQuestion; value
         const l = byId.get(id)!;
         const isPicked = picked === i;
         return (
-          <View key={id} style={[styles.orderRow, { borderColor: isPicked ? t.primary : t.border, backgroundColor: isPicked ? t.primary + '14' : t.surface }]}>
+          <View key={id} style={[styles.orderRow, { borderColor: isPicked ? t.accent : t.border, backgroundColor: isPicked ? t.accentSoft : t.surface }]}>
             <Text style={{ color: t.textMuted, width: 22, fontFamily: MONO, fontSize: 12 }}>{i + 1}</Text>
             <Pressable
               style={{ flex: 1, paddingVertical: 6 }}
@@ -195,10 +196,10 @@ function OrderAnswer({ q, value, onChange, fontSize }: { q: PaperQuestion; value
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
-  flag: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 },
-  option: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 10, padding: 12, marginBottom: 8 },
+  flag: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.lg, paddingHorizontal: 10, paddingVertical: 4 },
+  option: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, padding: 12, marginBottom: 8 },
   letter: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  tf: { flex: 1, minWidth: 140, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderRadius: 12, paddingVertical: 18 },
-  orderRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, marginBottom: 6 },
+  tf: { flex: 1, minWidth: 140, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderRadius: RADIUS.md, paddingVertical: 18 },
+  orderRow: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, marginBottom: 6 },
   arrow: { padding: 6, marginLeft: 2 },
 });

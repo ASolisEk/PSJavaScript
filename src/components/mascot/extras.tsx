@@ -3,7 +3,8 @@
  * el confeti de celebración al corregir un error.
  */
 import { memo, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Platform, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, Platform, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { MONO } from '../../ui/theme';
 import { easeIn, easeOut, ND, orbit, startNextFrame, to, useLoops, useValue, useValues, wait } from './anim';

@@ -1,12 +1,13 @@
 /** Pantalla principal del entorno: barra de herramientas, editor y paneles. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCode } from '../core/editor/indent';
 import { PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
 import type { VarDetail } from '../core/runner';
-import { MONO, useTheme } from '../ui/theme';
+import { BORDER, MONO, RADIUS, SPACE, useTheme } from '../ui/theme';
 import CodeEditor from './CodeEditor';
 import Footer, { REPO_URL } from './Footer';
 import ExportModal from './modals/ExportModal';
@@ -82,8 +83,8 @@ function FileTabs() {
             onPress={() => openFile(id)}
             style={[styles.fileTab, { backgroundColor: active ? t.surface : 'transparent', borderColor: active ? t.border : 'transparent' }]}
           >
-            <Ionicons name="logo-javascript" size={13} color={active ? '#e8b100' : t.textMuted} />
-            <Text style={{ color: active ? t.text : t.textMuted, fontSize: 13, marginLeft: 5, fontWeight: active ? '600' : '400' }} numberOfLines={1}>
+            <Ionicons name="logo-javascript" size={14} color={active ? t.warning : t.textFaint} />
+            <Text style={{ color: active ? t.text : t.textMuted, fontSize: 13, marginLeft: 6, fontWeight: active ? '800' : '600' }} numberOfLines={1}>
               {f.name}
             </Text>
             {openIds.length > 1 ? (
@@ -95,7 +96,7 @@ function FileTabs() {
         );
       })}
       <Pressable onPress={() => newFile()} style={styles.addTab} accessibilityLabel="Nuevo programa">
-        <Ionicons name="add" size={18} color={t.textMuted} />
+        <Ionicons name="add" size={20} color={t.accent} />
       </Pressable>
     </ScrollView>
   );
@@ -131,7 +132,7 @@ function Toolbar({ compact }: { compact: boolean }) {
             </Pressable>
           </Tooltip>
           <Ionicons name="speedometer-outline" size={15} color={t.textMuted} style={{ marginHorizontal: 4 }} />
-          <Text style={{ color: t.text, fontSize: 12, width: 12, textAlign: 'center' }}>{speedIdx + 1}</Text>
+          <Text style={{ color: t.text, fontSize: 13, fontWeight: '800', width: 12, textAlign: 'center' }}>{speedIdx + 1}</Text>
           <Tooltip text="Más rápido">
             <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.min(SPEEDS.length - 1, speedIdx + 1)] })} hitSlop={6} accessibilityLabel="Más rápido">
               <Ionicons name="add" size={16} color={t.textMuted} />
@@ -163,6 +164,7 @@ function Toolbar({ compact }: { compact: boolean }) {
 
 function StatusBar() {
   const t = useTheme();
+  const narrow = useWindowDimensions().width < 520;
   const run = useApp((s) => s.run);
   const diags = useApp((s) => s.diagnostics);
   const profile = useProfile();
@@ -172,10 +174,12 @@ function StatusBar() {
   const errors = diags.filter((d) => d.severity === 'error').length;
   const warns = diags.filter((d) => d.severity === 'warning').length;
   return (
-    <View style={[styles.status, { backgroundColor: t.surfaceAlt, borderTopColor: t.border }]}>
+    <View style={[styles.status, { backgroundColor: t.surface, borderTopColor: t.border }]}>
       {status === 'running' ? <ActivityIndicator size="small" color={t.primary} style={{ transform: [{ scale: 0.7 }] }} /> : <View style={[styles.dot, { backgroundColor: color }]} />}
-      <Text style={{ color, fontSize: 12, fontWeight: '700', marginLeft: 6 }}>{STATUS_LABEL[status]}</Text>
-      {run && run.line ? <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 10, fontFamily: MONO }}>Línea {run.line}</Text> : null}
+      <Text style={{ color, fontSize: 12, fontWeight: '800', marginLeft: 6 }} numberOfLines={1}>
+        {STATUS_LABEL[status]}
+      </Text>
+      {run && run.line && !narrow ? <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 10, fontFamily: MONO }}>Línea {run.line}</Text> : null}
       {run ? <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 10, fontFamily: MONO }}>Paso {run.stepCount}</Text> : null}
       <View style={{ flex: 1 }} />
       <Pressable
@@ -186,13 +190,13 @@ function StatusBar() {
         style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}
       >
         <Ionicons name="close-circle" size={13} color={errors ? t.danger : t.textMuted} />
-        <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 3 }}>{errors}</Text>
+        <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 3 }}>{errors}</Text>
         <Ionicons name="warning" size={13} color={warns ? t.warning : t.textMuted} style={{ marginLeft: 8 }} />
-        <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 3 }}>{warns}</Text>
+        <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 3 }}>{warns}</Text>
       </Pressable>
       <Pressable onPress={() => setModal('settings')}>
-        <Text style={{ color: t.primary, fontSize: 12 }} numberOfLines={1}>
-          Perfil: {profile.name}
+        <Text style={{ color: t.accent, fontSize: 12, fontWeight: '800' }} numberOfLines={1}>
+          {narrow ? 'Perfil' : `Perfil: ${profile.name}`}
         </Text>
       </Pressable>
     </View>
@@ -208,10 +212,10 @@ function LiveRoomPill() {
     <Pressable
       onPress={() => useApp.getState().setAppMode('teacher')}
       accessibilityLabel="Volver a la sala del examen"
-      style={({ pressed }) => [styles.repoLink, { borderColor: t.accent, backgroundColor: pressed ? t.surfaceAlt : t.accent + '18' }]}
+      style={({ pressed }) => [styles.repoLink, { borderColor: t.accent, backgroundColor: pressed ? t.surfaceAlt : t.accentSoft }]}
     >
-      <Ionicons name="radio-outline" size={15} color={t.accent} />
-      <Text style={{ color: t.accent, fontSize: 12, fontWeight: '800', marginLeft: 5 }}>Sala {room.code}</Text>
+      <Ionicons name="radio-outline" size={15} color={t.accentDark} />
+      <Text style={[styles.navLabel, { color: t.accentDark, marginLeft: 5 }]}>Sala {room.code}</Text>
     </Pressable>
   );
 }
@@ -229,54 +233,27 @@ function Notice() {
   const isUpdateNotice = Boolean(updateInfo?.hasUpdate && text.includes('versión'));
 
   return (
-    <View style={[styles.notice, { backgroundColor: t.surfaceAlt, borderBottomColor: isUpdateNotice ? t.primary : t.warning }]}>
-      <Ionicons name={isUpdateNotice ? 'cloud-download-outline' : 'information-circle'} size={16} color={isUpdateNotice ? t.primary : t.warning} />
-      <Text style={{ color: t.text, fontSize: 13, flex: 1, marginLeft: 6 }}>{text}</Text>
-      {isUpdateNotice ? (
-        <Pressable
-          onPress={() => setModal('update')}
-          style={({ pressed }) => ({
-            backgroundColor: t.primary,
-            opacity: pressed ? 0.85 : 1,
-            paddingHorizontal: 10,
-            paddingVertical: 3,
-            borderRadius: 6,
-            marginRight: 6,
-          })}
-        >
-          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Actualizar</Text>
-        </Pressable>
-      ) : null}
+    <View style={[styles.notice, { backgroundColor: isUpdateNotice ? t.primarySoft : t.warningSoft, borderBottomColor: isUpdateNotice ? t.primary : t.warning }]}>
+      <Ionicons name={isUpdateNotice ? 'cloud-download-outline' : 'information-circle'} size={18} color={isUpdateNotice ? t.primaryDark : t.warning} />
+      <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', flex: 1, marginLeft: SPACE.sm }}>{text}</Text>
+      {isUpdateNotice ? <Button label="Actualizar" kind="primary" size="sm" onPress={() => setModal('update')} style={{ marginRight: 6 }} /> : null}
       {notice ? <IconButton icon="close" label="Cerrar aviso" size={16} onPress={() => setNotice(null)} /> : null}
     </View>
   );
 }
 
 function MiniConsole() {
+  const t = useTheme();
   const output = useApp((s) => s.run?.output);
   const setPanel = useApp((s) => s.setPanel);
   const lines = (output ?? []).filter((l) => l.kind !== 'system').slice(-4);
   if (!lines.length) return null;
   return (
-    <Pressable onPress={() => setPanel('console')} style={[styles.mini, { backgroundColor: '#1e1e1e', borderTopWidth: 0 }]}>
+    <Pressable onPress={() => setPanel('console')} style={[styles.mini, { backgroundColor: t.terminal.bg }]}>
       {lines.map((l) => {
-        const color = l.kind === 'error' ? '#ff5555' : l.kind === 'warn' ? '#f1fa8c' : l.kind === 'input' ? '#50fa7b' : '#f8f8f2';
+        const color = l.kind === 'error' ? t.terminal.error : l.kind === 'warn' ? t.terminal.warn : l.kind === 'input' ? t.terminal.input : t.terminal.text;
         return (
-          <Text
-            key={l.id}
-            style={[
-              { color, fontFamily: MONO, fontSize: 13 },
-              Platform.select({
-                web: { textShadow: '0 1px 1px rgba(0, 0, 0, 0.5)' },
-                default: {
-                  textShadowColor: 'rgba(0, 0, 0, 0.5)',
-                  textShadowOffset: { width: 0, height: 1 },
-                  textShadowRadius: 1,
-                },
-              }),
-            ]}
-            numberOfLines={1}
-          >
+          <Text key={l.id} style={{ color, fontFamily: MONO, fontSize: 13 }} numberOfLines={1}>
             {l.kind === 'input' ? `${l.prompt ?? ''} › ${l.text}` : l.text}
           </Text>
         );
@@ -300,34 +277,27 @@ function FloatingDebugWidget() {
     <View
       style={[
         styles.floatingDebugWidget,
-        {
-          backgroundColor: t.surfaceAlt,
-          borderColor: t.border,
-          ...Platform.select({
-            web: { boxShadow: '0 3px 6px rgba(0, 0, 0, 0.28)' },
-            default: { shadowColor: '#000' },
-          }),
-        },
+        { backgroundColor: t.surface, borderColor: t.border },
       ]}
     >
       <View
         style={[
           styles.debugStepBadge,
           {
-            backgroundColor: run.status === 'paused' ? t.warning + '25' : run.status === 'input' ? t.primary + '25' : t.success + '25',
+            backgroundColor: run.status === 'paused' ? t.warningSoft : run.status === 'input' ? t.accentSoft : t.primarySoft,
           },
         ]}
       >
         <Ionicons
           name={run.status === 'paused' ? 'pause-circle' : run.status === 'input' ? 'keypad-outline' : 'play-forward'}
           size={14}
-          color={run.status === 'paused' ? t.warning : run.status === 'input' ? t.primary : t.success}
+          color={run.status === 'paused' ? t.warning : run.status === 'input' ? t.accentDark : t.primaryDark}
         />
         <Text
           style={{
-            color: run.status === 'paused' ? t.warning : run.status === 'input' ? t.primary : t.success,
+            color: run.status === 'paused' ? t.warning : run.status === 'input' ? t.accentDark : t.primaryDark,
             fontSize: 11,
-            fontWeight: '700',
+            fontWeight: '800',
             fontFamily: MONO,
             marginLeft: 5,
           }}
@@ -356,7 +326,7 @@ function FloatingDebugWidget() {
               style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
               accessibilityLabel="Siguiente paso (F7)"
             >
-              <Ionicons name="play-skip-forward" size={16} color={t.primary} />
+              <Ionicons name="play-skip-forward" size={16} color={t.accent} />
             </Pressable>
           </Tooltip>
 
@@ -366,7 +336,7 @@ function FloatingDebugWidget() {
               style={({ pressed }) => [styles.floatingBtn, pressed && { opacity: 0.7 }]}
               accessibilityLabel="Paso anterior (Shift+F7)"
             >
-              <Ionicons name="play-skip-back" size={16} color={t.text} />
+              <Ionicons name="play-skip-back" size={16} color={t.textMuted} />
             </Pressable>
           </Tooltip>
         </>
@@ -403,10 +373,10 @@ function DebugBar() {
   if (run?.status !== 'paused') return null;
 
   return (
-    <View style={[{ backgroundColor: t.surfaceAlt, borderTopColor: t.warning, flexDirection: 'row', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 12, borderTopWidth: 2, flexWrap: 'wrap', gap: 8 }]}>
-      <Button label="Continuar" kind="primary" icon="play" onPress={() => runProgram('run')} style={{ marginRight: 8 }} />
-      <Button label="Siguiente" icon="play-skip-forward" onPress={stepOnce} style={{ marginRight: 8 }} />
-      <Button label="Anterior" icon="play-skip-back" onPress={stepBack} style={{ marginRight: 8 }} />
+    <View style={[styles.debugBar, { backgroundColor: t.warningSoft, borderTopColor: t.warning }]}>
+      <Button label="Continuar" kind="primary" icon="play" onPress={() => runProgram('run')} />
+      <Button label="Siguiente" icon="play-skip-forward" onPress={stepOnce} />
+      <Button label="Anterior" icon="play-skip-back" onPress={stepBack} />
       <IconButton icon="stop" color={t.danger} label="Detener" onPress={stop} />
     </View>
   );
@@ -552,7 +522,7 @@ export default function IDE() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={{ flex: 1, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
-        <View style={[styles.header, { borderBottomColor: t.border }]}>
+        <View style={[styles.header, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
           <View style={styles.brandContainer}>
             <Image
               source={require('../../assets/icon.png')}
@@ -560,31 +530,32 @@ export default function IDE() {
               accessibilityLabel="PSJavaScript Icon"
             />
             <Text style={[styles.brand, { color: t.text }]}>
-              PS<Text style={{ color: '#e8b100' }}>JS</Text>
+              PS<Text style={{ color: t.primary }}>JS</Text>
             </Text>
           </View>
           <View style={{ flex: 1 }}>
             <FileTabs />
           </View>
           <LiveRoomPill />
-          {Platform.OS === 'web' && (
+          {/* descargas de escritorio: no tienen sentido en un teléfono */}
+          {Platform.OS === 'web' && width >= 700 && (
             <>
               <a href="PSJavaScript.dmg" download="PSJavaScript.dmg" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.border, backgroundColor: t.surface }]}>
-                  <Ionicons name="logo-apple" size={16} color={t.text} />
-                  {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>macOS</Text> : null}
+                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
+                  <Ionicons name="logo-apple" size={16} color={t.textMuted} />
+                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>macOS</Text>
                 </View>
               </a>
               <a href="PSJavaScript-Setup.exe" download="PSJavaScript-Setup.exe" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.border, backgroundColor: t.surface }]}>
-                  <Ionicons name="logo-windows" size={16} color={t.text} />
-                  {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Windows</Text> : null}
+                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
+                  <Ionicons name="logo-windows" size={16} color={t.textMuted} />
+                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Windows</Text>
                 </View>
               </a>
               <a href="PSJavaScript.AppImage" download="PSJavaScript.AppImage" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.border, backgroundColor: t.surface }]}>
-                  <Ionicons name="logo-tux" size={16} color={t.text} />
-                  {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }}>Linux</Text> : null}
+                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
+                  <Ionicons name="logo-tux" size={16} color={t.textMuted} />
+                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Linux</Text>
                 </View>
               </a>
             </>
@@ -594,10 +565,10 @@ export default function IDE() {
             accessibilityRole="link"
             accessibilityLabel="Ver el código fuente en GitHub"
             {...({ title: 'Ver el código fuente en GitHub' } as object)}
-            style={({ pressed }) => [styles.repoLink, { borderColor: t.border, backgroundColor: pressed ? t.surfaceAlt : t.surface }]}
+            style={({ pressed }) => [styles.repoLink, { borderColor: t.borderStrong, backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
           >
-            <Ionicons name="logo-github" size={16} color={t.text} />
-            {width >= 600 ? <Text style={{ color: t.text, fontSize: 12, fontWeight: '600', marginLeft: 5, marginRight: 5 }}>Código fuente</Text> : null}
+            <Ionicons name="logo-github" size={16} color={t.textMuted} />
+            {width >= 600 ? <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Código fuente</Text> : null}
           </Pressable>
         </View>
         <View style={[styles.toolbarWrap, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
@@ -608,7 +579,7 @@ export default function IDE() {
         <View style={{ flex: 1 }}>
           {wide ? (
             <View style={{ flex: 1, flexDirection: 'row' }}>
-              <View style={{ flex: 1.4, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border, position: 'relative' }}>
+              <View style={{ flex: 1.4, borderRightWidth: BORDER, borderRightColor: t.border, position: 'relative' }}>
                 {editor}
                 <FloatingDebugWidget />
               </View>
@@ -643,7 +614,7 @@ export default function IDE() {
 
         <InputBar />
         <DebugBar />
-        <View style={{ paddingBottom: insets.bottom, backgroundColor: t.surfaceAlt }}>
+        <View style={{ paddingBottom: insets.bottom, backgroundColor: t.primary }}>
           <StatusBar />
           <Footer />
         </View>
@@ -661,62 +632,37 @@ export default function IDE() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'flex-end', paddingLeft: 10, paddingTop: 6, borderBottomWidth: StyleSheet.hairlineWidth },
-  repoLink: { flexDirection: 'row', alignItems: 'center', height: 28, paddingHorizontal: 9, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, marginHorizontal: 8, marginBottom: 4 },
-  brandContainer: { flexDirection: 'row', alignItems: 'center', marginRight: 10, marginBottom: 7 },
-  brandIcon: { width: 22, height: 22, borderRadius: 5, marginRight: 6 },
-  brand: { fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
-  fileTab: { flexDirection: 'row', alignItems: 'center', height: 34, paddingHorizontal: 12, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: StyleSheet.hairlineWidth, borderBottomWidth: 0, maxWidth: 220 },
-  addTab: { height: 34, width: 34, alignItems: 'center', justifyContent: 'center' },
-  toolbarWrap: { borderBottomWidth: StyleSheet.hairlineWidth, zIndex: 100, overflow: 'visible' },
-  toolbar: { alignItems: 'center', paddingHorizontal: 6, paddingVertical: 3 },
-  sep: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 6 },
-  speed: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 6, height: 30, marginLeft: 4 },
-  tabs: { flexGrow: 0, borderBottomWidth: StyleSheet.hairlineWidth },
-  status: { flexDirection: 'row', alignItems: 'center', height: 28, paddingHorizontal: 10, borderTopWidth: StyleSheet.hairlineWidth },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderBottomWidth: 2 },
-  mini: { maxHeight: 92, paddingHorizontal: 10, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth },
+  header: { flexDirection: 'row', alignItems: 'flex-end', paddingLeft: SPACE.md, paddingTop: SPACE.sm, borderBottomWidth: BORDER },
+  repoLink: { flexDirection: 'row', alignItems: 'center', height: 32, paddingHorizontal: 10, borderRadius: RADIUS.md, borderWidth: BORDER, marginRight: SPACE.sm, marginBottom: 6 },
+  navLabel: { fontSize: 12, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
+  brandContainer: { flexDirection: 'row', alignItems: 'center', marginRight: SPACE.md, marginBottom: 9 },
+  brandIcon: { width: 26, height: 26, borderRadius: RADIUS.sm, marginRight: SPACE.sm },
+  brand: { fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
+  fileTab: { flexDirection: 'row', alignItems: 'center', height: 38, paddingHorizontal: 14, borderTopLeftRadius: RADIUS.md, borderTopRightRadius: RADIUS.md, borderWidth: BORDER, borderBottomWidth: 0, marginBottom: -BORDER, maxWidth: 220 },
+  addTab: { height: 38, width: 38, alignItems: 'center', justifyContent: 'center' },
+  toolbarWrap: { borderBottomWidth: BORDER, zIndex: 100, overflow: 'visible' },
+  toolbar: { alignItems: 'center', paddingHorizontal: SPACE.sm, paddingVertical: 4 },
+  sep: { width: BORDER, height: 24, borderRadius: 1, marginHorizontal: SPACE.sm },
+  speed: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, height: 34, marginLeft: 4 },
+  tabs: { flexGrow: 0, borderBottomWidth: BORDER },
+  status: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: SPACE.md, borderTopWidth: BORDER },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.md, paddingVertical: 6, borderBottomWidth: BORDER },
+  mini: { maxHeight: 92, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
+  debugBar: { flexDirection: 'row', justifyContent: 'center', paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, borderTopWidth: BORDER, flexWrap: 'wrap', gap: SPACE.sm },
   floatingDebugWidget: {
     position: 'absolute',
     top: 10,
     right: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: SPACE.sm,
     paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 3px 6px rgba(0, 0, 0, 0.28)',
-      },
-      default: {
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.28,
-        shadowRadius: 6,
-        elevation: 8,
-      },
-    }),
+    borderRadius: RADIUS.lg,
+    borderWidth: BORDER,
     zIndex: 100,
   },
-  debugStepBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  floatingSep: {
-    width: 1,
-    height: 18,
-    marginHorizontal: 6,
-  },
-  floatingBtn: {
-    padding: 6,
-    borderRadius: 6,
-    marginHorizontal: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  debugStepBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.sm, paddingVertical: 4, borderRadius: RADIUS.md },
+  floatingSep: { width: BORDER, height: 18, marginHorizontal: 6 },
+  floatingBtn: { padding: 7, borderRadius: RADIUS.md, marginHorizontal: 1, alignItems: 'center', justifyContent: 'center' },
 });

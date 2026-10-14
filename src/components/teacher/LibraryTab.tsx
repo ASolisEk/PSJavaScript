@@ -1,14 +1,15 @@
 /** Mis exámenes: crear, importar, exportar, duplicar y aplicar. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { examFileName, hasExamErrors, questionsPerStudent, questionTypeInfo, serializeExam, totalPoints } from '../../core/exam/config';
 import { Certification, CERTIFICATIONS } from '../../core/exam/certs';
 import type { ExamConfig } from '../../core/exam/types';
 import { useTeacher } from '../../store/teacher';
 import { confirmDialog, pickTextFileWeb, saveTextFile } from '../../ui/platform';
-import { useTheme } from '../../ui/theme';
-import { Button } from '../ui';
+import { BORDER, RADIUS, SCRIM, useTheme } from '../../ui/theme';
+import { Button, Heading } from '../ui';
 import { Banner, Card, IconName, Pill, TextField } from '../exam/kit';
 
 export default function LibraryTab() {
@@ -34,7 +35,7 @@ export default function LibraryTab() {
     <ScrollView contentContainerStyle={{ padding: 16, alignItems: 'center' }}>
       <View style={{ width: '100%', maxWidth: 1000 }}>
         <Card style={{ backgroundColor: t.primary + '0d' }} accent={t.primary}>
-          <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginBottom: 10 }}>Exámenes en 3 pasos</Text>
+          <Heading style={{ marginBottom: 10 }}>Exámenes en 3 pasos</Heading>
           <View style={styles.steps}>
             <Step n={1} icon="create-outline" title="Diseña" text="Elige preguntas del banco, pega una lista en texto o escríbelas: opción múltiple, código, ordenar líneas y más." />
             <Step n={2} icon="radio-outline" title="Aplica" text="Abre una sala y comparte el código. Cada alumno recibe las preguntas en otro orden." />
@@ -217,6 +218,6 @@ const styles = StyleSheet.create({
   stepIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
   examCard: { flexBasis: 420, flexGrow: 1, marginHorizontal: 6 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  dialog: { width: '100%', maxWidth: 620, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 18 },
+  overlay: { flex: 1, backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  dialog: { width: '100%', maxWidth: 620, borderRadius: RADIUS.lg, borderWidth: BORDER, padding: 18 },
 });

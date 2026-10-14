@@ -1,10 +1,11 @@
 /** Ayuda integrada: uso del entorno y referencia del lenguaje. */
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { HELP } from '../../core/help';
 import { useApp } from '../../store/app';
-import { MONO, useTheme } from '../../ui/theme';
-import { Button, Chip, SectionTitle } from '../ui';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
+import { Button, Chip, Heading, SectionTitle } from '../ui';
 import ModalShell from './ModalShell';
 
 export default function HelpModal() {
@@ -42,7 +43,7 @@ export default function HelpModal() {
 
   const content = (
     <View>
-      <Text style={{ color: t.text, fontSize: 20, fontWeight: '800', marginBottom: 10 }}>{topic.title}</Text>
+      <Heading style={{ marginBottom: 10 }}>{topic.title}</Heading>
       {topic.blocks.map((b, i) => {
         if ('p' in b) return <Text key={i} style={{ color: t.text, fontSize: 14, lineHeight: 21, marginBottom: 10 }}>{b.p}</Text>;
         if ('list' in b)
@@ -101,7 +102,7 @@ export default function HelpModal() {
         </ScrollView>
       ) : (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <ScrollView style={{ width: 260, flexGrow: 0, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border }} contentContainerStyle={{ padding: 10 }}>
+          <ScrollView style={{ width: 260, flexGrow: 0, borderRightWidth: BORDER, borderRightColor: t.border }} contentContainerStyle={{ padding: 10 }}>
             {list}
           </ScrollView>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 18 }}>
@@ -114,8 +115,8 @@ export default function HelpModal() {
 }
 
 const styles = StyleSheet.create({
-  item: { paddingVertical: 7, paddingHorizontal: 8, borderRadius: 6 },
-  code: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 12, marginBottom: 12 },
-  table: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, overflow: 'hidden' },
+  item: { paddingVertical: 7, paddingHorizontal: 8, borderRadius: RADIUS.md },
+  code: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 12, marginBottom: 12 },
+  table: { borderWidth: BORDER, borderRadius: RADIUS.md, overflow: 'hidden' },
   cell: { width: 260, padding: 7, fontSize: 12, borderRightWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
 });

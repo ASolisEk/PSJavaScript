@@ -1,13 +1,14 @@
 /** Respuesta de programación: editor, ejecución con datos y casos de ejemplo. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '../../ui/text';
 import { analyze, Diagnostic } from '../../core/analyzer';
 import { runTests } from '../../core/exam/grading';
 import type { PaperQuestion, PaperSettings, TestResult } from '../../core/exam/types';
 import { getProfile } from '../../core/profiles';
 import { Runner, RunnerSnapshot } from '../../core/runner';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import CodeEditor from '../CodeEditor';
 import { Button } from '../ui';
 import { Pill } from './kit';
@@ -205,7 +206,7 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
       ) : null}
 
       {run ? (
-        <View style={[styles.terminal]}>
+        <View style={[styles.terminal, { backgroundColor: t.terminal.bg }]}>
           <ScrollView ref={scroll} style={{ maxHeight: 220 }} contentContainerStyle={{ padding: 10 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
             {output.map((l) => (
               <Text
@@ -215,18 +216,18 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
                   fontFamily: MONO,
                   fontSize: 13,
                   lineHeight: 19,
-                  color: l.kind === 'error' ? '#ff6b6b' : l.kind === 'system' ? '#6272a4' : l.kind === 'input' ? '#50fa7b' : l.kind === 'warn' ? '#f1fa8c' : '#f8f8f2',
+                  color: l.kind === 'error' ? t.terminal.error : l.kind === 'system' ? t.terminal.muted : l.kind === 'input' ? t.terminal.input : l.kind === 'warn' ? t.terminal.warn : t.terminal.text,
                   fontStyle: l.kind === 'system' ? 'italic' : 'normal',
                 }}
               >
                 {l.kind === 'input' ? `${l.prompt ?? ''} › ${l.text}` : l.text || ' '}
               </Text>
             ))}
-            {run.notice ? <Text style={{ color: '#ffb86c', fontFamily: MONO, fontSize: 12 }}>{run.notice}</Text> : null}
+            {run.notice ? <Text style={{ color: t.terminal.warn, fontFamily: MONO, fontSize: 12 }}>{run.notice}</Text> : null}
           </ScrollView>
           {req ? (
-            <View style={styles.inputRow}>
-              <Text style={{ color: '#8be9fd', fontFamily: MONO, fontSize: 12, marginRight: 8 }} numberOfLines={2}>
+            <View style={[styles.inputRow, { borderTopColor: t.terminal.muted }]}>
+              <Text style={{ color: t.terminal.prompt, fontFamily: MONO, fontSize: 12, marginRight: 8 }} numberOfLines={2}>
                 {req.prompt || 'Dato:'}
               </Text>
               {req.mode === 'confirm' ? (
@@ -246,16 +247,16 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
                     }}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    style={[styles.termInput, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
+                    style={[styles.termInput, { color: t.terminal.text }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
                     placeholder="Escribe y presiona Enter"
-                    placeholderTextColor="#6272a4"
+                    placeholderTextColor={t.terminal.muted}
                   />
                   <Pressable
                     onPress={() => {
                       runner.current?.provideInput(input);
                       setInput('');
                     }}
-                    style={styles.sendBtn}
+                    style={({ pressed }) => [styles.sendBtn, { backgroundColor: pressed ? t.primaryDark : t.primary }]}
                     accessibilityLabel="Enviar dato"
                   >
                     <Ionicons name="return-down-back" size={16} color="#fff" />
@@ -265,7 +266,7 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
             </View>
           ) : null}
           {run.status === 'paused' ? (
-            <View style={[styles.inputRow, { justifyContent: 'flex-end' }]}>
+            <View style={[styles.inputRow, { justifyContent: 'flex-end', borderTopColor: t.terminal.muted }]}>
               <Button label="Continuar" icon="play" onPress={() => runner.current?.resume('run')} style={{ marginRight: 6 }} />
               <Button label="Detener" icon="stop" kind="danger" onPress={stop} />
             </View>
@@ -277,13 +278,13 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
 }
 
 const styles = StyleSheet.create({
-  examples: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10, marginBottom: 10 },
-  editor: { height: 300, borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, overflow: 'hidden' },
+  examples: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginBottom: 10 },
+  editor: { height: 300, borderWidth: BORDER, borderRadius: RADIUS.md, overflow: 'hidden' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  console: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10, marginTop: 10 },
-  testRow: { flexDirection: 'row', alignItems: 'flex-start', borderWidth: 1, borderRadius: 8, padding: 8, marginBottom: 6 },
-  terminal: { backgroundColor: '#1e1e1e', borderRadius: 8, marginTop: 10, overflow: 'hidden' },
-  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 8, borderTopWidth: 1, borderTopColor: '#333' },
-  termInput: { flex: 1, color: '#f8f8f2', fontFamily: MONO, fontSize: 13, backgroundColor: '#2a2a2a', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6 },
-  sendBtn: { marginLeft: 6, backgroundColor: '#2f6fed', borderRadius: 6, padding: 7 },
+  console: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginTop: 10 },
+  testRow: { flexDirection: 'row', alignItems: 'flex-start', borderWidth: BORDER, borderRadius: RADIUS.md, padding: 8, marginBottom: 6 },
+  terminal: { borderRadius: RADIUS.md, marginTop: 10, overflow: 'hidden' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 8, borderTopWidth: BORDER },
+  termInput: { flex: 1, fontFamily: MONO, fontSize: 13, backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 7 },
+  sendBtn: { marginLeft: 6, borderRadius: RADIUS.md, padding: 8 },
 });

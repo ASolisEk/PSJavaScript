@@ -1,10 +1,11 @@
 /** Exportar a otros lenguajes (PSeInt, Python, C++, lenguaje coloquial). */
 import { useMemo, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { EXPORT_TARGETS, exportCode } from '../../core/exporters';
 import { useActiveFile, useApp } from '../../store/app';
 import { copyText, saveTextFile } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button, Chip, SectionTitle } from '../ui';
 import ModalShell from './ModalShell';
 
@@ -60,7 +61,7 @@ export default function ExportModal() {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', flexWrap: 'wrap', padding: 10, paddingBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
-  codeBox: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8 },
-  footer: { flexDirection: 'row', justifyContent: 'flex-end', padding: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  bar: { flexDirection: 'row', flexWrap: 'wrap', padding: 10, paddingBottom: 4, borderBottomWidth: BORDER },
+  codeBox: { borderWidth: BORDER, borderRadius: RADIUS.md },
+  footer: { flexDirection: 'row', justifyContent: 'flex-end', padding: 10, borderTopWidth: BORDER },
 });

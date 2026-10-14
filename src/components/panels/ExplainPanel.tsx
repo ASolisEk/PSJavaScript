@@ -1,9 +1,10 @@
 /** Modo explicativo: describe en lenguaje natural lo que hace cada paso. */
 import { useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { useApp } from '../../store/app';
-import { MONO, useTheme } from '../../ui/theme';
-import { Empty } from '../ui';
+import { BORDER, MONO, useTheme } from '../../ui/theme';
+import { Empty, Switch } from '../ui';
 
 const NO_ITEMS: never[] = [];
 
@@ -42,6 +43,6 @@ export default function ExplainPanel() {
 }
 
 const styles = StyleSheet.create({
-  toolbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, height: 44, borderBottomWidth: StyleSheet.hairlineWidth },
+  toolbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, height: 44, borderBottomWidth: BORDER },
   item: { flexDirection: 'row', paddingVertical: 5, paddingLeft: 8, borderLeftWidth: 3, marginBottom: 2 },
 });

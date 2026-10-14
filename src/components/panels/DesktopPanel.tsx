@@ -1,9 +1,10 @@
 /** Prueba de escritorio: tabla con la evolución de las variables. */
 import { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { useApp } from '../../store/app';
 import { copyText } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, useTheme } from '../../ui/theme';
 import { Empty, IconButton } from '../ui';
 
 const COL_W = 110;
@@ -91,7 +92,7 @@ export default function DesktopPanel() {
 }
 
 const styles = StyleSheet.create({
-  toolbar: { flexDirection: 'row', alignItems: 'center', paddingLeft: 10, paddingRight: 4, height: 40, borderBottomWidth: StyleSheet.hairlineWidth },
+  toolbar: { flexDirection: 'row', alignItems: 'center', paddingLeft: 10, paddingRight: 4, height: 40, borderBottomWidth: BORDER },
   row: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   cell: { width: COL_W, paddingHorizontal: 8, paddingVertical: 6, fontFamily: MONO, fontSize: 12 },
   small: { width: 56 },

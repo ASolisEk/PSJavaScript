@@ -5,7 +5,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isAnswered } from '../../core/exam/paper';
 import { isValidRoomCode, normalizeRoomCode } from '../../core/exam/random';
@@ -17,8 +18,8 @@ import { useApp } from '../../store/app';
 import { idleMs, serverNow, useStudent } from '../../store/student';
 import { clearExamLink, readExamLink, rememberedStudent, rememberStudent } from '../../ui/examLink';
 import { confirmDialog } from '../../ui/platform';
-import { MONO, useTheme } from '../../ui/theme';
-import { Button, Chip } from '../ui';
+import { BORDER, MONO, RADIUS, SCRIM, useTheme } from '../../ui/theme';
+import { Button, Chip, Heading } from '../ui';
 import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, TextField } from './kit';
 import QuestionView from './QuestionView';
 import RichText from './RichText';
@@ -302,7 +303,7 @@ function EndedView() {
       <Narrow>
         <Card accent={t.textMuted} style={{ alignItems: 'center', paddingVertical: 24 }}>
           <Ionicons name="lock-closed-outline" size={44} color={t.textMuted} />
-          <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginTop: 8 }}>El examen terminó</Text>
+          <Heading style={{ marginTop: 8 }}>El examen terminó</Heading>
           <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
             El maestro cerró la sala antes de que comenzaras tu examen. Si crees que es un error, avísale.
           </Text>
@@ -564,7 +565,7 @@ function ExamView() {
             </View>
           </View>
         ) : (
-          <View style={{ backgroundColor: t.surface, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }}>{nav}</View>
+          <View style={{ backgroundColor: t.surface, borderBottomWidth: BORDER, borderBottomColor: t.border }}>{nav}</View>
         )}
         <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, alignItems: 'center' }} keyboardShouldPersistTaps="handled">
           <View style={{ width: '100%', maxWidth: 900 }}>
@@ -645,7 +646,7 @@ function Legend({ color, text, filled, dot }: { color: string; text: string; fil
   const t = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-      <View style={{ width: dot ? 10 : 16, height: dot ? 10 : 16, borderRadius: dot ? 5 : 5, borderWidth: 1, borderColor: color, backgroundColor: filled || dot ? color : 'transparent', marginRight: 8, marginLeft: dot ? 3 : 0 }} />
+      <View style={{ width: dot ? 10 : 16, height: dot ? 10 : 16, borderRadius: dot ? 5 : 5, borderWidth: BORDER, borderColor: color, backgroundColor: filled || dot ? color : 'transparent', marginRight: 8, marginLeft: dot ? 3 : 0 }} />
       <Text style={{ color: t.textMuted, fontSize: 12 }}>{text}</Text>
     </View>
   );
@@ -660,7 +661,7 @@ function SubmitDialog({ questions, onCancel, onSubmit, onGo }: { questions: Pape
     <Modal transparent visible animationType="fade" onRequestClose={onCancel}>
       <View style={styles.overlay}>
         <View style={[styles.dialog, { backgroundColor: t.surface, borderColor: t.border }]}>
-          <Text style={{ color: t.text, fontSize: 18, fontWeight: '800', marginBottom: 6 }}>¿Enviar tu examen a calificar?</Text>
+          <Heading level="title" style={{ marginBottom: 6 }}>¿Enviar tu examen a calificar?</Heading>
           <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 12 }}>Una vez enviado ya no podrás cambiar tus respuestas.</Text>
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
             <Pill icon="checkmark-done-outline" color={t.success} text={`${questions.length - pending.length} respondidas`} />
@@ -718,7 +719,7 @@ function ResultView() {
           <>
             <Card accent={r.visibility === 'none' ? t.success : r.passed ? t.success : t.danger} style={{ alignItems: 'center', paddingVertical: 24 }}>
               <Ionicons name="checkmark-done-circle" size={54} color={t.success} />
-              <Text style={{ color: t.text, fontSize: 20, fontWeight: '800', marginTop: 6 }}>{s.practiceKey ? '¡Práctica terminada!' : '¡Examen enviado!'}</Text>
+              <Heading level="display" style={{ marginTop: 6, textAlign: 'center' }}>{s.practiceKey ? '¡Práctica terminada!' : '¡Examen enviado!'}</Heading>
               <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 4, textAlign: 'center' }}>{reason}</Text>
               {r.visibility !== 'none' ? (
                 <>
@@ -855,20 +856,20 @@ function ChosenAnswer({ q, value }: { q: PaperQuestion; value: unknown }) {
 }
 
 const styles = StyleSheet.create({
-  examHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, gap: 6 },
+  examHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: BORDER, gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-  fontBox: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, marginRight: 4 },
+  fontBox: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, marginRight: 4 },
   fontBtn: { paddingHorizontal: 8, height: 32, alignItems: 'center', justifyContent: 'center' },
-  timer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 18, paddingHorizontal: 10, paddingVertical: 5 },
-  side: { width: 210, padding: 14, borderRightWidth: StyleSheet.hairlineWidth },
+  timer: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.lg, paddingHorizontal: 10, paddingVertical: 5 },
+  side: { width: 210, padding: 14, borderRightWidth: BORDER },
   navGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   navRow: { paddingHorizontal: 10, paddingVertical: 8, gap: 8, flexDirection: 'row' },
-  navBtn: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  navBtn: { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
   flagDot: { position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: 6, borderWidth: 2 },
   footerNav: { flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 24 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  dialog: { width: '100%', maxWidth: 480, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 20 },
-  topicBtn: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, flexGrow: 1, flexBasis: 160 },
-  goChip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5 },
-  sending: { backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  overlay: { flex: 1, backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  dialog: { width: '100%', maxWidth: 480, borderRadius: RADIUS.lg, borderWidth: BORDER, padding: 20 },
+  topicBtn: { borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 6, flexGrow: 1, flexBasis: 160 },
+  goChip: { borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 5 },
+  sending: { backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 20 },
 });

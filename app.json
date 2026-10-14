@@ -28,8 +28,8 @@
       "name": "PSJavaScript",
       "shortName": "PSJS",
       "lang": "es",
-      "themeColor": "#2f6fed",
-      "backgroundColor": "#f4f6fa"
+      "themeColor": "#58cc02",
+      "backgroundColor": "#ffffff"
     },
     "plugins": [
       "expo-router"

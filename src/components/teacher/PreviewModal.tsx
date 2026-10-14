@@ -1,12 +1,13 @@
 /** Vista previa: el maestro presenta su examen como lo vería un alumno y lo califica. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { gradePaper } from '../../core/exam/grading';
 import { buildPaper, isAnswered } from '../../core/exam/paper';
 import { randomId } from '../../core/exam/random';
 import type { Answers, ExamConfig, GradeResult } from '../../core/exam/types';
-import { useTheme } from '../../ui/theme';
+import { BORDER, RADIUS, useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
 import { Button } from '../ui';
 import { Banner, Card, Pill } from '../exam/kit';
@@ -103,7 +104,7 @@ export default function PreviewModal({ exam, onClose }: { exam: ExamConfig; onCl
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  nav: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  feedback: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 10, marginTop: 12 },
+  bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: BORDER },
+  nav: { width: 32, height: 32, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
+  feedback: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginTop: 12 },
 });

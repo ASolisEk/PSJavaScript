@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';

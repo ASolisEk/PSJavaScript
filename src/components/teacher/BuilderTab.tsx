@@ -1,14 +1,15 @@
 /** Constructor de exámenes: ajustes generales y lista de preguntas. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text, TextInput } from '../../ui/text';
 import { appendQuestions } from '../../core/exam/bank';
 import { cloneQuestion, createQuestion, examFileName, examTopics, questionsPerStudent, questionTypeInfo, QUESTION_TYPES, serializeExam, totalPoints, validateExam } from '../../core/exam/config';
 import type { ExamConfig, Question, QuestionType } from '../../core/exam/types';
 import { plainText } from '../../core/exam/richText';
 import { useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
-import { useTheme } from '../../ui/theme';
+import { BORDER, RADIUS, useTheme } from '../../ui/theme';
 import { Button } from '../ui';
 import { Banner, BigChoice, IconName, Pill } from '../exam/kit';
 import BankModal from './BankModal';
@@ -235,7 +236,7 @@ export default function BuilderTab() {
       ) : null}
       {wide ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <View style={{ width: 320, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: t.border, backgroundColor: t.surface }}>{list}</View>
+          <View style={{ width: 320, borderRightWidth: BORDER, borderRightColor: t.border, backgroundColor: t.surface }}>{list}</View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
             <View style={{ maxWidth: 860, width: '100%', alignSelf: 'center' }}>{editor}</View>
           </ScrollView>
@@ -276,15 +277,15 @@ function ListItem({ icon, title, subtitle, active, onPress, number, warn }: { ic
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  titleBox: { flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 1, borderStyle: 'dashed', paddingBottom: 1, maxWidth: 520 },
-  item: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 8, marginBottom: 6 },
-  itemIcon: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  top: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: BORDER },
+  titleBox: { flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: BORDER, borderStyle: 'dashed', paddingBottom: 1, maxWidth: 520 },
+  item: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, padding: 8, marginBottom: 6 },
+  itemIcon: { width: 34, height: 34, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 },
-  chip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, maxWidth: 200 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 10, padding: 12, marginTop: 6 },
+  chip: { borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 8, paddingVertical: 3, maxWidth: 200 },
+  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: BORDER, borderStyle: 'dashed', borderRadius: RADIUS.md, padding: 12, marginTop: 6 },
   typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   bigChoice: { flexBasis: 280, flexGrow: 1, marginBottom: 0 },
-  typeCard: { flexBasis: 220, flexGrow: 1, borderWidth: 1, borderRadius: 12, padding: 14 },
-  typeIcon: { width: 42, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  typeCard: { flexBasis: 220, flexGrow: 1, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 14 },
+  typeIcon: { width: 42, height: 42, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
 });

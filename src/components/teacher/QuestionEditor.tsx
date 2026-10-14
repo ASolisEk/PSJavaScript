@@ -1,12 +1,13 @@
 /** Editor de una pregunta del examen (modo Maestro). */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { codeRule, codeTest, ExamIssue, MATCH_MODES, option, questionTypeInfo } from '../../core/exam/config';
 import { expectedFromSolution, gradeQuestion, runProgram } from '../../core/exam/grading';
 import type { ChoiceOption, CodeQuestion, Question } from '../../core/exam/types';
 import { getProfile } from '../../core/profiles';
-import { MONO, useTheme } from '../../ui/theme';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button, IconButton } from '../ui';
 import { Banner, Card, Field, IconName, NumberStepper, Pill, Segmented, TextField, Toggle } from '../exam/kit';
 
@@ -221,10 +222,10 @@ function OutputEditor({ q, up, profileId }: { q: Extract<Question, { type: 'outp
         <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>{MATCH_MODES.find((m) => m.id === q.match)?.description}</Text>
       </Field>
       <Text style={{ color: t.text, fontWeight: '700', fontSize: 13, marginBottom: 6 }}>Respuesta correcta (se calcula ejecutando el programa)</Text>
-      <View style={[styles.terminal]}>
-        <Text style={{ color: '#f8f8f2', fontFamily: MONO, fontSize: 13 }}>{preview.output || '(sin salida)'}</Text>
-        {preview.error ? <Text style={{ color: '#ff6b6b', fontFamily: MONO, fontSize: 12, marginTop: 4 }}>{preview.error}</Text> : null}
-        {preview.needsInput ? <Text style={{ color: '#ffb86c', fontFamily: MONO, fontSize: 12, marginTop: 4 }}>El programa pide más datos de los que escribiste.</Text> : null}
+      <View style={[styles.terminal, { backgroundColor: t.terminal.bg }]}>
+        <Text style={{ color: t.terminal.text, fontFamily: MONO, fontSize: 13 }}>{preview.output || '(sin salida)'}</Text>
+        {preview.error ? <Text style={{ color: t.terminal.error, fontFamily: MONO, fontSize: 12, marginTop: 4 }}>{preview.error}</Text> : null}
+        {preview.needsInput ? <Text style={{ color: t.terminal.warn, fontFamily: MONO, fontSize: 12, marginTop: 4 }}>El programa pide más datos de los que escribiste.</Text> : null}
       </View>
     </Card>
   );
@@ -361,13 +362,13 @@ function CodeEditorForm({ q, up, profileId }: { q: CodeQuestion; up(p: Partial<Q
 const styles = {
   ...StyleSheet.create({
     top: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' },
-    typeIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+    typeIcon: { width: 40, height: 40, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
     row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-    mark: { width: 28, height: 28, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-    terminal: { backgroundColor: '#1e1e1e', borderRadius: 8, padding: 10 },
-    test: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10, marginBottom: 10 },
-    hiddenBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, height: 40 },
-    preset: { flexDirection: 'row', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+    mark: { width: 28, height: 28, borderWidth: BORDER, alignItems: 'center', justifyContent: 'center' },
+    terminal: { borderRadius: RADIUS.md, padding: 10 },
+    test: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginBottom: 10 },
+    hiddenBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, height: 40 },
+    preset: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.lg, paddingHorizontal: 10, paddingVertical: 5 },
   }),
   small: (color: string) => ({ color, fontSize: 12, marginBottom: 4 }),
 };

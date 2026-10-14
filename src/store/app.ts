@@ -432,13 +432,22 @@ export const useApp = create<AppState>((set, get) => {
     },
 
     runProgram(mode) {
+      // al ejecutar completo, mostrar la consola para ver el resultado
+      // (en paso a paso se queda en el editor para seguir la línea resaltada)
+      const showConsole = () => {
+        if (mode === 'run') set({ sidePanel: 'console', panel: 'console' });
+      };
       const st = runner?.getStatus();
       if (runner && st === 'paused') {
         runner.resume(mode);
+        showConsole();
         return;
       }
-      if (runner && (st === 'running' || st === 'input') && mode === 'run') return;
-      createRunner(mode);
+      if (runner && (st === 'running' || st === 'input') && mode === 'run') {
+        showConsole();
+        return;
+      }
+      if (createRunner(mode)) showConsole();
     },
     stepOnce() {
       const st = runner?.getStatus();

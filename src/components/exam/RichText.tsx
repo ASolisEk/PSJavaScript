@@ -1,6 +1,7 @@
 /** Enunciados y opciones con código: ```bloques```, `código en línea` y **negritas**. */
 import React, { useMemo } from 'react';
-import { StyleProp, Text, TextStyle, View } from 'react-native';
+import { StyleProp, TextStyle, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { parseRichText } from '../../core/exam/richText';
 import { MONO, useTheme } from '../../ui/theme';
 import { CodeBlock } from './kit';

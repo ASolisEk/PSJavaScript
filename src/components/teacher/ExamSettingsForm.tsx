@@ -1,11 +1,12 @@
 /** Ajustes generales del examen (modo Maestro). */
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { View } from 'react-native';
+import { Text } from '../../ui/text';
 import { examTopics, questionsPerStudent, RESULTS_VISIBILITY, totalPoints, usesTopicPicks } from '../../core/exam/config';
 import { ALWAYS_LOCKED } from '../../core/exam/protocol';
 import type { ExamConfig } from '../../core/exam/types';
 import { PROFILES } from '../../core/profiles';
-import { useTheme } from '../../ui/theme';
+import { BORDER, useTheme } from '../../ui/theme';
 import { Card, Field, NumberStepper, Pill, Segmented, TextField, Toggle } from '../exam/kit';
 
 const DURATIONS = [0, 15, 30, 45, 60, 90, 120];
@@ -65,7 +66,7 @@ export default function ExamSettingsForm({ exam, onChange }: { exam: ExamConfig;
           {mode === 'topic' ? (
             <View style={{ marginTop: 10 }}>
               {topics.map((x) => (
-                <View key={x.topic} style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingVertical: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }}>
+                <View key={x.topic} style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingVertical: 4, borderBottomWidth: BORDER, borderBottomColor: t.border }}>
                   <Text style={{ color: t.text, fontSize: 13, flex: 1, minWidth: 160 }} numberOfLines={1}>
                     {x.topic}
                   </Text>

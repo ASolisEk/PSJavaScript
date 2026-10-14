@@ -26,22 +26,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Animated,
-  Easing,
-  Image,
-  LayoutChangeEvent,
-  PanResponder,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Image, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../ui/text';
 import { useActiveFile, useApp } from '../store/app';
-import { useTheme } from '../ui/theme';
+import { BORDER, RADIUS, SPACE, TYPE, useTheme } from '../ui/theme';
 import { easeIn, easeOut, ND, startNextFrame, to, useValue, wait } from './mascot/anim';
 import { Ambient, COSTUMES, CostumeProvider, FaceProvider, resolveCostume, useSprites } from './mascot/costumes';
 import { AlertLayer, Confetti, CrashLayer, DizzyLayer, FxKind, OutputParticle, PetLayer, ReactionFx, WaitingLayer } from './mascot/extras';
@@ -153,6 +141,8 @@ function Card({ children, gap, side }: { children: React.ReactNode; gap: number;
       ]}
     >
       {children}
+      {/* colita del globo: triángulo del color del borde y, encima, uno del fondo */}
+      <View style={[styles.arrow, styles.arrowOuter, side === 'left' ? { left: 24 } : { right: 24 }, { borderTopColor: t.border }]} />
       <View style={[styles.arrow, side === 'left' ? { left: 26 } : { right: 26 }, { borderTopColor: t.surface }]} />
     </Animated.View>
   );
@@ -168,7 +158,7 @@ function Bubble({ text, persist, onHide, gap, side }: { text: string; persist: b
   return (
     <View style={{ pointerEvents: 'none' }}>
       <Card gap={gap} side={side}>
-        <Text style={{ color: t.text, fontSize: 13, lineHeight: 18 }}>{text}</Text>
+        <Text style={{ color: t.text, fontSize: 14, fontWeight: '600', lineHeight: 19 }}>{text}</Text>
       </Card>
     </View>
   );
@@ -189,7 +179,7 @@ function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; s
   }, [onClose]);
   return (
     <Card gap={gap} side={side}>
-      <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '700', marginBottom: 4 }}>¿QUÉ HACEMOS? 🐾</Text>
+      <Text style={{ color: t.textMuted, ...TYPE.label, fontSize: 12, marginBottom: 6 }}>¿Qué hacemos? 🐾</Text>
       {items.map((it) => (
         <Pressable
           key={it.label}
@@ -200,7 +190,7 @@ function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; s
           style={({ pressed }) => [styles.menuItem, { backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
         >
           <Ionicons name={it.icon} size={16} color={it.color ?? t.primary} />
-          <Text style={{ color: t.text, fontSize: 13, marginLeft: 8 }}>{it.label}</Text>
+          <Text style={{ color: t.text, fontSize: 14, fontWeight: '700', marginLeft: 10 }}>{it.label}</Text>
         </Pressable>
       ))}
     </Card>
@@ -1047,30 +1037,11 @@ const styles = StyleSheet.create({
     zIndex: 50,
     pointerEvents: 'box-none',
   },
-  clip: { overflow: 'hidden' },
-  card: {
-    maxWidth: 260,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 3px 8px rgba(0, 0, 0, 0.15)',
-      },
-      default: {
-        shadowColor: '#000',
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 4,
-      },
-    }),
-  },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, paddingHorizontal: 6, borderRadius: 8 },
+  card: { maxWidth: 270, paddingHorizontal: SPACE.md, paddingVertical: 10, borderRadius: RADIUS.lg, borderWidth: BORDER },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.sm, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.md },
   arrow: {
     position: 'absolute',
-    bottom: -9,
+    bottom: -8,
     width: 0,
     height: 0,
     borderLeftWidth: 9,
@@ -1079,6 +1050,7 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
+  arrowOuter: { bottom: -11.5, borderLeftWidth: 11, borderRightWidth: 11, borderTopWidth: 11 },
   particles: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   peek: { paddingLeft: 4, paddingTop: 6 },
 });

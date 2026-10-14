@@ -9,7 +9,8 @@
  * define dónde está la coronilla, los ojos, la boca, el cuello y la espalda.
  */
 import React, { createContext, memo, useContext } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import Svg, { Circle, Ellipse, G, Line, Path, Polygon, Rect } from 'react-native-svg';
 import type { Costume } from '../../core/holidays';
 import { MONO } from '../../ui/theme';

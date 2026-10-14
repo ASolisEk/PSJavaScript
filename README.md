@@ -138,6 +138,15 @@ El equipo del maestro es el anfitrión: recibe, guarda y califica. Hay tres form
 
 Código: `src/core/exam/` (tipos, generación del examen por alumno, calificación, protocolo, anfitrión, cliente, transportes y concentrado; probado en `tests/exam.test.ts` y `tests/certification.test.ts`), `src/core/exam/certs/` (certificaciones de freeCodeCamp y web.dev), `src/store/teacher.ts`, `src/store/student.ts`, `src/store/practice.ts`, `src/components/teacher/`, `src/components/exam/` y `scripts/sala-servidor.js`.
 
+## Diseño
+
+Toda la interfaz (editor, paneles, modales, modo Maestro y modo Examen) comparte un mismo sistema de diseño inspirado en el estilo "cuaderno de cuentos": lienzo blanco, un verde de progreso, un azul para lo interactivo, tipografía redondeada y componentes planos con bordes gruesos, sin sombras ni degradados.
+
+- **Tokens** (`src/ui/theme.ts`): colores para tema claro y oscuro, radios (`RADIUS`: 12 controles, 16 superficies), borde único de 2 px (`BORDER`), espaciado base 4 (`SPACE`), escala tipográfica (`TYPE`) y fuente `FONT` (Nunito en web; la del sistema en móvil).
+- **Colores con significado**: verde `#58cc02` para la acción principal, el avance y lo correcto (y la banda del pie de página); azul `#1cb0f6` para enlaces, botones secundarios y la opción seleccionada; texto en gris carbón `#4b4b4b` y gris lápiz `#777777`.
+- **Componentes** (`src/components/ui.tsx`): `Button` (primario verde, secundario delineado azul, peligro, discreto; etiquetas en mayúsculas), `IconButton`, `Tab`, `Chip`, `Segmented`, `Switch`, `Heading`, `SectionTitle`, `Card`, `Banner`, `Pill`, `ProgressBar`, `Stat`, `BigChoice`, `ScreenHeader`, `CodeBlock` y campos de formulario (`Field`, `TextField`, `Toggle`, `NumberStepper`). `exam/kit.tsx` los reexporta para los modos Maestro y Examen.
+- **Texto** (`src/ui/text.tsx`): `Text` y `TextInput` aplican la fuente de la marca; el código usa siempre la fuente monoespaciada (`MONO`).
+
 ## Arquitectura
 
 ```

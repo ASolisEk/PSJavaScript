@@ -1,6 +1,7 @@
 /** Elegir entre el modo Maestro y el modo Examen (alumno). */
 import React from 'react';
-import { ScrollView, Text } from 'react-native';
+import { ScrollView } from 'react-native';
+import { Text } from '../../ui/text';
 import { useApp } from '../../store/app';
 import { useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';

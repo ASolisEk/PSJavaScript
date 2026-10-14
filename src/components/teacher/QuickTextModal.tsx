@@ -1,12 +1,13 @@
 /** Captura rápida: escribir o pegar varias preguntas en texto sencillo. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
 import { answerSummary, parseQuickText, QUICK_TEXT_EXAMPLE } from '../../core/exam/quickText';
 import { plainText } from '../../core/exam/richText';
 import type { Question } from '../../core/exam/types';
-import { useTheme } from '../../ui/theme';
+import { BORDER, RADIUS, useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
 import { Button } from '../ui';
 import { Banner, IconName, Pill, TextField } from '../exam/kit';
@@ -92,6 +93,6 @@ export default function QuickTextModal({ onClose, onAdd }: { onClose(): void; on
 }
 
 const styles = StyleSheet.create({
-  item: { borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 8 },
-  foot: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  item: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginBottom: 8 },
+  foot: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: BORDER },
 });

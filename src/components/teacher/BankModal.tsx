@@ -1,13 +1,14 @@
 /** Elegir preguntas ya hechas (bancos incluidos o exámenes propios) para agregarlas al examen. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/text';
 import { bankSources, groupByTopic, matchesSearch, promptKey } from '../../core/exam/bank';
 import { questionTypeInfo } from '../../core/exam/config';
 import { plainText } from '../../core/exam/richText';
 import type { ExamConfig, Question } from '../../core/exam/types';
 import { useTeacher } from '../../store/teacher';
-import { useTheme } from '../../ui/theme';
+import { BORDER, RADIUS, useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
 import { Button, Chip } from '../ui';
 import { IconName, Pill, TextField } from '../exam/kit';
@@ -126,10 +127,10 @@ function CheckBox({ on, partial, disabled, label, onPress }: { on: boolean; part
 }
 
 const styles = StyleSheet.create({
-  bar: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, flexGrow: 0 },
-  group: { borderWidth: 1, borderRadius: 10, marginBottom: 8, overflow: 'hidden' },
+  bar: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: BORDER, flexGrow: 0 },
+  group: { borderWidth: BORDER, borderRadius: RADIUS.md, marginBottom: 8, overflow: 'hidden' },
   groupHead: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
-  check: { width: 22, height: 22, borderRadius: 5, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  foot: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderTopWidth: BORDER },
+  check: { width: 22, height: 22, borderRadius: RADIUS.md, borderWidth: BORDER, alignItems: 'center', justifyContent: 'center' },
+  foot: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: BORDER },
 });
