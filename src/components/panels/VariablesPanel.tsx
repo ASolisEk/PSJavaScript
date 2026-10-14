@@ -4,10 +4,13 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../../ui/text';
 import { useApp } from '../../store/app';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
+import { usePanelBottomPad } from '../../ui/layout';
 import { Chip, Empty, IconButton, SectionTitle, Switch } from '../ui';
 
 export default function VariablesPanel() {
   const t = useTheme();
+  // que la mascota no tape lo último en pantallas angostas
+  const bottomPad = usePanelBottomPad();
   const run = useApp((s) => s.run);
   const watches = useApp((s) => s.watches);
   const setWatches = useApp((s) => s.setWatches);
@@ -35,7 +38,7 @@ export default function VariablesPanel() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: t.surface }} contentContainerStyle={{ padding: 12 }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: t.surface }} contentContainerStyle={{ padding: 12, paddingBottom: bottomPad }} keyboardShouldPersistTaps="handled">
       <SectionTitle style={{ marginTop: 0 }}>Expresiones vigiladas</SectionTitle>
       <View style={[styles.watchAdd, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
         <TextInput
@@ -98,7 +101,7 @@ export default function VariablesPanel() {
               return (
                 <View key={v.name} style={[styles.row, { borderBottomColor: t.border, backgroundColor: isChanged ? t.execLine : undefined }]}>
                   <View style={{ width: '34%' }}>
-                    <Text style={[styles.name, { color: t.syntax.ident, width: undefined }]} numberOfLines={1}>
+                    <Text style={[styles.varName, { color: t.syntax.ident }]} numberOfLines={1}>
                       {v.name}
                     </Text>
                     <Text style={{ color: t.textMuted, fontSize: 10 }}>
@@ -127,6 +130,8 @@ const styles = StyleSheet.create({
   watchAdd: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderBottomWidth: BORDER },
   name: { fontFamily: MONO, fontSize: 13, fontWeight: '700', width: '34%' },
+  // sin ancho propio: ocupa la columna de su contenedor (en web «width: undefined» no quita el 34 %)
+  varName: { fontFamily: MONO, fontSize: 13, fontWeight: '700' },
   value: { fontFamily: MONO, fontSize: 13, flex: 1 },
   scope: { borderWidth: BORDER, borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: 10 },
   scopeHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 5 },

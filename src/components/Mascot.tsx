@@ -123,6 +123,8 @@ const lineAt = (code: string, pos: number) => {
 
 function Card({ children, gap, side }: { children: React.ReactNode; gap: number; side: 'left' | 'right' }) {
   const t = useTheme();
+  // en el teléfono el globo es más angosto para tapar menos
+  const narrow = useWindowDimensions().width < 600;
   const v = useValue(0);
   useEffect(() => {
     Animated.spring(v, { toValue: 1, friction: 6, tension: 90, useNativeDriver: ND }).start();
@@ -131,6 +133,7 @@ function Card({ children, gap, side }: { children: React.ReactNode; gap: number;
     <Animated.View
       style={[
         styles.card,
+        narrow && { maxWidth: 220 },
         side === 'left' ? { marginLeft: 18 } : { marginRight: 18 },
         {
           marginBottom: gap,
@@ -240,7 +243,7 @@ export default function Mascot() {
   const runActive = useApp((s) => !!s.run && s.run.status !== 'idle');
   const costumeSetting = useApp((s) => s.settings.mascotCostume);
   const character = getCharacter(useApp((s) => s.settings.mascotCharacter));
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const file = useActiveFile();
   const code = file?.code ?? '';
   const fileId = file?.id ?? '';
@@ -293,7 +296,8 @@ export default function Mascot() {
   }
 
   const wide = width >= 900;
-  const size = wide ? 132 : 96;
+  // con poca altura (celular acostado) se hace más chica para no tapar la consola
+  const size = wide ? 132 : height < 500 ? 70 : 96;
   const s = size / BOX;
   // posición por defecto: sobre la barra de símbolos/ayuda del editor y la mini consola (móvil)
   const defaultBottom = wide ? 10 : panel === 'editor' ? (symbolBar ? 84 : 40) + (runActive ? 96 : 0) : 10;
@@ -763,7 +767,8 @@ export default function Mascot() {
       if (stackOverflow) return `¡Me estoy clonando sin fin! 🌀 Recursión sin caso base${errLine ? ` (línea ${errLine})` : ''}.`;
       return `¡Auch! 💥 Error de ejecución${errLine ? ` en la línea ${errLine}` : ''}: ${isUndefined ? '🔍 ' : ''}${runError.message}`;
     }
-    if (mood === 'waiting') return 'Te espero: escribe el dato abajo 👇';
+    // en pantallas angostas, dentro de la consola el dato se escribe en la misma consola (arriba)
+    if (mood === 'waiting') return !wide && panel === 'console' ? 'Te espero: escribe el dato en la consola ☝️' : 'Te espero: escribe el dato abajo 👇';
     if (mood === 'running') return '¡Ejecutando tu código a toda velocidad! 🏃‍♂️';
     if (mood === 'alert') return `¡Alto! ✋ Punto de interrupción en la línea ${p.line}. Revisa tus variables.`;
     if (thinking) return 'Mmm… 🤔 ¿Se cumplirá la condición? Avanza un paso para verlo.';
@@ -778,7 +783,7 @@ export default function Mascot() {
     if (sleeping) return 'Zzz… (tócame para despertarme)';
     if (status === 'finished') return '¡Listo! El programa terminó sin errores 🎉';
     return tips[tip % tips.length];
-  }, [sneaking, mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip, tips, character]);
+  }, [sneaking, mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip, tips, character, wide, panel]);
 
   const persist = ['error', 'crash', 'pet', 'dizzy', 'waiting', 'alert'].includes(mood) || thinking || !!fx || sneaking;
   const bubbleKey = `${message}#${tip}`;
