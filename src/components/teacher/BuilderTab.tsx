@@ -1,7 +1,8 @@
 /** Constructor de exámenes: ajustes generales y lista de preguntas. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { appendQuestions } from '../../core/exam/bank';
 import { cloneQuestion, createQuestion, examFileName, examTopics, questionsPerStudent, questionTypeInfo, QUESTION_TYPES, serializeExam, totalPoints, validateExam } from '../../core/exam/config';
 import type { ExamConfig, Question, QuestionType } from '../../core/exam/types';
 import { plainText } from '../../core/exam/richText';
@@ -9,10 +10,12 @@ import { useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
 import { useTheme } from '../../ui/theme';
 import { Button } from '../ui';
-import { Banner, IconName, Pill } from '../exam/kit';
+import { Banner, BigChoice, IconName, Pill } from '../exam/kit';
+import BankModal from './BankModal';
 import ExamSettingsForm from './ExamSettingsForm';
 import PreviewModal from './PreviewModal';
 import QuestionEditor from './QuestionEditor';
+import QuickTextModal from './QuickTextModal';
 
 type Sel = 'settings' | 'add' | string;
 
@@ -22,8 +25,11 @@ export default function BuilderTab() {
   const wide = width >= 900;
   const editingId = useTeacher((s) => s.editingId);
   const exam = useTeacher((s) => s.exams.find((e) => e.id === s.editingId) ?? null);
-  const [sel, setSel] = useState<Sel | null>(wide ? 'settings' : null);
+  // un examen vacío abre directo en «Agregar preguntas»
+  const [sel, setSel] = useState<Sel | null>(exam && !exam.questions.length ? 'add' : wide ? 'settings' : null);
   const [preview, setPreview] = useState(false);
+  const [adding, setAdding] = useState<'bank' | 'text' | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [showIssues, setShowIssues] = useState(false);
   const [topic, setTopic] = useState<string | null>(null);
   const issues = useMemo(() => (exam ? validateExam(exam) : []), [exam]);
@@ -48,6 +54,19 @@ export default function BuilderTab() {
     const q = { ...createQuestion(type), ...(topic ? { topic } : {}) };
     setQuestions([...exam.questions, q]);
     setSel(q.id);
+  };
+
+  /** Agrega varias preguntas (del banco o de texto) y abre la primera. */
+  const addMany = (qs: Question[]) => {
+    const { exam: next, newTopics } = appendQuestions(exam, qs);
+    save(next);
+    setAdding(null);
+    setTopic(null);
+    setSel(next.questions[exam.questions.length]?.id ?? 'add');
+    setNotice(
+      `Se agregaron ${qs.length} pregunta${qs.length === 1 ? '' : 's'}; ahora el examen tiene ${next.questions.length}.` +
+        (newTopics.length ? ` ${newTopics.length === 1 ? 'El tema nuevo' : 'Los temas nuevos'} ${newTopics.map((x) => `«${x}»`).join(', ')} entra${newTopics.length === 1 ? '' : 'n'} con 1 pregunta por alumno; ajústalo en «Ajustes del examen».` : ''),
+    );
   };
 
   const selected = sel && sel !== 'settings' && sel !== 'add' ? exam.questions.find((q) => q.id === sel) : undefined;
@@ -93,7 +112,7 @@ export default function BuilderTab() {
       })}
       <Pressable onPress={() => setSel('add')} style={[styles.addBtn, { borderColor: t.primary, backgroundColor: sel === 'add' ? t.primary + '14' : 'transparent' }]}>
         <Ionicons name="add-circle-outline" size={18} color={t.primary} />
-        <Text style={{ color: t.primary, fontWeight: '800', marginLeft: 6 }}>Agregar pregunta</Text>
+        <Text style={{ color: t.primary, fontWeight: '800', marginLeft: 6 }}>Agregar preguntas</Text>
       </Pressable>
     </ScrollView>
   );
@@ -103,8 +122,14 @@ export default function BuilderTab() {
       <ExamSettingsForm exam={exam} onChange={save} />
     ) : sel === 'add' ? (
       <View>
-        <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', marginBottom: 4 }}>¿Qué tipo de pregunta quieres agregar?</Text>
-        <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 12 }}>Puedes cambiar el texto y los puntos después.</Text>
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', marginBottom: 4 }}>Agrega varias a la vez</Text>
+        <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 12 }}>La forma más rápida de armar el examen. Después puedes editar cualquier pregunta.</Text>
+        <View style={styles.typeGrid}>
+          <BigChoice icon="library-outline" title="Elegir del banco" description="Cientos de preguntas listas por tema (Fundamentos, freeCodeCamp) y las de tus otros exámenes." onPress={() => setAdding('bank')} style={styles.bigChoice} />
+          <BigChoice icon="clipboard-outline" title="Pegar varias en texto" description="Escribe o pega una lista de preguntas con sus respuestas (desde Word o tus apuntes)." color={t.accent} onPress={() => setAdding('text')} style={styles.bigChoice} />
+        </View>
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', marginTop: 20, marginBottom: 4 }}>O escribe una nueva</Text>
+        <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 12 }}>Elige el tipo de pregunta; puedes cambiar el texto y los puntos después.</Text>
         <View style={styles.typeGrid}>
           {QUESTION_TYPES.map((qt) => (
             <Pressable key={qt.type} onPress={() => addQuestion(qt.type)} style={({ pressed }) => [styles.typeCard, { borderColor: t.border, backgroundColor: pressed ? t.surfaceAlt : t.surface }]}>
@@ -153,9 +178,19 @@ export default function BuilderTab() {
     <View style={[styles.top, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
       {!wide && sel ? <Button label="Preguntas" icon="chevron-back" onPress={() => setSel(null)} style={{ marginRight: 8 }} /> : null}
       <View style={{ flex: 1, minWidth: 160 }}>
-        <Text style={{ color: t.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>
-          {exam.title || 'Examen sin título'}
-        </Text>
+        {/* el título se edita aquí mismo, sin ir a «Ajustes del examen» */}
+        <View style={[styles.titleBox, { borderBottomColor: t.border }]}>
+          <TextInput
+            value={exam.title}
+            onChangeText={(title) => save({ ...exam, title })}
+            placeholder="Escribe el título del examen"
+            placeholderTextColor={t.danger}
+            selectTextOnFocus
+            accessibilityLabel="Título del examen"
+            style={[{ color: t.text, fontWeight: '800', fontSize: 15, padding: 0, flex: 1 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
+          />
+          <Ionicons name="pencil" size={13} color={t.textMuted} />
+        </View>
         <Text style={{ color: t.textMuted, fontSize: 12 }}>
           {questionsPerStudent(exam)} preguntas por alumno · se guarda automáticamente
         </Text>
@@ -180,6 +215,11 @@ export default function BuilderTab() {
   return (
     <View style={{ flex: 1 }}>
       {top}
+      {notice ? (
+        <View style={{ padding: 12, paddingBottom: 0 }}>
+          <Banner icon="checkmark-circle" color={t.success} text={notice} onClose={() => setNotice(null)} />
+        </View>
+      ) : null}
       {showIssues && issues.length ? (
         <View style={{ padding: 12, paddingBottom: 0 }}>
           {issues.map((i, k) => (
@@ -208,6 +248,8 @@ export default function BuilderTab() {
         list
       )}
       {preview ? <PreviewModal exam={exam} onClose={() => setPreview(false)} /> : null}
+      {adding === 'bank' ? <BankModal exam={exam} onClose={() => setAdding(null)} onAdd={addMany} /> : null}
+      {adding === 'text' ? <QuickTextModal onClose={() => setAdding(null)} onAdd={addMany} /> : null}
     </View>
   );
 }
@@ -235,12 +277,14 @@ function ListItem({ icon, title, subtitle, active, onPress, number, warn }: { ic
 
 const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  titleBox: { flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 1, borderStyle: 'dashed', paddingBottom: 1, maxWidth: 520 },
   item: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, padding: 8, marginBottom: 6 },
   itemIcon: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: 8 },
   chip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, maxWidth: 200 },
   addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 10, padding: 12, marginTop: 6 },
   typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  bigChoice: { flexBasis: 280, flexGrow: 1, marginBottom: 0 },
   typeCard: { flexBasis: 220, flexGrow: 1, borderWidth: 1, borderRadius: 12, padding: 14 },
   typeIcon: { width: 42, height: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
 });
