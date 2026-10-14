@@ -1,15 +1,16 @@
 /** Pantalla principal del entorno: barra de herramientas, editor y paneles. */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '../ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCode } from '../core/editor/indent';
 import { PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
 import type { VarDetail } from '../core/runner';
-import { BORDER, MONO, RADIUS, SPACE, useTheme } from '../ui/theme';
+import { BORDER, MONO, RADIUS, SCRIM, SPACE, useTheme } from '../ui/theme';
+import { useLayout } from '../ui/layout';
 import CodeEditor from './CodeEditor';
-import Footer, { REPO_URL } from './Footer';
+import Footer, { CREDITS, REPO_URL } from './Footer';
 import ExportModal from './modals/ExportModal';
 import FilesModal from './modals/FilesModal';
 import HelpModal from './modals/HelpModal';
@@ -28,14 +29,18 @@ import VariablesPanel from './panels/VariablesPanel';
 import Mascot from './Mascot';
 import { Button, IconButton, Tab, Tooltip } from './ui';
 
-const PANELS: { id: PanelId; label: string; short: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+/** label: pestaña del panel lateral · short: pestaña en pantallas angostas (todas deben caber). */
+const PANELS: { id: PanelId; label: string; short: string; icon: IconName }[] = [
   { id: 'console', label: 'Consola', short: 'Consola', icon: 'terminal-outline' },
   { id: 'diagram', label: 'Diagrama', short: 'Diagrama', icon: 'git-network-outline' },
   { id: 'variables', label: 'Variables', short: 'Variables', icon: 'cube-outline' },
   { id: 'desktop', label: 'Prueba de escritorio', short: 'Escritorio', icon: 'grid-outline' },
-  { id: 'explain', label: 'Explicación', short: 'Explicación', icon: 'chatbubbles-outline' },
+  { id: 'explain', label: 'Explicación', short: 'Explicar', icon: 'chatbubbles-outline' },
   { id: 'problems', label: 'Problemas', short: 'Problemas', icon: 'alert-circle-outline' },
 ];
+const EDITOR_TAB = { id: 'editor' as PanelId, label: 'Código', short: 'Código', icon: 'code-slash' as IconName };
 
 function PanelView({ id }: { id: PanelId }) {
   switch (id) {
@@ -102,7 +107,7 @@ function FileTabs() {
   );
 }
 
-function Toolbar({ compact }: { compact: boolean }) {
+function Toolbar({ compact, clip }: { compact: boolean; clip: boolean }) {
   const t = useTheme();
   const status = useApp((s) => s.run?.status ?? 'idle');
   const speed = useApp((s) => s.settings.speed);
@@ -115,7 +120,8 @@ function Toolbar({ compact }: { compact: boolean }) {
   const label = !compact;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar} style={{ overflow: 'visible' }} keyboardShouldPersistTaps="handled">
+    // los tooltips necesitan overflow visible, pero si la barra no cabe eso desborda la página
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar} style={{ overflow: clip ? 'hidden' : 'visible' }} keyboardShouldPersistTaps="handled">
       <IconButton icon="folder-open-outline" label="Archivos" tooltip="Archivos y ejemplos" onPress={() => setModal('files')} showLabel={label} />
       <View style={[styles.sep, { backgroundColor: t.border }]} />
       <IconButton icon="play" label={status === 'paused' ? 'Continuar' : 'Ejecutar'} tooltip={status === 'paused' ? 'Continuar ejecución' : 'Ejecutar programa completo'} color={t.success} onPress={() => runProgram('run')} showLabel={label} disabled={running} />
@@ -159,6 +165,143 @@ function Toolbar({ compact }: { compact: boolean }) {
       <IconButton icon="settings-outline" label="Configuración y perfil" tooltip="Configuración y perfil del lenguaje" onPress={() => setModal('settings')} />
       <IconButton icon="help-circle-outline" label="Ayuda" tooltip="Ayuda y documentación del lenguaje" onPress={() => setModal('help')} />
     </ScrollView>
+  );
+}
+
+/**
+ * Barra del teléfono: los controles de ejecución siempre a la vista (sin
+ * deslizar) y el resto de las acciones en el menú «Más».
+ */
+function PhoneToolbar() {
+  const t = useTheme();
+  const status = useApp((s) => s.run?.status ?? 'idle');
+  const { runProgram, stepOnce, stepBack, pause, stop, setModal } = useApp.getState();
+  const [more, setMore] = useState(false);
+  const running = status === 'running';
+  const active = status === 'running' || status === 'paused' || status === 'input';
+  const canBack = status === 'paused' || status === 'finished' || status === 'error' || status === 'input';
+  return (
+    <View style={styles.phoneToolbar}>
+      <IconButton icon="folder-open-outline" label="Archivos" onPress={() => setModal('files')} />
+      <IconButton icon="play" label={status === 'paused' ? 'Continuar' : 'Ejecutar'} color={t.success} onPress={() => runProgram('run')} disabled={running} />
+      <IconButton icon="play-forward" label="Paso a paso" color={t.primary} onPress={() => runProgram('animate')} disabled={running} />
+      <IconButton icon="play-skip-forward" label="Siguiente paso" onPress={stepOnce} disabled={status === 'input'} />
+      <IconButton icon="play-skip-back" label="Paso anterior" onPress={stepBack} disabled={!canBack} />
+      <IconButton icon="pause" label="Pausar" onPress={pause} disabled={!running} />
+      <IconButton icon="stop" label="Detener" color={t.danger} onPress={stop} disabled={!active} />
+      <IconButton icon="ellipsis-horizontal" label="Más opciones" onPress={() => setMore(true)} active={more} />
+      {more ? <MoreSheet onClose={() => setMore(false)} /> : null}
+    </View>
+  );
+}
+
+/** Menú «Más» del teléfono: velocidad, edición, exportar, examen, configuración, ayuda y créditos. */
+function MoreSheet({ onClose }: { onClose(): void }) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const speed = useApp((s) => s.settings.speed);
+  const { setModal, updateSettings, replaceCode, setNotice } = useApp.getState();
+  const file = useActiveFile();
+  const speedIdx = Math.max(0, SPEEDS.indexOf(speed));
+  const go = (fn: () => void) => () => {
+    onClose();
+    fn();
+  };
+  const items: { icon: IconName; label: string; color?: string; onPress(): void }[] = [
+    { icon: 'add-circle-outline', label: 'Insertar comandos y estructuras', onPress: go(() => setModal('insert')) },
+    {
+      icon: 'color-wand-outline',
+      label: 'Formatear código',
+      onPress: go(() => {
+        if (!file) return;
+        replaceCode(formatCode(file.code));
+        setNotice('Código formateado correctamente ✨');
+      }),
+    },
+    { icon: 'swap-horizontal', label: 'Exportar a otros lenguajes', onPress: go(() => setModal('export')) },
+    { icon: 'school-outline', label: 'Examen (maestro o alumno)', color: t.accent, onPress: go(() => setModal('exam')) },
+    { icon: 'settings-outline', label: 'Configuración y perfil', onPress: go(() => setModal('settings')) },
+    { icon: 'help-circle-outline', label: 'Ayuda', onPress: go(() => setModal('help')) },
+    { icon: 'logo-github', label: 'Código fuente en GitHub', onPress: go(() => Linking.openURL(REPO_URL)) },
+  ];
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} supportedOrientations={['portrait', 'landscape']}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM }]} onPress={onClose} accessibilityLabel="Cerrar menú" />
+      <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.border, paddingBottom: SPACE.md + insets.bottom }]} accessibilityViewIsModal>
+        <View style={[styles.sheetRow, { borderBottomColor: t.border }]}>
+          <Ionicons name="speedometer-outline" size={20} color={t.textMuted} />
+          <Text style={[styles.sheetLabel, { color: t.text }]}>Velocidad paso a paso</Text>
+          <IconButton icon="remove" label="Más lento" onPress={() => updateSettings({ speed: SPEEDS[Math.max(0, speedIdx - 1)] })} disabled={speedIdx === 0} />
+          <Text style={{ color: t.text, fontSize: 15, fontWeight: '800', width: 22, textAlign: 'center' }}>{speedIdx + 1}</Text>
+          <IconButton icon="add" label="Más rápido" onPress={() => updateSettings({ speed: SPEEDS[Math.min(SPEEDS.length - 1, speedIdx + 1)] })} disabled={speedIdx === SPEEDS.length - 1} />
+        </View>
+        <ScrollView style={{ flexShrink: 1 }}>
+          {items.map((it) => (
+            <Pressable
+              key={it.label}
+              onPress={it.onPress}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.sheetRow, { borderBottomColor: t.border, backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
+            >
+              <Ionicons name={it.icon} size={20} color={it.color ?? t.textMuted} />
+              <Text style={[styles.sheetLabel, { color: t.text }]}>{it.label}</Text>
+              <Ionicons name="chevron-forward" size={16} color={t.textFaint} />
+            </Pressable>
+          ))}
+        </ScrollView>
+        <Text style={{ color: t.textMuted, fontSize: 12, textAlign: 'center', marginTop: SPACE.md }}>{CREDITS}</Text>
+      </View>
+    </Modal>
+  );
+}
+
+/** Pestañas en pantallas angostas: ícono y nombre corto, todas a la vista sin deslizar. */
+function PhoneTabs({ errorCount }: { errorCount: number }) {
+  const t = useTheme();
+  const { width, height } = useWindowDimensions();
+  // en pantallas muy angostas la letra baja un punto para que quepan los siete nombres
+  const tiny = width < 360;
+  // celular acostado: sobra ancho y falta alto, así que ícono y nombre van lado a lado
+  const inline = height < 500 && width >= 600;
+  const panel = useApp((s) => s.panel);
+  const setPanel = useApp((s) => s.setPanel);
+  return (
+    <View accessibilityRole="tablist" style={[styles.phoneTabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
+      {[EDITOR_TAB, ...PANELS].map((p) => {
+        const active = panel === p.id;
+        const c = active ? t.primary : t.textMuted;
+        const badge = p.id === 'problems' && errorCount ? errorCount : 0;
+        return (
+          <Pressable
+            key={p.id}
+            onPress={() => setPanel(p.id)}
+            accessibilityRole="tab"
+            accessibilityLabel={p.label}
+            accessibilityState={{ selected: active }}
+            style={({ pressed }) => [
+              styles.phoneTab,
+              inline && { flexDirection: 'row', paddingTop: 4 },
+              { borderBottomColor: active ? t.primary : 'transparent', backgroundColor: pressed ? t.surfaceAlt : 'transparent' },
+            ]}
+          >
+            <View>
+              <Ionicons name={p.icon} size={19} color={c} />
+              {badge ? (
+                <View style={[styles.phoneBadge, { backgroundColor: t.danger }]}>
+                  <Text style={styles.phoneBadgeText}>{badge > 9 ? '9+' : badge}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text
+              style={[{ color: c, fontSize: tiny ? 9 : 10, fontWeight: '800', letterSpacing: tiny ? -0.2 : 0, marginTop: 2 }, inline && { fontSize: 12, marginTop: 0, marginLeft: 6 }]}
+              numberOfLines={1}
+            >
+              {p.short}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -368,9 +511,11 @@ function FloatingDebugWidget() {
 function DebugBar() {
   const t = useTheme();
   const run = useApp((s) => s.run);
+  // en el teléfono estos controles ya están siempre a la vista en la barra de arriba
+  const { phone } = useLayout();
   const { runProgram, stepOnce, stepBack, stop } = useApp.getState();
 
-  if (run?.status !== 'paused') return null;
+  if (run?.status !== 'paused' || phone) return null;
 
   return (
     <View style={[styles.debugBar, { backgroundColor: t.warningSoft, borderTopColor: t.warning }]}>
@@ -385,8 +530,7 @@ function DebugBar() {
 export default function IDE() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const wide = width >= 900;
+  const { width, wide, phone } = useLayout();
   const hydrated = useApp((s) => s.hydrated);
   const file = useActiveFile();
   const panel = useApp((s) => s.panel);
@@ -560,19 +704,22 @@ export default function IDE() {
               </a>
             </>
           )}
-          <Pressable
-            onPress={() => Linking.openURL(REPO_URL)}
-            accessibilityRole="link"
-            accessibilityLabel="Ver el código fuente en GitHub"
-            {...({ title: 'Ver el código fuente en GitHub' } as object)}
-            style={({ pressed }) => [styles.repoLink, { borderColor: t.borderStrong, backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
-          >
-            <Ionicons name="logo-github" size={16} color={t.textMuted} />
-            {width >= 600 ? <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Código fuente</Text> : null}
-          </Pressable>
+          {/* en el teléfono el enlace está en el menú «Más» para dejarle espacio a los archivos */}
+          {!phone ? (
+            <Pressable
+              onPress={() => Linking.openURL(REPO_URL)}
+              accessibilityRole="link"
+              accessibilityLabel="Ver el código fuente en GitHub"
+              {...({ title: 'Ver el código fuente en GitHub' } as object)}
+              style={({ pressed }) => [styles.repoLink, { borderColor: t.borderStrong, backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
+            >
+              <Ionicons name="logo-github" size={16} color={t.textMuted} />
+              {width >= 700 ? <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Código fuente</Text> : null}
+            </Pressable>
+          ) : null}
         </View>
-        <View style={[styles.toolbarWrap, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
-          <Toolbar compact={width < 1200} />
+        <View style={[styles.toolbarWrap, { backgroundColor: t.surface, borderBottomColor: t.border, overflow: phone || width < 700 ? 'hidden' : 'visible' }]}>
+          {phone ? <PhoneToolbar /> : <Toolbar compact={width < 1200} clip={width < 700} />}
         </View>
         <Notice />
 
@@ -596,12 +743,7 @@ export default function IDE() {
             </View>
           ) : (
             <View style={{ flex: 1 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
-                <Tab label="Código" icon="code-slash" active={panel === 'editor'} onPress={() => setPanel('editor')} />
-                {PANELS.map((p) => (
-                  <Tab key={p.id} label={p.short} icon={p.icon} active={panel === p.id} onPress={() => setPanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
-                ))}
-              </ScrollView>
+              <PhoneTabs errorCount={errorCount} />
               <View style={{ flex: 1, position: 'relative' }}>
                 {panel === 'editor' ? editor : <PanelView id={panel} />}
                 {panel === 'editor' && <FloatingDebugWidget />}
@@ -616,7 +758,8 @@ export default function IDE() {
         <DebugBar />
         <View style={{ paddingBottom: insets.bottom, backgroundColor: t.primary }}>
           <StatusBar />
-          <Footer />
+          {/* en el teléfono los créditos están en el menú «Más» */}
+          {!phone ? <Footer /> : null}
         </View>
       </View>
 
@@ -645,6 +788,14 @@ const styles = StyleSheet.create({
   sep: { width: BORDER, height: 24, borderRadius: 1, marginHorizontal: SPACE.sm },
   speed: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, height: 34, marginLeft: 4 },
   tabs: { flexGrow: 0, borderBottomWidth: BORDER },
+  phoneToolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 2 },
+  phoneTabs: { flexDirection: 'row', borderBottomWidth: BORDER },
+  phoneTab: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingTop: 6, paddingBottom: 4, borderBottomWidth: 3 },
+  phoneBadge: { position: 'absolute', top: -5, right: -10, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
+  phoneBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '85%', borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg, borderWidth: BORDER, paddingTop: SPACE.sm },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', minHeight: 50, paddingHorizontal: SPACE.lg, borderBottomWidth: BORDER },
+  sheetLabel: { flex: 1, fontSize: 15, fontWeight: '700', marginLeft: SPACE.md },
   status: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: SPACE.md, borderTopWidth: BORDER },
   dot: { width: 10, height: 10, borderRadius: 5 },
   notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.md, paddingVertical: 6, borderBottomWidth: BORDER },

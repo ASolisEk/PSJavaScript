@@ -11,6 +11,7 @@ import { explainSyntaxError } from '../../core/syntaxHelp';
 import { useActiveFile, useApp } from '../../store/app';
 import { copyText, saveTextFile } from '../../ui/platform';
 import { BORDER, MONO, useTheme } from '../../ui/theme';
+import { usePanelBottomPad } from '../../ui/layout';
 import { Chip, Empty, IconButton } from '../ui';
 
 /** En web react-native-svg reenvía los props de "responder" al DOM: se usa onClick. */
@@ -21,6 +22,8 @@ function pressProps(fn: (() => void) | undefined): any {
 
 export default function DiagramPanel() {
   const t = useTheme();
+  // que la mascota no tape lo último en pantallas angostas
+  const bottomPad = usePanelBottomPad();
   const file = useActiveFile();
   const code = file?.code ?? '';
   const execLine = useApp((s) => (s.run && (s.run.status === 'paused' || s.run.status === 'running' || s.run.status === 'input') ? s.run.line : null));
@@ -140,7 +143,7 @@ export default function DiagramPanel() {
           ))}
         </ScrollView>
       ) : null}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ alignItems: 'center' }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ alignItems: 'center', paddingBottom: bottomPad }}>
         <ScrollView horizontal contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
           <Svg width={layout.w * zoom} height={layout.h * zoom} viewBox={`0 0 ${layout.w} ${layout.h}`}>
             {layout.els.map(renderEl)}
