@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../../ui/text';
 import Svg, { Rect, Circle, Line as SvgLine, Text as SvgText } from 'react-native-svg';
 import type { InputValue, OutputLine, RunnerSnapshot } from '../../core/runner';
 import { useApp } from '../../store/app';
 import { copyText } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
+import { useLayout } from '../../ui/layout';
 import { Button, Empty, IconButton, SectionTitle } from '../ui';
 
 function Line({ l }: { l: OutputLine }) {
@@ -193,10 +194,10 @@ export default function ConsolePanel() {
   const scroll = useRef<ScrollView>(null);
   const [showInputs, setShowInputs] = useState(false);
 
-  const { width, height } = useWindowDimensions();
-  const wide = width >= 900;
-  // con poca altura (celular acostado) la mascota es más chica: un margen grande dejaría la consola casi vacía
-  const bottomPad = !mascot ? 12 : height < 500 && !wide ? 56 : 170;
+  const { wide, split } = useLayout();
+  // la mascota flota sobre la consola en pantalla ancha y con el celular acostado (más chica);
+  // con el celular en vertical se para encima de las pestañas y no la tapa
+  const bottomPad = !mascot ? 12 : wide ? 170 : split === 'row' ? 56 : 12;
   const status = run?.status;
   const isInput = status === 'input';
   const req = run?.inputRequest ?? null;
@@ -278,8 +279,8 @@ export function InputBar() {
   const status = useApp((s) => s.run?.status);
   const count = useApp((s) => s.run?.inputs.length ?? 0);
   // en pantallas angostas la consola ya pregunta en su propia línea: no se repite abajo
-  const inConsole = useApp((s) => s.panel === 'console');
-  const wide = useWindowDimensions().width >= 900;
+  const inConsole = useApp((s) => s.sidePanel === 'console');
+  const { wide } = useLayout();
   if (!req || status !== 'input' || (inConsole && !wide)) return null;
   return <InputBarInner key={count} req={req} />;
 }

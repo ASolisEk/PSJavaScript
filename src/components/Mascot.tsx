@@ -31,6 +31,7 @@ import { AccessibilityInfo, Animated, Easing, Image, LayoutChangeEvent, PanRespo
 import { Text } from '../ui/text';
 import { useActiveFile, useApp } from '../store/app';
 import { BORDER, RADIUS, SPACE, TYPE, useTheme } from '../ui/theme';
+import { CODE_SHARE, WIDE_MIN } from '../ui/layout';
 import { easeIn, easeOut, ND, startNextFrame, to, useValue, wait } from './mascot/anim';
 import { CHARACTER_LIST, getCharacter } from './mascot/characters';
 import { Ambient, CharacterProvider, COSTUMES, CostumeProvider, FaceProvider, resolveCostume, useSprites } from './mascot/costumes';
@@ -237,10 +238,8 @@ export default function Mascot() {
   const t = useTheme();
   const enabled = useApp((s) => s.settings.mascot);
   const savedPos = useApp((s) => s.settings.mascotPos);
-  const panel = useApp((s) => s.panel);
-  const symbolBar = useApp((s) => s.settings.symbolBar);
+  const sidePanel = useApp((s) => s.sidePanel);
   const editorRequest = useApp((s) => s.editorRequest);
-  const runActive = useApp((s) => !!s.run && s.run.status !== 'idle');
   const costumeSetting = useApp((s) => s.settings.mascotCostume);
   const character = getCharacter(useApp((s) => s.settings.mascotCharacter));
   const { width, height } = useWindowDimensions();
@@ -295,19 +294,21 @@ export default function Mascot() {
     }
   }
 
-  const wide = width >= 900;
+  const wide = width >= WIDE_MIN;
+  const split = wide ? 'side' : height < 500 && width >= 600 ? 'row' : 'column';
   // con poca altura (celular acostado) se hace más chica para no tapar la consola
   const size = wide ? 132 : height < 500 ? 70 : 96;
   const s = size / BOX;
-  // posición por defecto: sobre la barra de símbolos/ayuda del editor y la mini consola (móvil)
-  const defaultBottom = wide ? 10 : panel === 'editor' ? (symbolBar ? 84 : 40) + (runActive ? 96 : 0) : 10;
+  // posición por defecto: en la esquina de abajo; con el celular en vertical, parada sobre las
+  // pestañas de los paneles (al pie del código) para no tapar la consola
+  const defaultBottom = split === 'column' && area.h ? Math.round(area.h * (1 - CODE_SHARE)) + 4 : 10;
   const right = savedPos && area.w ? clamp(savedPos.right, 4, area.w - size - 4) : 14;
   const bottom = savedPos && area.h ? clamp(savedPos.bottom, 4, area.h - size - 4) : defaultBottom;
   const centerX = area.w - right - size / 2;
   const side: 'left' | 'right' = area.w && centerX < area.w / 2 ? 'left' : 'right';
   // mira hacia el editor (a la izquierda salvo que lo hayas puesto a la izquierda del editor)
-  const editorX = wide ? area.w * 0.27 : area.w / 2;
-  const faceLeft = !area.w || !(wide || panel === 'editor') || editorX <= centerX;
+  const editorX = wide ? area.w * 0.27 : split === 'row' ? area.w * CODE_SHARE * 0.5 : area.w / 2;
+  const faceLeft = !area.w || editorX <= centerX;
   const dir = faceLeft ? -1 : 1;
 
   useEffect(() => {
@@ -768,7 +769,8 @@ export default function Mascot() {
       return `¡Auch! 💥 Error de ejecución${errLine ? ` en la línea ${errLine}` : ''}: ${isUndefined ? '🔍 ' : ''}${runError.message}`;
     }
     // en pantallas angostas, dentro de la consola el dato se escribe en la misma consola (arriba)
-    if (mood === 'waiting') return !wide && panel === 'console' ? 'Te espero: escribe el dato en la consola ☝️' : 'Te espero: escribe el dato abajo 👇';
+    // en pantallas angostas el dato se escribe dentro de la consola
+    if (mood === 'waiting') return !wide && sidePanel === 'console' ? `Te espero: escribe el dato en la consola ${split === 'row' ? '☝️' : '👇'}` : 'Te espero: escribe el dato abajo 👇';
     if (mood === 'running') return '¡Ejecutando tu código a toda velocidad! 🏃‍♂️';
     if (mood === 'alert') return `¡Alto! ✋ Punto de interrupción en la línea ${p.line}. Revisa tus variables.`;
     if (thinking) return 'Mmm… 🤔 ¿Se cumplirá la condición? Avanza un paso para verlo.';
@@ -783,7 +785,7 @@ export default function Mascot() {
     if (sleeping) return 'Zzz… (tócame para despertarme)';
     if (status === 'finished') return '¡Listo! El programa terminó sin errores 🎉';
     return tips[tip % tips.length];
-  }, [sneaking, mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip, tips, character, wide, panel]);
+  }, [sneaking, mood, fx, celebrating, runError, stackOverflow, errLine, isUndefined, p.line, p.errorCount, thinking, status, staticError, many, sleeping, tip, tips, character, wide, sidePanel, split]);
 
   const persist = ['error', 'crash', 'pet', 'dizzy', 'waiting', 'alert'].includes(mood) || thinking || !!fx || sneaking;
   const bubbleKey = `${message}#${tip}`;
@@ -802,10 +804,9 @@ export default function Mascot() {
         label: errLine ? `Explícame el error (línea ${errLine})` : 'Explícame el error',
         color: t.danger,
         onPress: () => {
-          if (wide) {
-            st.setSidePanel('problems');
-            if (errLine) st.jumpToLine(errLine);
-          } else st.setPanel('problems');
+          // el código siempre está a la vista: se abre Problemas y se salta a la línea
+          st.setSidePanel('problems');
+          if (errLine) st.jumpToLine(errLine);
         },
       });
     items.push({
@@ -847,7 +848,7 @@ export default function Mascot() {
       },
     });
     return items;
-  }, [status, hasError, errLine, wide, savedPos, t, costume, character]);
+  }, [status, hasError, errLine, savedPos, t, costume, character]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width: w, height: h } = e.nativeEvent.layout;
@@ -916,7 +917,7 @@ export default function Mascot() {
   const escapeX = hideEdge === 'right' ? right + size + 16 : -(area.w - right + 16);
   const headX = faceLeft ? 120 : 210;
   const particleDx = wide && centerX < area.w * 0.535 ? size * 1.3 : 0;
-  const particleDy = !wide && panel === 'editor' && runActive ? size * 0.9 : -size * 1.1;
+  const particleDy = -size * 1.1;
   const fxKind: FxKind | null = fx?.kind ?? (thinking ? 'think' : null);
   const fxKey = fx ? `fx${fx.n}` : thinking ? `think${p.pausedStep}` : '';
 
