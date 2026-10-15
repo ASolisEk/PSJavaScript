@@ -5,12 +5,15 @@ import { Text } from '../../ui/text';
 import { useApp } from '../../store/app';
 import { copyText } from '../../ui/platform';
 import { BORDER, MONO, useTheme } from '../../ui/theme';
+import { usePanelBottomPad } from '../../ui/layout';
 import { Empty, IconButton } from '../ui';
 
 const COL_W = 110;
 
 export default function DesktopPanel() {
   const t = useTheme();
+  // que la mascota no tape lo último en pantallas angostas
+  const bottomPad = usePanelBottomPad();
   const desktop = useApp((s) => s.run?.desktop);
   const watches = useApp((s) => s.watches);
   const jump = useApp((s) => s.jumpToLine);
@@ -62,7 +65,7 @@ export default function DesktopPanel() {
               </Text>
             ))}
           </View>
-          <ScrollView ref={vref} style={{ flex: 1 }}>
+          <ScrollView ref={vref} style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomPad }}>
             {desktop.rows.map((r, i) => (
               <Pressable
                 key={i}

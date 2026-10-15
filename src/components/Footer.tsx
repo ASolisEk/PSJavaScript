@@ -7,6 +7,8 @@ import { SPACE, useTheme } from '../ui/theme';
 const AUTHOR = 'Angel Solís Ek';
 export const REPO_URL = 'https://github.com/ASolisEk/PSJavaScript';
 const APP_VERSION = CURRENT_VERSION;
+/** Créditos en una línea (en el teléfono se muestran en el menú «Más»). */
+export const CREDITS = `Hecho por ${AUTHOR} • Código libre (MIT) • v${APP_VERSION}`;
 
 export default function Footer() {
   const t = useTheme();

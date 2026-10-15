@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from '../../ui/text';
 import Svg, { Rect, Circle, Line as SvgLine, Text as SvgText } from 'react-native-svg';
 import type { InputValue, OutputLine, RunnerSnapshot } from '../../core/runner';
 import { useApp } from '../../store/app';
 import { copyText } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
+import { useLayout } from '../../ui/layout';
 import { Button, Empty, IconButton, SectionTitle } from '../ui';
 
 function Line({ l }: { l: OutputLine }) {
@@ -152,7 +153,8 @@ function InlineTerminalPrompt({ req }: { req: NonNullable<RunnerSnapshot['inputR
       <Text style={[styles.line, { color: green, fontWeight: '700' }]}>
         {req.prompt ? `${req.prompt} › ` : '› '}
       </Text>
-      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+      {/* si el texto de la pregunta es largo, el campo baja a la siguiente línea en lugar de salirse */}
+      <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 180, minWidth: 0, flexDirection: 'row', alignItems: 'center' }}>
         <TextInput
           ref={inputRef}
           autoFocus
@@ -183,8 +185,7 @@ function InlineTerminalPrompt({ req }: { req: NonNullable<RunnerSnapshot['inputR
   );
 }
 
-/** `inSplit`: dentro de la consola dividida del editor (móvil); ahí la mascota no la tapa. */
-export default function ConsolePanel({ inSplit = false }: { inSplit?: boolean }) {
+export default function ConsolePanel() {
   const t = useTheme();
   const run = useApp((s) => s.run);
   const clearConsole = useApp((s) => s.clearConsole);
@@ -193,8 +194,10 @@ export default function ConsolePanel({ inSplit = false }: { inSplit?: boolean })
   const scroll = useRef<ScrollView>(null);
   const [showInputs, setShowInputs] = useState(false);
 
-  const { width } = useWindowDimensions();
-  const wide = width >= 900;
+  const { wide, split } = useLayout();
+  // la mascota flota sobre la consola en pantalla ancha y con el celular acostado (más chica);
+  // con el celular en vertical se para encima de las pestañas y no la tapa
+  const bottomPad = !mascot ? 12 : wide ? 170 : split === 'row' ? 56 : 12;
   const status = run?.status;
   const isInput = status === 'input';
   const req = run?.inputRequest ?? null;
@@ -256,7 +259,7 @@ export default function ConsolePanel({ inSplit = false }: { inSplit?: boolean })
           <ScrollView
             ref={scroll}
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 12, paddingBottom: mascot && !inSplit ? 170 : 12 }}
+            contentContainerStyle={{ padding: 12, paddingBottom: bottomPad }}
             onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}
           >
             {nonCanvasOutput.map((l) => (
@@ -275,7 +278,10 @@ export function InputBar() {
   const req = useApp((s) => s.run?.inputRequest ?? null);
   const status = useApp((s) => s.run?.status);
   const count = useApp((s) => s.run?.inputs.length ?? 0);
-  if (!req || status !== 'input') return null;
+  // en pantallas angostas la consola ya pregunta en su propia línea: no se repite abajo
+  const inConsole = useApp((s) => s.sidePanel === 'console');
+  const { wide } = useLayout();
+  if (!req || status !== 'input' || (inConsole && !wide)) return null;
   return <InputBarInner key={count} req={req} />;
 }
 
@@ -366,7 +372,7 @@ const styles = StyleSheet.create({
   inputField: { flex: 1, borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 8, height: 32, fontSize: 13 },
   inputBar: { padding: 10, borderTopWidth: 2 },
   inlinePromptRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginVertical: 4, paddingVertical: 2 },
-  inlineInput: { flex: 1, minWidth: 160, height: 32, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 0, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: RADIUS.md },
+  inlineInput: { flex: 1, minWidth: 0, height: 32, paddingHorizontal: 6, paddingVertical: 2, borderWidth: 0, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: RADIUS.md },
   inlineSendBtn: { marginLeft: 6, padding: 6, borderRadius: RADIUS.md, backgroundColor: 'rgba(137, 226, 25, 0.16)' },
   inlineBtn: { paddingHorizontal: 12, height: 32, justifyContent: 'center', borderRadius: RADIUS.md },
   inlineBtnText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' },

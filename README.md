@@ -42,9 +42,13 @@ Interacción: **tocarlo** abre un menú (Ejecutar/Detener, Explícame el error, 
 
 Los sprites (`assets/mascot/`) se generan desde `assets/mascot.jpg` con `scripts/generar_mascota.py` (quita el fondo blanco conservando el blanco de los ojos, separa la cola y crea los cuadros de parpadeo y mirada). Respeta la opción del sistema "reducir movimiento" y puede ocultarse en Configuración.
 
+### Capi, el capibara
+
+Segunda mascota, al estilo de una ilustración kawaii de capibara: sentado de perfil, una sola silueta naranja con contorno café, el hocico café oscuro, un ojito con brillo, orejas redondas y patitas cafés con deditos. Tiene las mismas animaciones, poses y vestuarios que Michi (en reposo mueve la oreja en lugar de la cola; con un error se toca el hocico, pensando; al correr el código teclea con las dos patas). Se elige en **Configuración → Mascota** o desde su menú (**Cambiar a Capi / Cambiar a Michi**). Al esconderse asoma la cabecita. Como de perfil se ve un solo ojo, los lentes y la pintura de calavera se adaptan a un ojo. Sus sprites (`assets/mascot/capibara/`, con pieles oscura y negra para Halloween y Día de Muertos) se dibujan en SVG y se exportan a PNG con `node scripts/generar_capibara.js` (usa el Chromium de Playwright); ese script también imprime las anclas de la cara que usan los vestuarios (`src/components/mascot/characters.ts`).
+
 ### Vestuarios de temporada
 
-Michi se disfraza solo según la fecha (`src/core/holidays.ts`): se pone el vestuario **un mes antes** del día festivo y lo conserva **10 días después**. Si otra fiesta cae en el mismo mes, la anticipación se acorta a **10 días**. Cuando dos periodos se enciman gana la fiesta más cercana (en empate, la que viene). También se puede elegir en **Configuración → Vestuario de la mascota** o desde su menú ("Vestuario: …" recorre todos). Los accesorios son SVG que siguen las animaciones del cuerpo en todas las poses (`src/components/mascot/costumes.tsx`) y cada fiesta trae sus propias partículas:
+Michi (y Capi) se disfraza solo según la fecha (`src/core/holidays.ts`): se pone el vestuario **un mes antes** del día festivo y lo conserva **10 días después**. Si otra fiesta cae en el mismo mes, la anticipación se acorta a **10 días**. Cuando dos periodos se enciman gana la fiesta más cercana (en empate, la que viene). También se puede elegir en **Configuración → Vestuario de la mascota** o desde su menú ("Vestuario: …" recorre todos). Los accesorios son SVG que siguen las animaciones del cuerpo en todas las poses (`src/components/mascot/costumes.tsx`) y cada fiesta trae sus propias partículas:
 
 | Fiesta | Día festivo | Periodo automático | Vestuario |
 | --- | --- | --- | --- |

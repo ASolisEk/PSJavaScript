@@ -21,7 +21,7 @@ export interface FileDoc {
   updatedAt: number;
 }
 
-export type PanelId = 'console' | 'variables' | 'desktop' | 'diagram' | 'explain' | 'problems';
+export type PanelId = 'editor' | 'console' | 'variables' | 'desktop' | 'diagram' | 'explain' | 'problems';
 export type ModalId = null | 'files' | 'export' | 'settings' | 'help' | 'insert' | 'update' | 'exam';
 /** Pantalla activa: el entorno normal, el modo Maestro o el modo Examen (alumno). */
 export type AppMode = 'ide' | 'teacher' | 'student';
@@ -42,12 +42,11 @@ export interface Settings {
   mascotPos: { right: number; bottom: number } | null;
   /** Vestuario de la mascota: 'auto' (según la fecha), 'none' o el id de un vestuario. */
   mascotCostume: string;
-  /** Pantallas angostas: panel de la sección elegida debajo del editor (abierto o no y su altura en px). */
-  mobilePane: { open: boolean; height: number };
+  /** Personaje de la mascota: Michi el gato o Capi el capibara. */
+  mascotCharacter: 'gato' | 'capibara';
+  /** Teléfono en vertical: panel bajo el código abierto o no y parte del alto que ocupa el código. */
+  mobilePane: { open: boolean; share: number };
 }
-
-/** Medidas de la división editor/panel en pantallas angostas (`bar`: barra de secciones). */
-export const PANE_SPLIT = { bar: 66, min: 110, editorMin: 150, initial: 260 };
 
 const DEFAULT_SETTINGS: Settings = {
   profileId: DEFAULT_PROFILE_ID,
@@ -63,8 +62,16 @@ const DEFAULT_SETTINGS: Settings = {
   mascot: true,
   mascotPos: null,
   mascotCostume: 'auto',
-  mobilePane: { open: false, height: PANE_SPLIT.initial },
+  mascotCharacter: 'gato',
+  mobilePane: { open: true, share: 0.6 },
 };
+
+/** Reparto móvil guardado, corregido si viene de una versión anterior o incompleto. */
+function sanePane(p: Partial<Settings['mobilePane']> | undefined): Settings['mobilePane'] {
+  const d = DEFAULT_SETTINGS.mobilePane;
+  const share = typeof p?.share === 'number' && p.share >= 0.2 && p.share <= 0.9 ? p.share : d.share;
+  return { open: typeof p?.open === 'boolean' ? p.open : d.open, share };
+}
 
 export const SPEEDS = [1200, 700, 400, 200, 80, 20];
 
@@ -86,7 +93,7 @@ interface AppState {
   /** Se incrementa con cada ejecución nueva. */
   runSeq: number;
   diagnostics: Diagnostic[];
-  /** Sección mostrada junto al editor (a la derecha en escritorio, debajo en móvil). */
+  panel: PanelId;
   sidePanel: PanelId;
   modal: ModalId;
   editorRequest: EditorRequest | null;
@@ -110,9 +117,8 @@ interface AppState {
   toggleBreakpoint(line: number): void;
   setBreakpoints(lines: number[]): void;
   updateSettings(p: Partial<Settings>): void;
+  setPanel(p: PanelId): void;
   setSidePanel(p: PanelId): void;
-  /** Muestra una sección (en móvil, además abre el panel inferior). */
-  showPanel(p: PanelId): void;
   setModal(m: ModalId): void;
   jumpToLine(line: number): void;
   insertSnippet(text: string): void;
@@ -178,6 +184,12 @@ export const useApp = create<AppState>((set, get) => {
     runner = null;
   };
 
+  /** Teléfono: al mostrar una sección se abre el panel bajo el código si estaba cerrado. */
+  const openPane = () => {
+    const s = get();
+    if (!s.settings.mobilePane.open) s.updateSettings({ mobilePane: { ...s.settings.mobilePane, open: true } });
+  };
+
   const createRunner = (mode: RunMode, replayInputs?: InputValue[]): boolean => {
     const s = get();
     const f = s.activeFile();
@@ -186,8 +198,9 @@ export const useApp = create<AppState>((set, get) => {
     set({ diagnostics: diags });
     if (hasBlockingErrors(diags)) {
       const first = diags.find((d) => d.severity === 'error')!;
-      set({ notice: `Corrige los errores antes de ejecutar (línea ${first.line}: ${first.message})` });
-      s.showPanel('problems');
+      set({ notice: `Corrige los errores antes de ejecutar (línea ${first.line}: ${first.message})`, sidePanel: 'problems' });
+      if (s.panel !== 'editor') set({ panel: 'problems' });
+      openPane();
       return false;
     }
     disposeRunner();
@@ -222,6 +235,7 @@ export const useApp = create<AppState>((set, get) => {
     run: null,
     runSeq: 0,
     diagnostics: [],
+    panel: 'editor',
     sidePanel: 'console',
     modal: null,
     editorRequest: null,
@@ -253,7 +267,7 @@ export const useApp = create<AppState>((set, get) => {
           files,
           openIds: openIds.length ? openIds : [activeId],
           activeId,
-          settings: { ...DEFAULT_SETTINGS, ...data.settings },
+          settings: { ...DEFAULT_SETTINGS, ...data.settings, mobilePane: sanePane(data.settings?.mobilePane) },
           watches: data.watches ?? [],
           hydrated: true,
         });
@@ -314,7 +328,7 @@ export const useApp = create<AppState>((set, get) => {
       while (existing.has(fname)) fname = (name ?? 'programa').replace(/\.js$/, '') + `${++n}.js`;
       const f: FileDoc = { id: uid(), name: fname, code, breakpoints: [], updatedAt: Date.now() };
       disposeRunner();
-      set((s) => ({ files: [...s.files, f], openIds: [...s.openIds, f.id], activeId: f.id, run: null, modal: null }));
+      set((s) => ({ files: [...s.files, f], openIds: [...s.openIds, f.id], activeId: f.id, run: null, modal: null, panel: 'editor' }));
       lastInputs = [];
       persist();
       reanalyze();
@@ -405,22 +419,21 @@ export const useApp = create<AppState>((set, get) => {
       persist();
     },
 
+    setPanel(panel) {
+      set({ panel });
+    },
     setSidePanel(sidePanel) {
       set({ sidePanel });
-    },
-    showPanel(sidePanel) {
-      const s = get();
-      set({ sidePanel });
-      if (!s.settings.mobilePane.open) s.updateSettings({ mobilePane: { ...s.settings.mobilePane, open: true } });
+      openPane();
     },
     setModal(modal) {
       set({ modal });
     },
     jumpToLine(line) {
-      set({ editorRequest: { nonce: ++nonce, kind: 'jump', line } });
+      set((s) => ({ editorRequest: { nonce: ++nonce, kind: 'jump', line }, panel: s.panel === 'editor' ? s.panel : 'editor' }));
     },
     insertSnippet(text) {
-      set({ editorRequest: { nonce: ++nonce, kind: 'insert', text }, modal: null });
+      set({ editorRequest: { nonce: ++nonce, kind: 'insert', text }, modal: null, panel: 'editor' });
     },
     replaceCode(text) {
       set({ editorRequest: { nonce: ++nonce, kind: 'replaceAll', text } });
@@ -439,9 +452,11 @@ export const useApp = create<AppState>((set, get) => {
 
     runProgram(mode) {
       // al ejecutar completo, mostrar la consola para ver el resultado
-      // (en paso a paso no cambia de sección para seguir la línea resaltada)
+      // (en paso a paso se queda en el editor para seguir la línea resaltada)
       const showConsole = () => {
-        if (mode === 'run') get().showPanel('console');
+        if (mode !== 'run') return;
+        set({ sidePanel: 'console', panel: 'console' });
+        openPane();
       };
       const st = runner?.getStatus();
       if (runner && st === 'paused') {

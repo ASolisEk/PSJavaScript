@@ -4,12 +4,15 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
 import { useApp } from '../../store/app';
 import { BORDER, MONO, useTheme } from '../../ui/theme';
+import { usePanelBottomPad } from '../../ui/layout';
 import { Empty, Switch } from '../ui';
 
 const NO_ITEMS: never[] = [];
 
 export default function ExplainPanel() {
   const t = useTheme();
+  // que la mascota no tape lo último en pantallas angostas
+  const bottomPad = usePanelBottomPad();
   const items = useApp((s) => s.run?.explanations) ?? NO_ITEMS;
   const explain = useApp((s) => s.settings.explain);
   const update = useApp((s) => s.updateSettings);
@@ -27,7 +30,7 @@ export default function ExplainPanel() {
       ) : items.length === 0 ? (
         <Empty icon="chatbubbles-outline" text="Ejecuta el programa (preferentemente paso a paso) para ver la explicación de cada acción." />
       ) : (
-        <ScrollView ref={scroll} contentContainerStyle={{ padding: 10 }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
+        <ScrollView ref={scroll} contentContainerStyle={{ padding: 10, paddingBottom: bottomPad }} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}>
           {items.map((e, i) => (
             <Pressable key={i} onPress={() => jump(e.line)} style={[styles.item, { borderLeftColor: i === items.length - 1 ? t.primary : t.border }]}>
               <Text style={{ color: t.textMuted, fontFamily: MONO, fontSize: 11, width: 64 }}>

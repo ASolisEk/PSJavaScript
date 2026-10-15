@@ -15,95 +15,32 @@ import Svg, { Circle, Ellipse, G, Line, Path, Polygon, Rect } from 'react-native
 import type { Costume } from '../../core/holidays';
 import { MONO } from '../../ui/theme';
 import { ND, to, useLoops, useValue, useValues, wait } from './anim';
-import { SKINS, SpriteSet } from './sprites';
+import { Anchors, Character, getCharacter, Pose, Pt } from './characters';
+import type { SpriteSet } from './sprites';
 
 export { COSTUMES, resolveCostume } from '../../core/holidays';
 
 const CostumeContext = createContext<Costume | null>(null);
+/** Personaje de la mascota (gato o capibara). */
+const CharacterContext = createContext<Character>(getCharacter('gato'));
+export const CharacterProvider = CharacterContext.Provider;
+export const useCharacter = () => useContext(CharacterContext);
 /** Orientación de la mascota (-1 izquierda, 1 derecha), para dibujos que no deben verse en espejo. */
 const FaceContext = createContext<Animated.Value | null>(null);
 export const FaceProvider = FaceContext.Provider;
 export const CostumeProvider = CostumeContext.Provider;
 export const useCostume = () => useContext(CostumeContext);
 
-/** Sprites con el color de pelaje del vestuario actual. */
+/** Sprites del personaje con el color de pelaje del vestuario actual. */
 export function useSprites(): SpriteSet {
-  return SKINS[useContext(CostumeContext)?.skin ?? 'normal'];
+  return useContext(CharacterContext).skins[useContext(CostumeContext)?.skin ?? 'normal'];
 }
 
 // ───────────────────────────── anclas por pose ─────────────────────────────
+// Cada personaje (ver characters.ts) define dónde están su coronilla, ojos,
+// boca, cuello y espalda en cada pose; los accesorios se colocan ahí.
 
-export type Pose = 'idle' | 'error' | 'running';
-type Pt = [number, number];
-
-interface Anchors {
-  /** Coronilla (centro de la base de un sombrero). */
-  crown: Pt;
-  /** Inclinación de la cabeza en grados. */
-  rot: number;
-  eyes: [number, number, number][];
-  nose: Pt;
-  mouth: Pt;
-  cheeks: Pt[];
-  chin: Pt;
-  neck: Pt;
-  /** Base de las alas, en la espalda. */
-  back: Pt;
-}
-
-const POSES: Record<Pose, Anchors> = {
-  idle: {
-    crown: [180, 44],
-    rot: -7,
-    eyes: [
-      [164, 111, 24],
-      [245, 104, 22],
-    ],
-    nose: [212, 128],
-    mouth: [212, 140],
-    cheeks: [
-      [160, 152],
-      [258, 139],
-    ],
-    chin: [206, 176],
-    neck: [200, 186],
-    back: [126, 184],
-  },
-  error: {
-    crown: [160, 46],
-    rot: -7,
-    eyes: [
-      [147, 120, 23],
-      [229, 104, 21],
-    ],
-    nose: [194, 129],
-    mouth: [191, 150],
-    cheeks: [
-      [139, 152],
-      [240, 136],
-    ],
-    chin: [180, 178],
-    neck: [178, 190],
-    back: [112, 190],
-  },
-  running: {
-    crown: [174, 36],
-    rot: -2,
-    eyes: [
-      [154, 118, 21],
-      [236, 111, 21],
-    ],
-    nose: [203, 124],
-    mouth: [201, 141],
-    cheeks: [
-      [151, 131],
-      [247, 128],
-    ],
-    chin: [197, 164],
-    neck: [196, 172],
-    back: [114, 160],
-  },
-};
+export type { Anchors, Pose } from './characters';
 
 // ───────────────────────────── piezas ─────────────────────────────
 
@@ -152,7 +89,7 @@ function Piece({
 }
 
 /** Grupo situado en un punto del sprite y girado como la cabeza. */
-function Anchor({ at, rot = 0, s, children }: { at: Pt; rot?: number; s: number; children: React.ReactNode }) {
+function Anchor({ at, rot = 0, scale = 1, s, children }: { at: Pt; rot?: number; scale?: number; s: number; children: React.ReactNode }) {
   return (
     <View
       style={{
@@ -162,7 +99,7 @@ function Anchor({ at, rot = 0, s, children }: { at: Pt; rot?: number; s: number;
         top: at[1] * s - 1,
         width: 2,
         height: 2,
-        transform: [{ rotate: `${rot}deg` }],
+        transform: [{ rotate: `${rot}deg` }, { scale }],
       }}
     >
       <View style={{ position: 'absolute', left: 1, top: 1 }}>{children}</View>
@@ -508,7 +445,8 @@ function HeartPendant() {
 
 function CalaveraPaint({ a }: { a: Anchors }) {
   const colors = ['#ff5fa2', '#ffd23f', '#29c5d8', '#9b6bff', '#7bd389'];
-  const [e1, e2] = a.eyes;
+  const e1 = a.eyes[0];
+  const e2 = a.eyes[1] ?? e1;
   const fx = (e1[0] + e2[0]) / 2;
   const fy = Math.min(e1[1], e2[1]) - 34;
   const [nx, ny] = a.nose;
@@ -580,19 +518,39 @@ function RoundGlasses({ a }: { a: Anchors }) {
       {a.eyes.map(([cx, cy, r], i) => (
         <Circle key={i} cx={cx} cy={cy} r={r + 4} fill="rgba(200,230,255,0.15)" stroke="#3a2a20" strokeWidth={4.5} />
       ))}
-      <Path
-        d={`M ${e1[0] + e1[2] + 4} ${e1[1] - 2} Q ${(e1[0] + e2[0]) / 2} ${Math.min(e1[1], e2[1]) - 14} ${e2[0] - e2[2] - 4} ${e2[1] - 2}`}
-        stroke="#3a2a20"
-        strokeWidth={4}
-        fill="none"
-      />
+      {e2 ? (
+        <Path
+          d={`M ${e1[0] + e1[2] + 4} ${e1[1] - 2} Q ${(e1[0] + e2[0]) / 2} ${Math.min(e1[1], e2[1]) - 14} ${e2[0] - e2[2] - 4} ${e2[1] - 2}`}
+          stroke="#3a2a20"
+          strokeWidth={4}
+          fill="none"
+        />
+      ) : (
+        // de perfil: la patita del lente va hacia la oreja
+        <Line x1={e1[0] - e1[2] - 4} y1={e1[1] - 2} x2={e1[0] - e1[2] - 46} y2={e1[1] - 10} stroke="#3a2a20" strokeWidth={4} strokeLinecap="round" />
+      )}
     </G>
   );
 }
 
 function PixelShades({ a }: { a: Anchors }) {
-  const [e1, e2] = a.eyes;
+  const e1 = a.eyes[0];
+  // de perfil (un solo ojo) la barra llega hasta la oreja
+  const e2 = a.eyes[1];
   const p = 8;
+  if (!e2) {
+    const [x, y, r] = e1;
+    const top = y - 3 * p + 2;
+    return (
+      <G transform={`rotate(${a.rot} ${x} ${y})`}>
+        <Rect x={x - r - 44} y={top} width={2 * r + 52} height={p} fill="#111" />
+        <Rect x={x - r - 4} y={top + p} width={2 * r + 8} height={p * 3} fill="#111" />
+        <Rect x={x - r + p - 4} y={top + p * 4} width={Math.max(0, 2 * r + 8 - 2 * p)} height={p} fill="#111" />
+        <Rect x={x - r + 2} y={top + p} width={p} height={p} fill="#ffffff" />
+        <Rect x={x - r + 2 + p} y={top + p * 2} width={p} height={p} fill="#ffffff" />
+      </G>
+    );
+  }
   const cx = (e1[0] + e2[0]) / 2;
   const cy = (e1[1] + e2[1]) / 2;
   // centrados en la línea de los ojos (se giran con ella)
@@ -605,7 +563,7 @@ function PixelShades({ a }: { a: Anchors }) {
         <G key={i}>
           <Rect x={x - r - 4} y={top + p} width={2 * r + 8} height={p * 3} fill="#111" />
           <Rect x={x - r + p - 4} y={top + p * 4} width={2 * r + 8 - 2 * p} height={p} fill="#111" />
-          <Rect x={x - r + 2 * p - 4} y={top + p * 5} width={2 * r + 8 - 4 * p} height={p} fill="#111" />
+          <Rect x={x - r + 2 * p - 4} y={top + p * 5} width={Math.max(0, 2 * r + 8 - 4 * p)} height={p} fill="#111" />
           <Rect x={x - r + 2} y={top + p} width={p} height={p} fill="#ffffff" />
           <Rect x={x - r + 2 + p} y={top + p * 2} width={p} height={p} fill="#ffffff" />
         </G>
@@ -640,6 +598,7 @@ function Overlay({ s, w, h, children }: { s: number; w: number; h: number; child
 
 function OutfitImpl({ pose, part, s, w, h, active }: { pose: Pose; part: 'back' | 'front'; s: number; w: number; h: number; active: boolean }) {
   const costume = useCostume();
+  const character = useCharacter();
   const faceDir = useContext(FaceContext);
   const id = costume?.id;
   const wob = useValue(0);
@@ -665,7 +624,7 @@ function OutfitImpl({ pose, part, s, w, h, active }: { pose: Pose; part: 'back' 
   );
 
   if (!id) return null;
-  const a = POSES[pose];
+  const a = character.anchors[pose];
   // muestra la versión normal o la reflejada según hacia dónde mira
   const facing = (mirror: boolean) =>
     faceDir ? faceDir.interpolate({ inputRange: [-1, -0.001, 0.001, 1], outputRange: mirror ? [1, 1, 0, 0] : [0, 0, 1, 1] }) : mirror ? 0 : 1;
@@ -756,7 +715,7 @@ function OutfitImpl({ pose, part, s, w, h, active }: { pose: Pose; part: 'back' 
           )}
         </Anchor>
       ) : null}
-      <Anchor at={a.crown} rot={a.rot} s={s}>
+      <Anchor at={a.crown} rot={a.rot} scale={character.hatScale} s={s}>
         {id === 'halloween' ? (
           <Piece box={[-110, -160, 220, 186]} pivot={[0, 0]} s={s} transform={hatWobble(3)}>
             <WitchHat />

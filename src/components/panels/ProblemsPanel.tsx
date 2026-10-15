@@ -6,6 +6,7 @@ import { Text } from '../../ui/text';
 import type { ErrorHint } from '../../core/errors';
 import { useApp, useProfile } from '../../store/app';
 import { BORDER, RADIUS, useTheme } from '../../ui/theme';
+import { usePanelBottomPad } from '../../ui/layout';
 import { Empty, SectionTitle } from '../ui';
 
 function Hint({ hint }: { hint: ErrorHint }) {
@@ -30,6 +31,8 @@ function Hint({ hint }: { hint: ErrorHint }) {
 
 export default function ProblemsPanel() {
   const t = useTheme();
+  // que la mascota no tape lo último en pantallas angostas
+  const bottomPad = usePanelBottomPad();
   const diagnostics = useApp((s) => s.diagnostics);
   const error = useApp((s) => s.run?.error ?? null);
   const profile = useProfile();
@@ -40,7 +43,7 @@ export default function ProblemsPanel() {
   const color = (sev: string) => (sev === 'error' ? t.danger : sev === 'warning' ? t.warning : t.info);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: t.surface }} contentContainerStyle={{ padding: 12 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: t.surface }} contentContainerStyle={{ padding: 12, paddingBottom: bottomPad }}>
       {error ? (
         <View style={[styles.card, { borderColor: t.danger, backgroundColor: t.errorLine }]}>
           <Pressable onPress={() => error.line && jump(error.line)} style={{ flexDirection: 'row', alignItems: 'center' }}>
