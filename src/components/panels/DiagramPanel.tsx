@@ -20,6 +20,56 @@ function pressProps(fn: (() => void) | undefined): any {
   return Platform.OS === 'web' ? { onClick: fn, style: { cursor: 'pointer' } } : { onPress: fn };
 }
 
+/**
+ * Web: el lienzo se desplaza en ambos ejes (barras de desplazamiento y rueda) y además
+ * se puede arrastrar con el ratón. Tras un arrastre se ignora el clic para no saltar
+ * a la línea del bloque donde se soltó.
+ */
+function useDragPan() {
+  const [node, setNode] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !node) return;
+    let start: { x: number; y: number; left: number; top: number } | null = null;
+    let moved = false;
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      start = { x: e.clientX, y: e.clientY, left: node.scrollLeft, top: node.scrollTop };
+      moved = false;
+    };
+    const move = (e: PointerEvent) => {
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      moved = true;
+      node.style.cursor = 'grabbing';
+      node.scrollLeft = start.left - dx;
+      node.scrollTop = start.top - dy;
+    };
+    const up = () => {
+      start = null;
+      node.style.cursor = '';
+    };
+    const click = (e: MouseEvent) => {
+      if (!moved) return;
+      moved = false;
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    node.addEventListener('pointerdown', down);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    node.addEventListener('click', click, true);
+    return () => {
+      node.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      node.removeEventListener('click', click, true);
+    };
+  }, [node]);
+  return setNode;
+}
+
 export default function DiagramPanel() {
   const t = useTheme();
   // que la mascota no tape lo último en pantallas angostas
@@ -34,6 +84,7 @@ export default function DiagramPanel() {
   const [debounced, setDebounced] = useState(code);
   const [selected, setSelected] = useState('Programa principal');
   const [zoom, setZoom] = useState(1);
+  const panRef = useDragPan();
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(code), 350);
@@ -123,6 +174,12 @@ export default function DiagramPanel() {
     );
   };
 
+  const svg = (
+    <Svg width={layout.w * zoom} height={layout.h * zoom} viewBox={`0 0 ${layout.w} ${layout.h}`}>
+      {layout.els.map(renderEl)}
+    </Svg>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: t.surface }}>
       <View style={[styles.toolbar, { borderBottomColor: t.border }]}>
@@ -143,13 +200,18 @@ export default function DiagramPanel() {
           ))}
         </ScrollView>
       ) : null}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ alignItems: 'center', paddingBottom: bottomPad }}>
-        <ScrollView horizontal contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
-          <Svg width={layout.w * zoom} height={layout.h * zoom} viewBox={`0 0 ${layout.w} ${layout.h}`}>
-            {layout.els.map(renderEl)}
-          </Svg>
+      {Platform.OS === 'web' ? (
+        // un solo contenedor con overflow en ambos ejes: las dos barras quedan siempre a la vista
+        <View ref={panRef as any} style={styles.webScroll}>
+          <View style={[styles.webCanvas, { paddingBottom: bottomPad }]}>{svg}</View>
+        </View>
+      ) : (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: bottomPad }}>
+          <ScrollView horizontal contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+            {svg}
+          </ScrollView>
         </ScrollView>
-      </ScrollView>
+      )}
     </View>
   );
 }
@@ -157,4 +219,8 @@ export default function DiagramPanel() {
 const styles = StyleSheet.create({
   toolbar: { flexDirection: 'row', alignItems: 'center', paddingLeft: 8, paddingRight: 4, minHeight: 44, borderBottomWidth: BORDER, flexWrap: 'wrap' },
   chip: { marginBottom: 0 },
+  // web: overflow 'auto' (no está en los tipos de RN, pero react-native-web lo pasa al CSS)
+  webScroll: { flex: 1, overflow: 'auto', cursor: 'grab', userSelect: 'none' } as any,
+  // al menos tan ancho como el panel (centra diagramas pequeños) y crece con el diagrama
+  webCanvas: { alignSelf: 'flex-start', minWidth: '100%', alignItems: 'center' },
 });

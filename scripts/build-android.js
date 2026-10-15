@@ -50,6 +50,9 @@ Opciones principales:
   --apk               (Por defecto) Compila el APK Release firmado para distribución directa.
   --aab               Compila el Android App Bundle (.aab) para subir a Google Play Store.
   --debug             Compila un APK en modo Debug para pruebas y depuración rápida.
+  --all-abis          Incluye x86/x86_64 en el APK Release (solo útiles en emuladores Intel).
+                      Por defecto el APK Release lleva solo ARM (todos los teléfonos reales) para
+                      no pasar de 100 MB, el límite de GitHub para public/PSJavaScript.apk.
   --install           Instala automáticamente el APK resultante en un teléfono o emulador conectado vía ADB.
   --clean             Ejecuta gradlew clean antes de iniciar la compilación.
   --prebuild          Solo regenera la carpeta nativa android/ sin compilar.
@@ -81,6 +84,7 @@ const doClean = args.includes('--clean');
 const doInstall = args.includes('--install');
 const onlyPrebuild = args.includes('--prebuild');
 const onlyExport = args.includes('--export');
+const allAbis = args.includes('--all-abis');
 
 console.log('\n===================================================================');
 console.log(`🚀 PSJavaScript - Compilación Local Android [v${appVersion}]`);
@@ -288,6 +292,8 @@ function runGradleBuild(targetType, clean) {
     tasks.push('assembleDebug');
   } else {
     tasks.push('assembleRelease');
+    // APK para descarga directa: solo ARM (los x86 son para emuladores y suman ~44 MB)
+    if (!allAbis) tasks.push('-PreactNativeArchitectures=arm64-v8a,armeabi-v7a');
   }
 
   console.log(`\n🔨 Compilando con Gradle [${tasks.join(' ')}]...\n`);
@@ -347,6 +353,16 @@ function processBuildOutput(targetType) {
   console.log(`⚖️  Tamaño:    ${sizeMb} MB (${stats.size.toLocaleString()} bytes)`);
   console.log(`🔒 SHA-256:   ${hashSha256}`);
   console.log('===================================================================');
+
+  // el APK Release también se publica junto a la versión web (botón «Android» del encabezado)
+  if (targetType === 'release') {
+    const publicApk = path.join(rootDir, 'public', 'PSJavaScript.apk');
+    fs.copyFileSync(destinationFile, publicApk);
+    console.log(`🌐 Copiado para descarga web: ${publicApk}`);
+    if (stats.size > 100 * 1024 * 1024) {
+      console.warn('⚠️  Pesa más de 100 MB: GitHub rechazará el push de public/PSJavaScript.apk.');
+    }
+  }
 
   if (targetType === 'aab') {
     console.log('\n💡 Para subir a Google Play Store:');

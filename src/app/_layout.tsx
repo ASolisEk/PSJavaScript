@@ -7,6 +7,14 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CURRENT_VERSION, configureUpdater } from '../core/updater';
 import { useTheme } from '../ui/theme';
 
+configureUpdater({
+  version: CURRENT_VERSION,
+  platformOS: Platform.OS,
+  urlOpener: async (url) => {
+    await Linking.openURL(url);
+  },
+});
+
 function Root() {
   const t = useTheme();
 

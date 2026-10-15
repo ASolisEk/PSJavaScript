@@ -30,7 +30,7 @@ rm -rf desktop-app/www/*
 cp -R dist/* desktop-app/www/
 
 # Eliminar binarios pesados que pudieran estar en dist para no inflar la app
-rm -f desktop-app/www/*.exe desktop-app/www/*.dmg desktop-app/www/*.AppImage desktop-app/www/*.deb desktop-app/www/*.tar.gz desktop-app/www/*.rpm desktop-app/www/*.snap
+rm -f desktop-app/www/*.apk desktop-app/www/*.aab desktop-app/www/*.exe desktop-app/www/*.dmg desktop-app/www/*.AppImage desktop-app/www/*.deb desktop-app/www/*.tar.gz desktop-app/www/*.rpm desktop-app/www/*.snap desktop-app/www/*.zip desktop-app/www/*.blockmap
 
 # 4. Inyectar fuentes Ionicons en base64 para garantizar soporte 100% offline
 echo "4. Inyectando fuentes Ionicons base64 para visualización de iconos offline..."

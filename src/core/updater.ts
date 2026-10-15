@@ -68,8 +68,37 @@ export interface DownloadProgress {
   path?: string;
 }
 
+let detectedDesktop: PlatformType | null = null;
+
+/** Detecta si estamos en Electron mediante el endpoint local /api/desktop/info */
+export async function detectDesktopEnvironment(): Promise<PlatformType | null> {
+  if (detectedDesktop) return detectedDesktop;
+  if (configuredPlatformOS === 'android' || configuredPlatformOS === 'ios') return null;
+
+  if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+    try {
+      const res = await fetch('/api/desktop/info');
+      if (res.ok) {
+        const info = await res.json();
+        if (info?.isElectron) {
+          const plat: PlatformType =
+            info.platform === 'darwin'
+              ? 'electron-mac'
+              : info.platform === 'win32'
+              ? 'electron-win'
+              : 'electron-linux';
+          detectedDesktop = plat;
+          return plat;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
 /** Detecta el entorno de ejecución actual (incluyendo Electron bajo web). */
 export function getPlatformType(): PlatformType {
+  if (detectedDesktop) return detectedDesktop;
   if (configuredPlatformOS === 'android') return 'android';
   if (configuredPlatformOS === 'ios') return 'ios';
 
@@ -191,6 +220,9 @@ function resolveDownloadAsset(platform: PlatformType, assets: any[] = []): { dow
  * Si allowWebCheck es false y estamos en web pura, no busca para no incurrir en peticiones innecesarias.
  */
 export async function checkForUpdate(options: { allowWebCheck?: boolean } = {}): Promise<UpdateCheckResult> {
+  if (getPlatformType() === 'web') {
+    await detectDesktopEnvironment();
+  }
   const platform = getPlatformType();
   const nonWeb = isNonWeb();
 
