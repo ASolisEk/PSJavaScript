@@ -228,9 +228,16 @@ Los comandos copian automáticamente el instalador a la carpeta `public/` y rege
 
 - **Web**: `npm run export:web` genera `dist/`, publicable en cualquier hosting estático.
 - **Escritorio**: Usa `npm run build:desktop` para generar el empaquetado para GNU/Linux (`.AppImage` / `.deb`), macOS (`.dmg`) o Windows (`.exe`) automáticamente empleando Electron y `electron-builder`.
-- **iOS y Android**: con EAS (`eas.json` incluido):
+- **Android (Compilación Local)**:
+  - Generar APK listo para instalar: `npm run build:android` (o `npm run build:android:apk`). Salida en `dist-android/`.
+  - Generar Android App Bundle para Google Play: `npm run build:android:aab`.
+  - Instalar directo en el dispositivo por USB (ADB): `npm run build:android:install`.
+  - Exportar assets y bundles Hermes estáticos: `npm run export:android`.
+  - Guía completa de firmas y opciones: [docs/EXPORTAR_ANDROID.md](file:///Users/angelsolisek/PSJavaScript/docs/EXPORTAR_ANDROID.md).
+- **iOS y Android (con EAS)**:
   ```bash
-  npx eas-cli@latest build --platform android --profile preview   # APK de prueba
+  npm run build:android:local-eas                                 # Compilación local con EAS CLI
+  npx eas-cli@latest build --platform android --profile preview   # APK en la nube
   npx eas-cli@latest build --platform ios --profile production
   ```
   Identificador de la app: `com.psjavascript.app` (cámbialo en `app.json` antes de publicar).

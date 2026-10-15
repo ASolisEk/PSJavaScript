@@ -23,19 +23,11 @@ export default function HelpModal() {
       {(['Entorno', 'Lenguaje'] as const).map((g) => (
         <View key={g}>
           <SectionTitle>{g}</SectionTitle>
-          {narrow ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-              {HELP.filter((h) => h.group === g).map((h) => (
-                <Chip key={h.id} label={h.title} active={h.id === topicId} onPress={() => setTopicId(h.id)} />
-              ))}
-            </View>
-          ) : (
-            HELP.filter((h) => h.group === g).map((h) => (
-              <Pressable key={h.id} onPress={() => setTopicId(h.id)} style={[styles.item, { backgroundColor: h.id === topicId ? t.surfaceAlt : undefined }]}>
-                <Text style={{ color: h.id === topicId ? t.primary : t.text, fontWeight: h.id === topicId ? '700' : '400', fontSize: 13 }}>{h.title}</Text>
-              </Pressable>
-            ))
-          )}
+          {HELP.filter((h) => h.group === g).map((h) => (
+            <Pressable key={h.id} onPress={() => setTopicId(h.id)} style={[styles.item, { backgroundColor: h.id === topicId ? t.surfaceAlt : undefined }]}>
+              <Text style={{ color: h.id === topicId ? t.primary : t.text, fontWeight: h.id === topicId ? '700' : '400', fontSize: 13 }}>{h.title}</Text>
+            </Pressable>
+          ))}
         </View>
       ))}
     </>
@@ -95,11 +87,17 @@ export default function HelpModal() {
   return (
     <ModalShell title="Ayuda" onClose={() => setModal(null)} wide>
       {narrow ? (
-        <ScrollView contentContainerStyle={{ padding: 14 }}>
-          {list}
-          <View style={{ height: 16 }} />
-          {content}
-        </ScrollView>
+        // móvil: temas en una fila deslizable fija arriba y el contenido debajo
+        <View style={{ flex: 1 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, borderBottomWidth: BORDER, borderBottomColor: t.border }} contentContainerStyle={{ padding: 10, paddingBottom: 4 }}>
+            {HELP.map((h) => (
+              <Chip key={h.id} label={h.title} active={h.id === topicId} onPress={() => setTopicId(h.id)} />
+            ))}
+          </ScrollView>
+          <ScrollView key={topicId} style={{ flex: 1 }} contentContainerStyle={{ padding: 14 }}>
+            {content}
+          </ScrollView>
+        </View>
       ) : (
         <View style={{ flex: 1, flexDirection: 'row' }}>
           <ScrollView style={{ width: 260, flexGrow: 0, borderRightWidth: BORDER, borderRightColor: t.border }} contentContainerStyle={{ padding: 10 }}>

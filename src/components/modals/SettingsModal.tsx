@@ -146,7 +146,6 @@ export default function SettingsModal() {
             </View>
           </View>
         ) : null}
-        <Row label="Barra de símbolos" hint="Teclas rápidas para { } ( ) ; = etc. (útil en el teléfono)." value={settings.symbolBar} onChange={(v) => update({ symbolBar: v })} />
         <Row label="Comentarios en diagramas" hint="Mostrar las notas y comentarios del código dentro del diagrama de flujo." value={settings.diagramComments ?? true} onChange={(v) => update({ diagramComments: v })} />
 
         <SectionTitle>Actualizaciones del programa</SectionTitle>

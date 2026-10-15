@@ -1,13 +1,13 @@
 /** Pantalla principal del entorno: barra de herramientas, editor y paneles. */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '../ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCode } from '../core/editor/indent';
-import { PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
+import { PANE_SPLIT, PanelId, SPEEDS, useActiveFile, useApp, useProfile } from '../store/app';
 import type { VarDetail } from '../core/runner';
-import { BORDER, MONO, RADIUS, SPACE, useTheme } from '../ui/theme';
+import { BORDER, MONO, RADIUS, SCRIM, SPACE, TYPE, useTheme } from '../ui/theme';
 import CodeEditor from './CodeEditor';
 import Footer, { REPO_URL } from './Footer';
 import ExportModal from './modals/ExportModal';
@@ -37,10 +37,10 @@ const PANELS: { id: PanelId; label: string; short: string; icon: React.Component
   { id: 'problems', label: 'Problemas', short: 'Problemas', icon: 'alert-circle-outline' },
 ];
 
-function PanelView({ id }: { id: PanelId }) {
+function PanelView({ id, inSplit }: { id: PanelId; inSplit?: boolean }) {
   switch (id) {
     case 'console':
-      return <ConsolePanel />;
+      return <ConsolePanel inSplit={inSplit} />;
     case 'variables':
       return <VariablesPanel />;
     case 'desktop':
@@ -102,63 +102,149 @@ function FileTabs() {
   );
 }
 
-function Toolbar({ compact }: { compact: boolean }) {
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+/** Control de velocidad del paso a paso (− nivel +). */
+function SpeedControl() {
+  const t = useTheme();
+  const speed = useApp((s) => s.settings.speed);
+  const updateSettings = useApp((s) => s.updateSettings);
+  const speedIdx = Math.max(0, SPEEDS.indexOf(speed));
+  return (
+    <Tooltip text={`Velocidad paso a paso: nivel ${speedIdx + 1} de 5 (${speed} ms)`}>
+      <View style={[styles.speed, { borderColor: t.border }]}>
+        <Tooltip text="Más lento">
+          <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.max(0, speedIdx - 1)] })} hitSlop={6} accessibilityLabel="Más lento">
+            <Ionicons name="remove" size={16} color={t.accent} />
+          </Pressable>
+        </Tooltip>
+        <Ionicons name="speedometer-outline" size={15} color={t.textMuted} style={{ marginHorizontal: 4 }} />
+        <Text style={{ color: t.text, fontSize: 13, fontWeight: '800', width: 12, textAlign: 'center' }}>{speedIdx + 1}</Text>
+        <Tooltip text="Más rápido">
+          <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.min(SPEEDS.length - 1, speedIdx + 1)] })} hitSlop={6} accessibilityLabel="Más rápido">
+            <Ionicons name="add" size={16} color={t.accent} />
+          </Pressable>
+        </Tooltip>
+      </View>
+    </Tooltip>
+  );
+}
+
+/** Acciones secundarias de la barra (en pantallas angostas van en la hoja "Más"). */
+function useSecondaryActions(): { icon: IconName; label: string; tooltip: string; color?: string; onPress(): void }[] {
+  const t = useTheme();
+  const { setModal, replaceCode } = useApp.getState();
+  const file = useActiveFile();
+  return [
+    { icon: 'add-circle-outline', label: 'Insertar', tooltip: 'Insertar comandos y estructuras', onPress: () => setModal('insert') },
+    {
+      icon: 'color-wand-outline',
+      label: 'Formatear',
+      tooltip: 'Formatear código (auto-indentación)',
+      onPress: () => {
+        if (!file) return;
+        replaceCode(formatCode(file.code));
+        useApp.getState().setNotice('Código formateado correctamente ✨');
+      },
+    },
+    { icon: 'swap-horizontal', label: 'Exportar', tooltip: 'Exportar a otros lenguajes', onPress: () => setModal('export') },
+    { icon: 'school-outline', label: 'Examen', tooltip: 'Modo Maestro (crear y aplicar exámenes) o presentar un examen', color: t.accent, onPress: () => setModal('exam') },
+    { icon: 'settings-outline', label: 'Configuración y perfil', tooltip: 'Configuración y perfil del lenguaje', onPress: () => setModal('settings') },
+    { icon: 'help-circle-outline', label: 'Ayuda', tooltip: 'Ayuda y documentación del lenguaje', onPress: () => setModal('help') },
+  ];
+}
+
+/** Hoja inferior con las acciones que no caben en la barra (móvil). */
+function MoreSheet({ onClose }: { onClose(): void }) {
+  const t = useTheme();
+  const insets = useSafeAreaInsets();
+  const actions = useSecondaryActions();
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM }]} onPress={onClose} accessibilityLabel="Cerrar menú" />
+      <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.border, paddingBottom: insets.bottom + SPACE.md }]}>
+        <View style={[styles.sheetGrip, { backgroundColor: t.borderStrong }]} />
+        <View style={styles.sheetRow}>
+          <Ionicons name="speedometer-outline" size={20} color={t.textMuted} />
+          <Text style={[styles.sheetLabel, { color: t.text }]}>Velocidad del paso a paso</Text>
+          <SpeedControl />
+        </View>
+        {actions.map((a) => (
+          <Pressable
+            key={a.label}
+            onPress={() => {
+              onClose();
+              a.onPress();
+            }}
+            style={({ pressed }) => [styles.sheetRow, { backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}
+            accessibilityRole="button"
+          >
+            <Ionicons name={a.icon} size={20} color={a.color ?? t.textMuted} />
+            <Text style={[styles.sheetLabel, { color: t.text }]}>{a.label}</Text>
+            <Ionicons name="chevron-forward" size={18} color={t.textFaint} />
+          </Pressable>
+        ))}
+      </View>
+    </Modal>
+  );
+}
+
+function Toolbar({ width }: { width: number }) {
   const t = useTheme();
   const status = useApp((s) => s.run?.status ?? 'idle');
-  const speed = useApp((s) => s.settings.speed);
-  const { runProgram, stepOnce, stepBack, pause, stop, setModal, updateSettings, replaceCode } = useApp.getState();
-  const file = useActiveFile();
+  const { runProgram, stepOnce, stepBack, pause, stop, setModal } = useApp.getState();
+  const actions = useSecondaryActions();
+  const [more, setMore] = useState(false);
   const running = status === 'running';
   const active = status === 'running' || status === 'paused' || status === 'input';
   const canBack = status === 'paused' || status === 'finished' || status === 'error' || status === 'input';
-  const speedIdx = Math.max(0, SPEEDS.indexOf(speed));
-  const label = !compact;
+  const label = width >= 1200;
+  // en pantallas angostas lo secundario va en "Más" para que la barra quepa completa
+  const menuMode = width < 700;
+  // teléfonos muy angostos (320 px): botones más chicos y sin separadores
+  const tight = width < 380;
+  const btn = tight ? styles.tightBtn : undefined;
+  const sep = tight ? null : <View style={[styles.sep, { backgroundColor: t.border }]} />;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolbar} style={{ overflow: 'visible' }} keyboardShouldPersistTaps="handled">
-      <IconButton icon="folder-open-outline" label="Archivos" tooltip="Archivos y ejemplos" onPress={() => setModal('files')} showLabel={label} />
-      <View style={[styles.sep, { backgroundColor: t.border }]} />
-      <IconButton icon="play" label={status === 'paused' ? 'Continuar' : 'Ejecutar'} tooltip={status === 'paused' ? 'Continuar ejecución' : 'Ejecutar programa completo'} color={t.success} onPress={() => runProgram('run')} showLabel={label} disabled={running} />
-      <IconButton icon="play-forward" label="Paso a paso" tooltip="Ejecución animada paso a paso" color={t.primary} onPress={() => runProgram('animate')} showLabel={label} disabled={running} />
-      <IconButton icon="play-skip-forward" label="Siguiente paso" tooltip="Siguiente paso (una instrucción)" onPress={stepOnce} disabled={status === 'input'} />
-      <IconButton icon="play-skip-back" label="Paso anterior" tooltip="Paso anterior (retroceder)" onPress={stepBack} disabled={!canBack} />
-      <IconButton icon="pause" label="Pausar" tooltip="Pausar ejecución" onPress={pause} disabled={!running} />
-      <IconButton icon="stop" label="Detener" tooltip="Detener ejecución" color={t.danger} onPress={stop} disabled={!active} />
-      <Tooltip text={`Velocidad paso a paso: nivel ${speedIdx + 1} de 5 (${speed} ms)`}>
-        <View style={[styles.speed, { borderColor: t.border }]}>
-          <Tooltip text="Más lento">
-            <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.max(0, speedIdx - 1)] })} hitSlop={6} accessibilityLabel="Más lento">
-              <Ionicons name="remove" size={16} color={t.textMuted} />
-            </Pressable>
-          </Tooltip>
-          <Ionicons name="speedometer-outline" size={15} color={t.textMuted} style={{ marginHorizontal: 4 }} />
-          <Text style={{ color: t.text, fontSize: 13, fontWeight: '800', width: 12, textAlign: 'center' }}>{speedIdx + 1}</Text>
-          <Tooltip text="Más rápido">
-            <Pressable onPress={() => updateSettings({ speed: SPEEDS[Math.min(SPEEDS.length - 1, speedIdx + 1)] })} hitSlop={6} accessibilityLabel="Más rápido">
-              <Ionicons name="add" size={16} color={t.textMuted} />
-            </Pressable>
-          </Tooltip>
-        </View>
-      </Tooltip>
-      <View style={[styles.sep, { backgroundColor: t.border }]} />
-      <IconButton icon="add-circle-outline" label="Insertar" tooltip="Insertar comandos y estructuras" onPress={() => setModal('insert')} showLabel={label} />
-      <IconButton
-        icon="color-wand-outline"
-        label="Formatear"
-        tooltip="Formatear código (auto-indentación)"
-        showLabel={label}
-        onPress={() => {
-          if (!file) return;
-          replaceCode(formatCode(file.code));
-          useApp.getState().setNotice('Código formateado correctamente ✨');
-        }}
-      />
-      <IconButton icon="swap-horizontal" label="Exportar" tooltip="Exportar a otros lenguajes" onPress={() => setModal('export')} showLabel={label} />
-      <View style={[styles.sep, { backgroundColor: t.border }]} />
-      <IconButton icon="school-outline" label="Examen" tooltip="Modo Maestro (crear y aplicar exámenes) o presentar un examen" color={t.accent} onPress={() => setModal('exam')} showLabel={label} />
-      <IconButton icon="settings-outline" label="Configuración y perfil" tooltip="Configuración y perfil del lenguaje" onPress={() => setModal('settings')} />
-      <IconButton icon="help-circle-outline" label="Ayuda" tooltip="Ayuda y documentación del lenguaje" onPress={() => setModal('help')} />
-    </ScrollView>
+    <>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.toolbar}
+        // visible solo cuando todo cabe (deja ver los globos de ayuda); si no, la barra ensancharía la página
+        style={{ overflow: menuMode ? 'hidden' : 'visible' }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <IconButton icon="folder-open-outline" label="Archivos" tooltip="Archivos y ejemplos" onPress={() => setModal('files')} showLabel={label} style={btn} />
+        {sep}
+        <IconButton icon="play" label={status === 'paused' ? 'Continuar' : 'Ejecutar'} tooltip={status === 'paused' ? 'Continuar ejecución' : 'Ejecutar programa completo'} color={t.success} onPress={() => runProgram('run')} showLabel={label} disabled={running} style={btn} />
+        <IconButton icon="play-forward" label="Paso a paso" tooltip="Ejecución animada paso a paso" color={t.primary} onPress={() => runProgram('animate')} showLabel={label} disabled={running} style={btn} />
+        <IconButton icon="play-skip-forward" label="Siguiente paso" tooltip="Siguiente paso (una instrucción)" onPress={stepOnce} disabled={status === 'input'} style={btn} />
+        <IconButton icon="play-skip-back" label="Paso anterior" tooltip="Paso anterior (retroceder)" onPress={stepBack} disabled={!canBack} style={btn} />
+        <IconButton icon="pause" label="Pausar" tooltip="Pausar ejecución" onPress={pause} disabled={!running} style={btn} />
+        <IconButton icon="stop" label="Detener" tooltip="Detener ejecución" color={t.danger} onPress={stop} disabled={!active} style={btn} />
+        {menuMode ? (
+          <>
+            {sep}
+            <IconButton icon="ellipsis-horizontal" label="Más opciones" tooltip="Más opciones" onPress={() => setMore(true)} active={more} style={btn} />
+          </>
+        ) : (
+          <>
+            <SpeedControl />
+            <View style={[styles.sep, { backgroundColor: t.border }]} />
+            {actions.slice(0, 3).map((a) => (
+              <IconButton key={a.label} icon={a.icon} label={a.label} tooltip={a.tooltip} color={a.color} onPress={a.onPress} showLabel={label} />
+            ))}
+            <View style={[styles.sep, { backgroundColor: t.border }]} />
+            {actions.slice(3).map((a) => (
+              <IconButton key={a.label} icon={a.icon} label={a.label} tooltip={a.tooltip} color={a.color} onPress={a.onPress} showLabel={label && a.label === 'Examen'} />
+            ))}
+          </>
+        )}
+      </ScrollView>
+      {more ? <MoreSheet onClose={() => setMore(false)} /> : null}
+    </>
   );
 }
 
@@ -168,7 +254,7 @@ function StatusBar() {
   const run = useApp((s) => s.run);
   const diags = useApp((s) => s.diagnostics);
   const profile = useProfile();
-  const { setModal, setPanel, setSidePanel } = useApp.getState();
+  const { setModal, showPanel } = useApp.getState();
   const status = run?.status ?? 'idle';
   const color = status === 'error' ? t.danger : status === 'finished' ? t.success : status === 'input' ? t.primary : status === 'paused' ? t.warning : t.textMuted;
   const errors = diags.filter((d) => d.severity === 'error').length;
@@ -183,10 +269,7 @@ function StatusBar() {
       {run ? <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 10, fontFamily: MONO }}>Paso {run.stepCount}</Text> : null}
       <View style={{ flex: 1 }} />
       <Pressable
-        onPress={() => {
-          setPanel('problems');
-          setSidePanel('problems');
-        }}
+        onPress={() => showPanel('problems')}
         style={{ flexDirection: 'row', alignItems: 'center', marginRight: 12 }}
       >
         <Ionicons name="close-circle" size={13} color={errors ? t.danger : t.textMuted} />
@@ -242,23 +325,105 @@ function Notice() {
   );
 }
 
-function MiniConsole() {
+const clampNum = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** En web, evita seleccionar texto de la página mientras se arrastra la división. */
+const lockSelection = (on: boolean) => {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  document.body.style.userSelect = on ? 'none' : '';
+  if (on) window.getSelection?.()?.removeAllRanges();
+};
+
+/**
+ * Pantallas angostas: el editor siempre arriba y, debajo, la sección elegida
+ * (consola, diagrama, variables…). La barra de secciones hace de división:
+ * su manija se arrastra para cambiar el tamaño, tocar una sección la abre y
+ * tocar la sección abierta (o la manija) la cierra. La altura se recuerda.
+ */
+function PanelSplit({ children, errorCount }: { children: React.ReactNode; errorCount: number }) {
   const t = useTheme();
-  const output = useApp((s) => s.run?.output);
-  const setPanel = useApp((s) => s.setPanel);
-  const lines = (output ?? []).filter((l) => l.kind !== 'system').slice(-4);
-  if (!lines.length) return null;
+  const phone = useWindowDimensions().width < 600;
+  const cfg = useApp((s) => s.settings.mobilePane);
+  const sidePanel = useApp((s) => s.sidePanel);
+  const update = useApp((s) => s.updateSettings);
+  const setSidePanel = useApp((s) => s.setSidePanel);
+  const [box, setBox] = useState(0);
+  const [drag, setDrag] = useState<number | null>(null);
+  const maxH = Math.max(PANE_SPLIT.min, box - PANE_SPLIT.bar - PANE_SPLIT.editorMin);
+  const open = drag !== null ? drag > 0 : cfg.open;
+  const height = clampNum(drag ?? cfg.height, PANE_SPLIT.min, maxH);
+  // punto de partida del arrastre: la altura guardada (no cambia mientras se arrastra)
+  const base = cfg.open ? clampNum(cfg.height, PANE_SPLIT.min, maxH) : 0;
+  const setOpen = (v: boolean) => update({ mobilePane: { ...cfg, open: v } });
+
+  // manija (todo el ancho de la barra): toque = abrir/cerrar, arrastre = cambiar el tamaño
+  const grip = useMemo(() => {
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => lockSelection(true),
+      onPanResponderMove: (_, g) => setDrag(Math.max(0, base - g.dy)),
+      onPanResponderRelease: (_, g) => {
+        lockSelection(false);
+        setDrag(null);
+        if (Math.abs(g.dy) < 4) return update({ mobilePane: { ...cfg, open: !cfg.open } });
+        // al soltar muy abajo se cierra
+        const h = base - g.dy;
+        if (h < PANE_SPLIT.min * 0.6) update({ mobilePane: { ...cfg, open: false } });
+        else update({ mobilePane: { open: true, height: Math.round(clampNum(h, PANE_SPLIT.min, maxH)) } });
+      },
+      onPanResponderTerminate: () => {
+        lockSelection(false);
+        setDrag(null);
+      },
+    });
+  }, [cfg, base, maxH, update]);
+
+  const select = (id: PanelId) => {
+    if (id === sidePanel && cfg.open) setOpen(false);
+    else {
+      setSidePanel(id);
+      if (!cfg.open) setOpen(true);
+    }
+  };
+
   return (
-    <Pressable onPress={() => setPanel('console')} style={[styles.mini, { backgroundColor: t.terminal.bg }]}>
-      {lines.map((l) => {
-        const color = l.kind === 'error' ? t.terminal.error : l.kind === 'warn' ? t.terminal.warn : l.kind === 'input' ? t.terminal.input : t.terminal.text;
-        return (
-          <Text key={l.id} style={{ color, fontFamily: MONO, fontSize: 13 }} numberOfLines={1}>
-            {l.kind === 'input' ? `${l.prompt ?? ''} › ${l.text}` : l.text}
-          </Text>
-        );
-      })}
-    </Pressable>
+    <View style={{ flex: 1 }} onLayout={(e) => setBox(e.nativeEvent.layout.height)}>
+      <View style={{ flex: 1, position: 'relative' }}>{children}</View>
+      <View style={[styles.paneBar, { backgroundColor: t.surface, borderTopColor: t.border, borderBottomColor: t.border }, Platform.OS === 'web' ? ({ userSelect: 'none' } as object) : null]}>
+        <View
+          {...grip.panHandlers}
+          accessibilityRole="adjustable"
+          accessibilityLabel={open ? 'Cerrar el panel (o arrastra para cambiar su tamaño)' : 'Abrir el panel (o arrastra hacia arriba)'}
+          style={[styles.gripHit, Platform.OS === 'web' ? ({ cursor: 'row-resize' } as object) : null]}
+        >
+          <View style={[styles.grip, { backgroundColor: drag !== null ? t.accent : t.borderStrong }]} />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+            {PANELS.map((p) => (
+              <Tab
+                key={p.id}
+                label={p.short}
+                icon={p.icon}
+                active={open && sidePanel === p.id}
+                onPress={() => select(p.id)}
+                badge={p.id === 'problems' && errorCount ? errorCount : undefined}
+                compact={phone}
+              />
+            ))}
+          </ScrollView>
+          <Pressable onPress={() => setOpen(!cfg.open)} hitSlop={8} style={styles.paneToggle} accessibilityLabel={open ? 'Cerrar el panel' : 'Abrir el panel'}>
+            <Ionicons name={open ? 'chevron-down' : 'chevron-up'} size={18} color={t.accent} />
+          </Pressable>
+        </View>
+      </View>
+      {open ? (
+        <View style={{ height }}>
+          <PanelView id={sidePanel} inSplit />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -389,14 +554,12 @@ export default function IDE() {
   const wide = width >= 900;
   const hydrated = useApp((s) => s.hydrated);
   const file = useActiveFile();
-  const panel = useApp((s) => s.panel);
   const sidePanel = useApp((s) => s.sidePanel);
   const modal = useApp((s) => s.modal);
   const diagnostics = useApp((s) => s.diagnostics);
   const fontSize = useApp((s) => s.settings.fontSize);
-  const symbolBar = useApp((s) => s.settings.symbolBar);
   const run = useApp((s) => s.run);
-  const { setCode, toggleBreakpoint, setPanel, setSidePanel, hydrate } = useApp.getState();
+  const { setCode, toggleBreakpoint, setSidePanel, showPanel, hydrate } = useApp.getState();
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length + (run?.error ? 1 : 0);
 
   useEffect(() => {
@@ -430,17 +593,13 @@ export default function IDE() {
     };
   }, []);
 
-  // En pantallas angostas, al terminar una ejecución completa se muestra la consola
+  // al fallar una ejecución: Problemas si es de sintaxis, si no la consola (en móvil abre el panel)
   const lastStatus = useRef<string | undefined>(undefined);
   useEffect(() => {
     const st = run?.status;
-    if (!wide && st !== lastStatus.current) {
-      if ((st === 'finished' || st === 'error') && run?.mode === 'run' && panel === 'editor') setPanel('console');
-      if (st === 'error' && run?.error?.syntax) setPanel('problems');
-    }
-    if (wide && st === 'error' && st !== lastStatus.current) setSidePanel(run?.error?.syntax ? 'problems' : 'console');
+    if (st === 'error' && st !== lastStatus.current) showPanel(run?.error?.syntax ? 'problems' : 'console');
     lastStatus.current = st;
-  }, [run?.status, run?.mode, run?.error, wide, panel, setPanel, setSidePanel]);
+  }, [run?.status, run?.error, showPanel]);
 
   // Atajos de teclado (web / escritorio)
   const onKey = useCallback((e: KeyboardEvent) => {
@@ -512,12 +671,10 @@ export default function IDE() {
       errorLine={errorLine}
       diagnostics={diagnostics}
       fontSize={fontSize}
-      showSymbolBar={symbolBar && (Platform.OS !== 'web' || !wide)}
       varDetails={varDetails}
       isDebugging={isDebugging}
     />
   );
-  const runActive = run && run.status !== 'idle';
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
@@ -572,7 +729,7 @@ export default function IDE() {
           </Pressable>
         </View>
         <View style={[styles.toolbarWrap, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
-          <Toolbar compact={width < 1200} />
+          <Toolbar width={width} />
         </View>
         <Notice />
 
@@ -595,19 +752,10 @@ export default function IDE() {
               </View>
             </View>
           ) : (
-            <View style={{ flex: 1 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
-                <Tab label="Código" icon="code-slash" active={panel === 'editor'} onPress={() => setPanel('editor')} />
-                {PANELS.map((p) => (
-                  <Tab key={p.id} label={p.short} icon={p.icon} active={panel === p.id} onPress={() => setPanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
-                ))}
-              </ScrollView>
-              <View style={{ flex: 1, position: 'relative' }}>
-                {panel === 'editor' ? editor : <PanelView id={panel} />}
-                {panel === 'editor' && <FloatingDebugWidget />}
-              </View>
-              {panel === 'editor' && runActive ? <MiniConsole /> : null}
-            </View>
+            <PanelSplit errorCount={errorCount}>
+              {editor}
+              <FloatingDebugWidget />
+            </PanelSplit>
           )}
           <Mascot />
         </View>
@@ -642,13 +790,21 @@ const styles = StyleSheet.create({
   addTab: { height: 38, width: 38, alignItems: 'center', justifyContent: 'center' },
   toolbarWrap: { borderBottomWidth: BORDER, zIndex: 100, overflow: 'visible' },
   toolbar: { alignItems: 'center', paddingHorizontal: SPACE.sm, paddingVertical: 4 },
+  tightBtn: { minWidth: 34, paddingHorizontal: 3 },
   sep: { width: BORDER, height: 24, borderRadius: 1, marginHorizontal: SPACE.sm },
   speed: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, height: 34, marginLeft: 4 },
   tabs: { flexGrow: 0, borderBottomWidth: BORDER },
   status: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: SPACE.md, borderTopWidth: BORDER },
   dot: { width: 10, height: 10, borderRadius: 5 },
   notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.md, paddingVertical: 6, borderBottomWidth: BORDER },
-  mini: { maxHeight: 92, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm },
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg, borderWidth: BORDER, borderBottomWidth: 0, paddingTop: SPACE.md, paddingHorizontal: SPACE.sm },
+  sheetGrip: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginBottom: SPACE.sm },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', minHeight: 50, paddingHorizontal: SPACE.md, borderRadius: RADIUS.md },
+  sheetLabel: { ...TYPE.body, fontWeight: '700', flex: 1, marginLeft: SPACE.md },
+  paneBar: { borderTopWidth: BORDER, borderBottomWidth: BORDER },
+  gripHit: { height: 18, alignItems: 'center', justifyContent: 'center' },
+  grip: { width: 40, height: 4, borderRadius: 2 },
+  paneToggle: { paddingHorizontal: SPACE.md, height: 44, justifyContent: 'center' },
   debugBar: { flexDirection: 'row', justifyContent: 'center', paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, borderTopWidth: BORDER, flexWrap: 'wrap', gap: SPACE.sm },
   floatingDebugWidget: {
     position: 'absolute',

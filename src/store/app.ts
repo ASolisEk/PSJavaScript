@@ -21,7 +21,7 @@ export interface FileDoc {
   updatedAt: number;
 }
 
-export type PanelId = 'editor' | 'console' | 'variables' | 'desktop' | 'diagram' | 'explain' | 'problems';
+export type PanelId = 'console' | 'variables' | 'desktop' | 'diagram' | 'explain' | 'problems';
 export type ModalId = null | 'files' | 'export' | 'settings' | 'help' | 'insert' | 'update' | 'exam';
 /** Pantalla activa: el entorno normal, el modo Maestro o el modo Examen (alumno). */
 export type AppMode = 'ide' | 'teacher' | 'student';
@@ -37,13 +37,17 @@ export interface Settings {
   diagramMode: 'classic' | 'nassi';
   diagramComments: boolean;
   showFunctions: boolean;
-  symbolBar: boolean;
   mascot: boolean;
   /** Posición elegida al arrastrar la mascota (distancia a la esquina inferior derecha). */
   mascotPos: { right: number; bottom: number } | null;
   /** Vestuario de la mascota: 'auto' (según la fecha), 'none' o el id de un vestuario. */
   mascotCostume: string;
+  /** Pantallas angostas: panel de la sección elegida debajo del editor (abierto o no y su altura en px). */
+  mobilePane: { open: boolean; height: number };
 }
+
+/** Medidas de la división editor/panel en pantallas angostas (`bar`: barra de secciones). */
+export const PANE_SPLIT = { bar: 66, min: 110, editorMin: 150, initial: 260 };
 
 const DEFAULT_SETTINGS: Settings = {
   profileId: DEFAULT_PROFILE_ID,
@@ -56,10 +60,10 @@ const DEFAULT_SETTINGS: Settings = {
   diagramMode: 'classic',
   diagramComments: true,
   showFunctions: false,
-  symbolBar: true,
   mascot: true,
   mascotPos: null,
   mascotCostume: 'auto',
+  mobilePane: { open: false, height: PANE_SPLIT.initial },
 };
 
 export const SPEEDS = [1200, 700, 400, 200, 80, 20];
@@ -82,7 +86,7 @@ interface AppState {
   /** Se incrementa con cada ejecución nueva. */
   runSeq: number;
   diagnostics: Diagnostic[];
-  panel: PanelId;
+  /** Sección mostrada junto al editor (a la derecha en escritorio, debajo en móvil). */
   sidePanel: PanelId;
   modal: ModalId;
   editorRequest: EditorRequest | null;
@@ -106,8 +110,9 @@ interface AppState {
   toggleBreakpoint(line: number): void;
   setBreakpoints(lines: number[]): void;
   updateSettings(p: Partial<Settings>): void;
-  setPanel(p: PanelId): void;
   setSidePanel(p: PanelId): void;
+  /** Muestra una sección (en móvil, además abre el panel inferior). */
+  showPanel(p: PanelId): void;
   setModal(m: ModalId): void;
   jumpToLine(line: number): void;
   insertSnippet(text: string): void;
@@ -181,8 +186,8 @@ export const useApp = create<AppState>((set, get) => {
     set({ diagnostics: diags });
     if (hasBlockingErrors(diags)) {
       const first = diags.find((d) => d.severity === 'error')!;
-      set({ notice: `Corrige los errores antes de ejecutar (línea ${first.line}: ${first.message})`, sidePanel: 'problems' });
-      if (s.panel !== 'editor') set({ panel: 'problems' });
+      set({ notice: `Corrige los errores antes de ejecutar (línea ${first.line}: ${first.message})` });
+      s.showPanel('problems');
       return false;
     }
     disposeRunner();
@@ -217,7 +222,6 @@ export const useApp = create<AppState>((set, get) => {
     run: null,
     runSeq: 0,
     diagnostics: [],
-    panel: 'editor',
     sidePanel: 'console',
     modal: null,
     editorRequest: null,
@@ -310,7 +314,7 @@ export const useApp = create<AppState>((set, get) => {
       while (existing.has(fname)) fname = (name ?? 'programa').replace(/\.js$/, '') + `${++n}.js`;
       const f: FileDoc = { id: uid(), name: fname, code, breakpoints: [], updatedAt: Date.now() };
       disposeRunner();
-      set((s) => ({ files: [...s.files, f], openIds: [...s.openIds, f.id], activeId: f.id, run: null, modal: null, panel: 'editor' }));
+      set((s) => ({ files: [...s.files, f], openIds: [...s.openIds, f.id], activeId: f.id, run: null, modal: null }));
       lastInputs = [];
       persist();
       reanalyze();
@@ -401,20 +405,22 @@ export const useApp = create<AppState>((set, get) => {
       persist();
     },
 
-    setPanel(panel) {
-      set({ panel });
-    },
     setSidePanel(sidePanel) {
       set({ sidePanel });
+    },
+    showPanel(sidePanel) {
+      const s = get();
+      set({ sidePanel });
+      if (!s.settings.mobilePane.open) s.updateSettings({ mobilePane: { ...s.settings.mobilePane, open: true } });
     },
     setModal(modal) {
       set({ modal });
     },
     jumpToLine(line) {
-      set((s) => ({ editorRequest: { nonce: ++nonce, kind: 'jump', line }, panel: s.panel === 'editor' ? s.panel : 'editor' }));
+      set({ editorRequest: { nonce: ++nonce, kind: 'jump', line } });
     },
     insertSnippet(text) {
-      set({ editorRequest: { nonce: ++nonce, kind: 'insert', text }, modal: null, panel: 'editor' });
+      set({ editorRequest: { nonce: ++nonce, kind: 'insert', text }, modal: null });
     },
     replaceCode(text) {
       set({ editorRequest: { nonce: ++nonce, kind: 'replaceAll', text } });
@@ -433,9 +439,9 @@ export const useApp = create<AppState>((set, get) => {
 
     runProgram(mode) {
       // al ejecutar completo, mostrar la consola para ver el resultado
-      // (en paso a paso se queda en el editor para seguir la línea resaltada)
+      // (en paso a paso no cambia de sección para seguir la línea resaltada)
       const showConsole = () => {
-        if (mode === 'run') set({ sidePanel: 'console', panel: 'console' });
+        if (mode === 'run') get().showPanel('console');
       };
       const st = runner?.getStatus();
       if (runner && st === 'paused') {

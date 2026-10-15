@@ -183,7 +183,8 @@ function InlineTerminalPrompt({ req }: { req: NonNullable<RunnerSnapshot['inputR
   );
 }
 
-export default function ConsolePanel() {
+/** `inSplit`: dentro de la consola dividida del editor (móvil); ahí la mascota no la tapa. */
+export default function ConsolePanel({ inSplit = false }: { inSplit?: boolean }) {
   const t = useTheme();
   const run = useApp((s) => s.run);
   const clearConsole = useApp((s) => s.clearConsole);
@@ -255,7 +256,7 @@ export default function ConsolePanel() {
           <ScrollView
             ref={scroll}
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 12, paddingBottom: mascot ? 170 : 12 }}
+            contentContainerStyle={{ padding: 12, paddingBottom: mascot && !inSplit ? 170 : 12 }}
             onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}
           >
             {nonCanvasOutput.map((l) => (

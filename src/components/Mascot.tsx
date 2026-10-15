@@ -28,7 +28,7 @@ import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Image, LayoutChangeEvent, PanResponder, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '../ui/text';
-import { useActiveFile, useApp } from '../store/app';
+import { PANE_SPLIT, useActiveFile, useApp } from '../store/app';
 import { BORDER, RADIUS, SPACE, TYPE, useTheme } from '../ui/theme';
 import { easeIn, easeOut, ND, startNextFrame, to, useValue, wait } from './mascot/anim';
 import { Ambient, COSTUMES, CostumeProvider, FaceProvider, resolveCostume, useSprites } from './mascot/costumes';
@@ -171,7 +171,7 @@ interface MenuItem {
   onPress(): void;
 }
 
-function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; side: 'left' | 'right'; onClose(): void }) {
+function Menu({ items, gap, side, onClose, note }: { items: MenuItem[]; gap: number; side: 'left' | 'right'; onClose(): void; note?: string }) {
   const t = useTheme();
   useEffect(() => {
     const id = setTimeout(onClose, 9000);
@@ -179,6 +179,8 @@ function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; s
   }, [onClose]);
   return (
     <Card gap={gap} side={side}>
+      {/* en móvil la mascota no habla sola: lo que quería decir aparece aquí */}
+      {note ? <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', lineHeight: 18, marginBottom: 8 }}>{note}</Text> : null}
       <Text style={{ color: t.textMuted, ...TYPE.label, fontSize: 12, marginBottom: 6 }}>¿Qué hacemos? 🐾</Text>
       {items.map((it) => (
         <Pressable
@@ -230,10 +232,8 @@ export default function Mascot() {
   const t = useTheme();
   const enabled = useApp((s) => s.settings.mascot);
   const savedPos = useApp((s) => s.settings.mascotPos);
-  const panel = useApp((s) => s.panel);
-  const symbolBar = useApp((s) => s.settings.symbolBar);
   const editorRequest = useApp((s) => s.editorRequest);
-  const runActive = useApp((s) => !!s.run && s.run.status !== 'idle');
+  const pane = useApp((s) => s.settings.mobilePane);
   const costumeSetting = useApp((s) => s.settings.mascotCostume);
   const { width } = useWindowDimensions();
   const file = useActiveFile();
@@ -255,6 +255,9 @@ export default function Mascot() {
   const [sneaking, setSneaking] = useState(false);
   const [hideEdge, setHideEdge] = useState<'left' | 'right'>('right');
   const [returnNonce, setReturnNonce] = useState(0);
+  // en pantallas angostas solo habla un rato después de que la tocan
+  const [chatty, setChatty] = useState(false);
+  const [chatNonce, setChatNonce] = useState(0);
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [fx, setFx] = useState<{ kind: FxKind; msg?: string; n: number } | null>(null);
   const [keyNonce, setKeyNonce] = useState(0);
@@ -285,17 +288,24 @@ export default function Mascot() {
   }
 
   const wide = width >= 900;
-  const size = wide ? 132 : 96;
+  // más pequeña en teléfonos para no tapar el código
+  const size = wide ? 132 : width < 600 ? 64 : 96;
   const s = size / BOX;
-  // posición por defecto: sobre la barra de símbolos/ayuda del editor y la mini consola (móvil)
-  const defaultBottom = wide ? 10 : panel === 'editor' ? (symbolBar ? 84 : 40) + (runActive ? 96 : 0) : 10;
+  const quiet = !wide;
+  const talk = () => {
+    setChatty(true);
+    setChatNonce((n) => n + 1);
+  };
+  // posición por defecto: en móvil, sobre la barra de secciones y su panel
+  const paneH = pane.open ? Math.min(pane.height, Math.max(PANE_SPLIT.min, area.h - PANE_SPLIT.bar - PANE_SPLIT.editorMin)) : 0;
+  const defaultBottom = wide ? 10 : 24 + PANE_SPLIT.bar + paneH;
   const right = savedPos && area.w ? clamp(savedPos.right, 4, area.w - size - 4) : 14;
   const bottom = savedPos && area.h ? clamp(savedPos.bottom, 4, area.h - size - 4) : defaultBottom;
   const centerX = area.w - right - size / 2;
   const side: 'left' | 'right' = area.w && centerX < area.w / 2 ? 'left' : 'right';
   // mira hacia el editor (a la izquierda salvo que lo hayas puesto a la izquierda del editor)
   const editorX = wide ? area.w * 0.27 : area.w / 2;
-  const faceLeft = !area.w || !(wide || panel === 'editor') || editorX <= centerX;
+  const faceLeft = !area.w || editorX <= centerX;
   const dir = faceLeft ? -1 : 1;
 
   useEffect(() => {
@@ -429,6 +439,13 @@ export default function Mascot() {
     const id = setTimeout(() => setParticles((arr) => arr.slice(1)), 1100);
     return () => clearTimeout(id);
   }, [particles]);
+
+  // móvil: vuelve a callar un rato después de la última interacción
+  useEffect(() => {
+    if (!chatty) return;
+    const id = setTimeout(() => setChatty(false), 7000);
+    return () => clearTimeout(id);
+  }, [chatty, chatNonce]);
 
   // limpiar la reacción actual
   useEffect(() => {
@@ -705,6 +722,7 @@ export default function Mascot() {
   // ── toques: simple (menú), doble (voltereta), muchos (se enoja) ──
   const onTap = () => {
     setWake((w) => w + 1);
+    talk();
     if (sneaking) {
       cancelSneak('¡Me atrapaste! 😹 Está bien, me quedo.');
       return;
@@ -789,10 +807,8 @@ export default function Mascot() {
         label: errLine ? `Explícame el error (línea ${errLine})` : 'Explícame el error',
         color: t.danger,
         onPress: () => {
-          if (wide) {
-            st.setSidePanel('problems');
-            if (errLine) st.jumpToLine(errLine);
-          } else st.setPanel('problems');
+          st.showPanel('problems');
+          if (errLine) st.jumpToLine(errLine);
         },
       });
     items.push({
@@ -802,6 +818,7 @@ export default function Mascot() {
       onPress: () => {
         setTip((x) => x + 1);
         setHiddenKey(null);
+        talk();
       },
     });
     // probar los vestuarios: ninguno → cada fiesta → ninguno…
@@ -826,7 +843,7 @@ export default function Mascot() {
       },
     });
     return items;
-  }, [status, hasError, errLine, wide, savedPos, t, costume]);
+  }, [status, hasError, errLine, savedPos, t, costume]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width: w, height: h } = e.nativeEvent.layout;
@@ -846,6 +863,7 @@ export default function Mascot() {
               onPress={() => {
                 if (minimized === 'auto') {
                   if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+                  talk();
                   comeBack('¡Me encontraste! 😸');
                   return;
                 }
@@ -895,7 +913,7 @@ export default function Mascot() {
   const escapeX = hideEdge === 'right' ? right + size + 16 : -(area.w - right + 16);
   const headX = faceLeft ? 120 : 210;
   const particleDx = wide && centerX < area.w * 0.535 ? size * 1.3 : 0;
-  const particleDy = !wide && panel === 'editor' && runActive ? size * 0.9 : -size * 1.1;
+  const particleDy = -size * 1.1;
   const fxKind: FxKind | null = fx?.kind ?? (thinking ? 'think' : null);
   const fxKey = fx ? `fx${fx.n}` : thinking ? `think${p.pausedStep}` : '';
 
@@ -916,8 +934,8 @@ export default function Mascot() {
           {...responder.panHandlers}
         >
           {dragging ? null : menuOpen ? (
-            <Menu items={menuItems} gap={gap} side={side} onClose={closeMenu} />
-          ) : hiddenKey !== bubbleKey ? (
+            <Menu items={menuItems} gap={gap} side={side} onClose={closeMenu} note={quiet ? message : undefined} />
+          ) : hiddenKey !== bubbleKey && (!quiet || chatty || petting) ? (
             <Bubble key={bubbleKey} text={message} persist={persist} onHide={hideBubble} gap={gap} side={side} />
           ) : null}
           <Pressable
@@ -931,6 +949,7 @@ export default function Mascot() {
               tapTimer.current = null;
               setMenuOpen(false);
               setPetting(true);
+              talk();
               setWake((w) => w + 1);
               setHiddenKey(null);
             }}
