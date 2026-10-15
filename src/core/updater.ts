@@ -4,7 +4,7 @@
  * muestra el aviso correspondiente y gestiona la descarga e instalación.
  */
 
-export const CURRENT_VERSION = '1.0.1';
+export const CURRENT_VERSION = '1.0.2';
 let configuredPlatformOS: string = 'web';
 let urlOpener: ((url: string) => Promise<unknown> | unknown) | null = null;
 
