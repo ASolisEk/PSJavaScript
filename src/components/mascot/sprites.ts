@@ -240,3 +240,101 @@ export const CAPI_SKINS: Record<Skin, SpriteSet> = {
   dark: capiSkin(CAPI_DARK),
   black: capiSkin(CAPI_BLACK),
 };
+
+// ───────────────────────────── Axo, el ajolote ─────────────────────────────
+// Generado con scripts/generar_ajolote.js (mismas capas y poses que el gato; la cola se mece).
+
+const AXO_IDLE: typeof IDLE = {
+  w: 300,
+  h: 300,
+  pivot: [101, 238],
+  body: require('../../../assets/mascot/ajolote/idle_body.png'),
+  tail: require('../../../assets/mascot/ajolote/idle_tail.png'),
+  blinkHalf: require('../../../assets/mascot/ajolote/idle_blink_half.png'),
+  blink: require('../../../assets/mascot/ajolote/idle_blink.png'),
+};
+
+const AXO_ERROR: typeof ERROR = {
+  w: 300,
+  h: 300,
+  pivot: [101, 238],
+  body: require('../../../assets/mascot/ajolote/confused_body.png'),
+  tail: require('../../../assets/mascot/ajolote/confused_tail.png'),
+  lookLeft: require('../../../assets/mascot/ajolote/confused_look_left.png'),
+  lookRight: require('../../../assets/mascot/ajolote/confused_look_right.png'),
+  // mismas decoraciones que el gato, alrededor de la cabeza y las branquias
+  questions: ERROR.questions.map((q, i) => ({ ...q, x: 118 + i * 30, y: -40 + (i === 2 ? 4 : 0) })),
+  drop: { ...ERROR.drop, x: 60, y: 96 },
+  sweat: { ...ERROR.sweat, x: 238, y: 66 },
+  fly: { ...ERROR.fly, x: 34, y: 26 },
+};
+
+const AXO_RUNNING: typeof RUNNING = {
+  w: 300,
+  h: 300,
+  pivot: [101, 238],
+  body: require('../../../assets/mascot/ajolote/running_body.png'),
+  tail: require('../../../assets/mascot/ajolote/running_tail.png'),
+  keys: [
+    [79, 263], [95, 262], [127, 260], [143, 259], [175, 256], [191, 255], [223, 253], [80, 273], [112, 271], [128, 270],
+    [159, 268], [175, 267], [207, 264], [223, 263], [96, 282], [112, 281], [144, 279], [160, 278], [192, 276], [208, 275],
+  ],
+};
+
+/** El ajolote asoma la cabeza con sus branquias (mirando hacia adentro de la pantalla). */
+const axoPeek = (src: ImageSourcePropType): Peek => ({ src, w: 220, h: 200, view: [150, 170], offset: [0, 0] });
+
+const axoSkin = (dir: 'dark' | 'black') => {
+  const skins = {
+    dark: {
+      idle: {
+        body: require('../../../assets/mascot/ajolote/skins/dark/idle_body.png'),
+        tail: require('../../../assets/mascot/ajolote/skins/dark/idle_tail.png'),
+        blinkHalf: require('../../../assets/mascot/ajolote/skins/dark/idle_blink_half.png'),
+        blink: require('../../../assets/mascot/ajolote/skins/dark/idle_blink.png'),
+      },
+      error: {
+        body: require('../../../assets/mascot/ajolote/skins/dark/confused_body.png'),
+        tail: require('../../../assets/mascot/ajolote/skins/dark/confused_tail.png'),
+        lookLeft: require('../../../assets/mascot/ajolote/skins/dark/confused_look_left.png'),
+        lookRight: require('../../../assets/mascot/ajolote/skins/dark/confused_look_right.png'),
+      },
+      running: {
+        body: require('../../../assets/mascot/ajolote/skins/dark/running_body.png'),
+        tail: require('../../../assets/mascot/ajolote/skins/dark/running_tail.png'),
+      },
+      peek: require('../../../assets/mascot/ajolote/skins/dark/peek.png'),
+    },
+    black: {
+      idle: {
+        body: require('../../../assets/mascot/ajolote/skins/black/idle_body.png'),
+        tail: require('../../../assets/mascot/ajolote/skins/black/idle_tail.png'),
+        blinkHalf: require('../../../assets/mascot/ajolote/skins/black/idle_blink_half.png'),
+        blink: require('../../../assets/mascot/ajolote/skins/black/idle_blink.png'),
+      },
+      error: {
+        body: require('../../../assets/mascot/ajolote/skins/black/confused_body.png'),
+        tail: require('../../../assets/mascot/ajolote/skins/black/confused_tail.png'),
+        lookLeft: require('../../../assets/mascot/ajolote/skins/black/confused_look_left.png'),
+        lookRight: require('../../../assets/mascot/ajolote/skins/black/confused_look_right.png'),
+      },
+      running: {
+        body: require('../../../assets/mascot/ajolote/skins/black/running_body.png'),
+        tail: require('../../../assets/mascot/ajolote/skins/black/running_tail.png'),
+      },
+      peek: require('../../../assets/mascot/ajolote/skins/black/peek.png'),
+    },
+  }[dir];
+  return {
+    IDLE: { ...AXO_IDLE, ...skins.idle },
+    ERROR: { ...AXO_ERROR, ...skins.error },
+    RUNNING: { ...AXO_RUNNING, ...skins.running },
+    PEEK: axoPeek(skins.peek),
+  } satisfies SpriteSet;
+};
+
+export const AXO_SKINS: Record<Skin, SpriteSet> = {
+  normal: { IDLE: AXO_IDLE, ERROR: AXO_ERROR, RUNNING: AXO_RUNNING, PEEK: axoPeek(require('../../../assets/mascot/ajolote/peek.png')) },
+  dark: axoSkin('dark'),
+  black: axoSkin('black'),
+};
