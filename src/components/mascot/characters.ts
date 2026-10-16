@@ -1,12 +1,12 @@
 /**
- * Personajes de la mascota: Michi (gato) y Capi (capibara). Comparten capas,
+ * Personajes de la mascota: Michi (gato), Capi (capibara) y Axo (ajolote). Comparten capas,
  * animaciones y vestuarios; cada uno trae sus sprites, las anclas de su cara
  * para colocar los accesorios y su forma de hablar.
  */
 import type { Skin } from '../../core/holidays';
-import { CAPI_SKINS, SKINS, SpriteSet } from './sprites';
+import { AXO_SKINS, CAPI_SKINS, SKINS, SpriteSet } from './sprites';
 
-export type CharacterId = 'gato' | 'capibara';
+export type CharacterId = 'gato' | 'capibara' | 'ajolote';
 export type Pose = 'idle' | 'error' | 'running';
 export type Pt = [number, number];
 
@@ -159,8 +159,45 @@ const CAPIBARA: Character = {
   },
 };
 
-export const CHARACTERS: Record<CharacterId, Character> = { gato: GATO, capibara: CAPIBARA };
-export const CHARACTER_LIST: Character[] = [GATO, CAPIBARA];
+/** Las tres poses comparten la cabeza (sentado de frente, como en la ilustración). */
+const AXO_FACE: Anchors = {
+  crown: [158, 48],
+  rot: -3,
+  eyes: [
+    [123, 120, 13],
+    [200, 112, 11],
+  ],
+  nose: [166, 131],
+  mouth: [166, 149],
+  cheeks: [
+    [103, 144],
+    [224, 131],
+  ],
+  chin: [166, 162],
+  neck: [151, 182],
+  back: [92, 200],
+};
+
+/**
+ * Axo, estilo kawaii: sentado de frente, cabeza grande y redonda con sus
+ * branquias coral, ojitos con brillo y su cola con aleta. Anclas calculadas
+ * por scripts/generar_ajolote.js.
+ */
+const AJOLOTE: Character = {
+  id: 'ajolote',
+  name: 'Axo',
+  species: 'el ajolote',
+  skins: AXO_SKINS,
+  exclaim: '¡Ups!',
+  petting: 'Jiji… me haces cosquillas en las branquias 💕',
+  pettingLabel: 'feliz con las caricias',
+  found: '¡Me encontraste! 😊',
+  peekPart: 'mis branquias',
+  anchors: { idle: AXO_FACE, error: AXO_FACE, running: AXO_FACE },
+};
+
+export const CHARACTERS: Record<CharacterId, Character> = { gato: GATO, capibara: CAPIBARA, ajolote: AJOLOTE };
+export const CHARACTER_LIST: Character[] = [GATO, CAPIBARA, AJOLOTE];
 
 export function getCharacter(id: string | undefined): Character {
   return CHARACTERS[(id as CharacterId) ?? 'gato'] ?? GATO;

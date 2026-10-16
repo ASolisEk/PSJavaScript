@@ -43,7 +43,7 @@ export interface Settings {
   /** Vestuario de la mascota: 'auto' (según la fecha), 'none' o el id de un vestuario. */
   mascotCostume: string;
   /** Personaje de la mascota: Michi el gato o Capi el capibara. */
-  mascotCharacter: 'gato' | 'capibara';
+  mascotCharacter: 'gato' | 'capibara' | 'ajolote';
   /** Teléfono en vertical: panel bajo el código abierto o no y parte del alto que ocupa el código. */
   mobilePane: { open: boolean; share: number };
 }

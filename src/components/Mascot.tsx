@@ -850,8 +850,8 @@ export default function Mascot() {
       color: t.primary,
       onPress: () => st.updateSettings({ mascotCostume: next }),
     });
-    // cambiar de personaje: Michi el gato ↔ Capi el capibara
-    const other = CHARACTER_LIST.find((c) => c.id !== character.id) ?? character;
+    // cambiar de personaje: pasa al siguiente (Michi el gato → Capi el capibara → Axo el ajolote → …)
+    const other = CHARACTER_LIST[(CHARACTER_LIST.findIndex((c) => c.id === character.id) + 1) % CHARACTER_LIST.length];
     items.push({
       icon: 'swap-horizontal-outline',
       label: `Cambiar a ${other.name} (${other.species})`,
