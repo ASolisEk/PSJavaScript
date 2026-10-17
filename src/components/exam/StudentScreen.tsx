@@ -19,7 +19,7 @@ import { idleMs, serverNow, useStudent } from '../../store/student';
 import { clearExamLink, readExamLink, rememberedStudent, rememberStudent } from '../../ui/examLink';
 import { confirmDialog } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, SCRIM, useTheme } from '../../ui/theme';
-import { Button, Chip, Heading } from '../ui';
+import { BackToEditorButton, Button, Chip, Heading } from '../ui';
 import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, Segmented, TextField } from './kit';
 import { clearCodeResults } from './CodeAnswer';
 import { enterFullscreen, exitFullscreen, fullscreenSupported, useExamLockdown } from './lockdown';
@@ -97,7 +97,7 @@ function JoinView() {
         title="Presentar examen"
         subtitle="Entra con el código que te dio tu maestro"
         color={t.success}
-        right={<Button label="Volver al editor" icon="arrow-back" onPress={() => useApp.getState().setAppMode('ide')} />}
+        right={<BackToEditorButton onPress={() => useApp.getState().setAppMode('ide')} />}
       />
       <Narrow>
         <Card>

@@ -37,14 +37,15 @@ export interface Settings {
   diagramMode: 'classic' | 'nassi';
   diagramComments: boolean;
   showFunctions: boolean;
-  symbolBar: boolean;
   mascot: boolean;
   /** Posición elegida al arrastrar la mascota (distancia a la esquina inferior derecha). */
   mascotPos: { right: number; bottom: number } | null;
   /** Vestuario de la mascota: 'auto' (según la fecha), 'none' o el id de un vestuario. */
   mascotCostume: string;
   /** Personaje de la mascota: Michi el gato o Capi el capibara. */
-  mascotCharacter: 'gato' | 'capibara';
+  mascotCharacter: 'gato' | 'capibara' | 'ajolote';
+  /** Teléfono en vertical: panel bajo el código abierto o no y parte del alto que ocupa el código. */
+  mobilePane: { open: boolean; share: number };
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -58,12 +59,19 @@ const DEFAULT_SETTINGS: Settings = {
   diagramMode: 'classic',
   diagramComments: true,
   showFunctions: false,
-  symbolBar: true,
   mascot: true,
   mascotPos: null,
   mascotCostume: 'auto',
   mascotCharacter: 'gato',
+  mobilePane: { open: true, share: 0.6 },
 };
+
+/** Reparto móvil guardado, corregido si viene de una versión anterior o incompleto. */
+function sanePane(p: Partial<Settings['mobilePane']> | undefined): Settings['mobilePane'] {
+  const d = DEFAULT_SETTINGS.mobilePane;
+  const share = typeof p?.share === 'number' && p.share >= 0.2 && p.share <= 0.9 ? p.share : d.share;
+  return { open: typeof p?.open === 'boolean' ? p.open : d.open, share };
+}
 
 export const SPEEDS = [1200, 700, 400, 200, 80, 20];
 
@@ -176,6 +184,12 @@ export const useApp = create<AppState>((set, get) => {
     runner = null;
   };
 
+  /** Teléfono: al mostrar una sección se abre el panel bajo el código si estaba cerrado. */
+  const openPane = () => {
+    const s = get();
+    if (!s.settings.mobilePane.open) s.updateSettings({ mobilePane: { ...s.settings.mobilePane, open: true } });
+  };
+
   const createRunner = (mode: RunMode, replayInputs?: InputValue[]): boolean => {
     const s = get();
     const f = s.activeFile();
@@ -186,6 +200,7 @@ export const useApp = create<AppState>((set, get) => {
       const first = diags.find((d) => d.severity === 'error')!;
       set({ notice: `Corrige los errores antes de ejecutar (línea ${first.line}: ${first.message})`, sidePanel: 'problems' });
       if (s.panel !== 'editor') set({ panel: 'problems' });
+      openPane();
       return false;
     }
     disposeRunner();
@@ -252,7 +267,7 @@ export const useApp = create<AppState>((set, get) => {
           files,
           openIds: openIds.length ? openIds : [activeId],
           activeId,
-          settings: { ...DEFAULT_SETTINGS, ...data.settings },
+          settings: { ...DEFAULT_SETTINGS, ...data.settings, mobilePane: sanePane(data.settings?.mobilePane) },
           watches: data.watches ?? [],
           hydrated: true,
         });
@@ -409,6 +424,7 @@ export const useApp = create<AppState>((set, get) => {
     },
     setSidePanel(sidePanel) {
       set({ sidePanel });
+      openPane();
     },
     setModal(modal) {
       set({ modal });
@@ -438,7 +454,9 @@ export const useApp = create<AppState>((set, get) => {
       // al ejecutar completo, mostrar la consola para ver el resultado
       // (en paso a paso se queda en el editor para seguir la línea resaltada)
       const showConsole = () => {
-        if (mode === 'run') set({ sidePanel: 'console', panel: 'console' });
+        if (mode !== 'run') return;
+        set({ sidePanel: 'console', panel: 'console' });
+        openPane();
       };
       const st = runner?.getStatus();
       if (runner && st === 'paused') {

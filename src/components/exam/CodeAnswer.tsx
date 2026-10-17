@@ -188,7 +188,6 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
           errorLine={run?.status === 'error' ? run.error?.line ?? null : null}
           diagnostics={settings.showDiagnostics ? diags : []}
           fontSize={fontSize}
-          showSymbolBar={Platform.OS !== 'web'}
           assist={settings.allowAssist}
           blockPaste={settings.blockPaste}
           listenRequests={false}

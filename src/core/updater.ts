@@ -4,7 +4,7 @@
  * muestra el aviso correspondiente y gestiona la descarga e instalación.
  */
 
-export const CURRENT_VERSION = '1.0.1';
+export const CURRENT_VERSION = '1.0.2';
 let configuredPlatformOS: string = 'web';
 let urlOpener: ((url: string) => Promise<unknown> | unknown) | null = null;
 
@@ -68,8 +68,37 @@ export interface DownloadProgress {
   path?: string;
 }
 
+let detectedDesktop: PlatformType | null = null;
+
+/** Detecta si estamos en Electron mediante el endpoint local /api/desktop/info */
+export async function detectDesktopEnvironment(): Promise<PlatformType | null> {
+  if (detectedDesktop) return detectedDesktop;
+  if (configuredPlatformOS === 'android' || configuredPlatformOS === 'ios') return null;
+
+  if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+    try {
+      const res = await fetch('/api/desktop/info');
+      if (res.ok) {
+        const info = await res.json();
+        if (info?.isElectron) {
+          const plat: PlatformType =
+            info.platform === 'darwin'
+              ? 'electron-mac'
+              : info.platform === 'win32'
+              ? 'electron-win'
+              : 'electron-linux';
+          detectedDesktop = plat;
+          return plat;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
 /** Detecta el entorno de ejecución actual (incluyendo Electron bajo web). */
 export function getPlatformType(): PlatformType {
+  if (detectedDesktop) return detectedDesktop;
   if (configuredPlatformOS === 'android') return 'android';
   if (configuredPlatformOS === 'ios') return 'ios';
 
@@ -191,6 +220,9 @@ function resolveDownloadAsset(platform: PlatformType, assets: any[] = []): { dow
  * Si allowWebCheck es false y estamos en web pura, no busca para no incurrir en peticiones innecesarias.
  */
 export async function checkForUpdate(options: { allowWebCheck?: boolean } = {}): Promise<UpdateCheckResult> {
+  if (getPlatformType() === 'web') {
+    await detectDesktopEnvironment();
+  }
   const platform = getPlatformType();
   const nonWeb = isNonWeb();
 
@@ -205,70 +237,70 @@ export async function checkForUpdate(options: { allowWebCheck?: boolean } = {}):
     };
   }
 
-  // 1. Intentar consultar la API de GitHub Releases
+  // 1. Consultar la API de GitHub Releases
+  let ghReleaseData: any = null;
+  let ghReleaseVer = '';
   try {
     const res = await fetch(GITHUB_API_LATEST, {
       headers: { Accept: 'application/vnd.github.v3+json' },
     });
-
     if (res.ok) {
-      const data = await res.json();
-      const tagName = data.tag_name || data.name || '';
-      const latestVer = tagName.replace(/^v/i, '').trim();
-      const hasUpdate = isNewerVersion(CURRENT_VERSION, latestVer);
-      const asset = resolveDownloadAsset(platform, data.assets || []);
-
-      const release: ReleaseInfo = {
-        version: latestVer,
-        name: data.name || `Versión ${latestVer}`,
-        notes: data.body || 'Correcciones de errores y mejoras de rendimiento.',
-        publishedAt: data.published_at,
-        releaseUrl: data.html_url || GITHUB_RELEASES_URL,
-        downloadUrl: asset.downloadUrl,
-        assetName: asset.assetName,
-      };
-
-      return {
-        hasUpdate,
-        currentVersion: CURRENT_VERSION,
-        latestVersion: latestVer,
-        release,
-        platform,
-        platformLabel: getPlatformLabel(platform),
-        isNonWeb: nonWeb,
-      };
-    }
-  } catch {
-    // Si la API falla (ej. rate limit o sin red), intentar fallback a package.json
-  }
-
-  // 2. Fallback a raw package.json en GitHub
-  try {
-    const res = await fetch(GITHUB_RAW_PKG);
-    if (res.ok) {
-      const pkg = await res.json();
-      const latestVer = (pkg.version || '').trim();
-      const hasUpdate = isNewerVersion(CURRENT_VERSION, latestVer);
-      const asset = resolveDownloadAsset(platform, []);
-
-      return {
-        hasUpdate,
-        currentVersion: CURRENT_VERSION,
-        latestVersion: latestVer,
-        release: {
-          version: latestVer,
-          name: `Versión ${latestVer}`,
-          notes: 'Nueva versión disponible en el repositorio.',
-          releaseUrl: GITHUB_RELEASES_URL,
-          downloadUrl: asset.downloadUrl,
-          assetName: asset.assetName,
-        },
-        platform,
-        platformLabel: getPlatformLabel(platform),
-        isNonWeb: nonWeb,
-      };
+      ghReleaseData = await res.json();
+      const tagName = ghReleaseData.tag_name || ghReleaseData.name || '';
+      ghReleaseVer = tagName.replace(/^v/i, '').trim();
     }
   } catch {}
+
+  // 2. Consultar siempre el package.json de la rama main (con cache-buster)
+  let rawPkgVer = '';
+  try {
+    const res = await fetch(`${GITHUB_RAW_PKG}?_=${Date.now()}`);
+    if (res.ok) {
+      const pkg = await res.json();
+      rawPkgVer = (pkg.version || '').trim();
+    }
+  } catch {}
+
+  // Determinar la versión más alta disponible en línea
+  let latestVer = ghReleaseVer;
+  let useRawPkg = false;
+
+  if (rawPkgVer) {
+    if (!latestVer || isNewerVersion(latestVer, rawPkgVer)) {
+      latestVer = rawPkgVer;
+      useRawPkg = true;
+    }
+  }
+
+  if (latestVer) {
+    const hasUpdate = isNewerVersion(CURRENT_VERSION, latestVer);
+    // Si la release de GitHub coincide con la versión más reciente, usar sus assets
+    const assets = !useRawPkg && ghReleaseData?.assets ? ghReleaseData.assets : [];
+    const asset = resolveDownloadAsset(platform, assets);
+
+    const release: ReleaseInfo = {
+      version: latestVer,
+      name: !useRawPkg && ghReleaseData?.name ? ghReleaseData.name : `Versión ${latestVer}`,
+      notes:
+        !useRawPkg && ghReleaseData?.body
+          ? ghReleaseData.body
+          : 'Nueva versión disponible con mejoras y correcciones.',
+      publishedAt: !useRawPkg && ghReleaseData?.published_at ? ghReleaseData.published_at : undefined,
+      releaseUrl: !useRawPkg && ghReleaseData?.html_url ? ghReleaseData.html_url : GITHUB_RELEASES_URL,
+      downloadUrl: asset.downloadUrl,
+      assetName: asset.assetName,
+    };
+
+    return {
+      hasUpdate,
+      currentVersion: CURRENT_VERSION,
+      latestVersion: latestVer,
+      release,
+      platform,
+      platformLabel: getPlatformLabel(platform),
+      isNonWeb: nonWeb,
+    };
+  }
 
   return {
     hasUpdate: false,

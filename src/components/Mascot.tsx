@@ -179,7 +179,7 @@ interface MenuItem {
   onPress(): void;
 }
 
-function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; side: 'left' | 'right'; onClose(): void }) {
+function Menu({ items, gap, side, onClose, note }: { items: MenuItem[]; gap: number; side: 'left' | 'right'; onClose(): void; note?: string }) {
   const t = useTheme();
   useEffect(() => {
     const id = setTimeout(onClose, 9000);
@@ -187,6 +187,8 @@ function Menu({ items, gap, side, onClose }: { items: MenuItem[]; gap: number; s
   }, [onClose]);
   return (
     <Card gap={gap} side={side}>
+      {/* en móvil la mascota no habla sola: lo que quería decir aparece aquí */}
+      {note ? <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', lineHeight: 18, marginBottom: 8 }}>{note}</Text> : null}
       <Text style={{ color: t.textMuted, ...TYPE.label, fontSize: 12, marginBottom: 6 }}>¿Qué hacemos? 🐾</Text>
       {items.map((it) => (
         <Pressable
@@ -238,6 +240,7 @@ export default function Mascot() {
   const t = useTheme();
   const enabled = useApp((s) => s.settings.mascot);
   const savedPos = useApp((s) => s.settings.mascotPos);
+  const pane = useApp((s) => s.settings.mobilePane);
   const sidePanel = useApp((s) => s.sidePanel);
   const editorRequest = useApp((s) => s.editorRequest);
   const costumeSetting = useApp((s) => s.settings.mascotCostume);
@@ -262,6 +265,9 @@ export default function Mascot() {
   const [sneaking, setSneaking] = useState(false);
   const [hideEdge, setHideEdge] = useState<'left' | 'right'>('right');
   const [returnNonce, setReturnNonce] = useState(0);
+  // en pantallas angostas solo habla un rato después de que la tocan
+  const [chatty, setChatty] = useState(false);
+  const [chatNonce, setChatNonce] = useState(0);
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [fx, setFx] = useState<{ kind: FxKind; msg?: string; n: number } | null>(null);
   const [keyNonce, setKeyNonce] = useState(0);
@@ -297,11 +303,18 @@ export default function Mascot() {
   const wide = width >= WIDE_MIN;
   const split = wide ? 'side' : height < 500 && width >= 600 ? 'row' : 'column';
   // con poca altura (celular acostado) se hace más chica para no tapar la consola
-  const size = wide ? 132 : height < 500 ? 70 : 96;
+  // más pequeña en teléfonos para no tapar el código
+  const size = wide ? 132 : height < 500 ? 70 : width < 600 ? 64 : 96;
   const s = size / BOX;
+  const quiet = !wide;
+  const talk = () => {
+    setChatty(true);
+    setChatNonce((n) => n + 1);
+  };
   // posición por defecto: en la esquina de abajo; con el celular en vertical, parada sobre las
-  // pestañas de los paneles (al pie del código) para no tapar la consola
-  const defaultBottom = split === 'column' && area.h ? Math.round(area.h * (1 - CODE_SHARE)) + 4 : 10;
+  // pestañas de los paneles (al pie del código, según el reparto elegido) para no tapar la consola
+  const codeShare = pane.open ? pane.share : 1;
+  const defaultBottom = split === 'column' && area.h ? Math.max(70, Math.round(area.h * (1 - codeShare))) + 4 : 10;
   const right = savedPos && area.w ? clamp(savedPos.right, 4, area.w - size - 4) : 14;
   const bottom = savedPos && area.h ? clamp(savedPos.bottom, 4, area.h - size - 4) : defaultBottom;
   const centerX = area.w - right - size / 2;
@@ -442,6 +455,13 @@ export default function Mascot() {
     const id = setTimeout(() => setParticles((arr) => arr.slice(1)), 1100);
     return () => clearTimeout(id);
   }, [particles]);
+
+  // móvil: vuelve a callar un rato después de la última interacción
+  useEffect(() => {
+    if (!chatty) return;
+    const id = setTimeout(() => setChatty(false), 7000);
+    return () => clearTimeout(id);
+  }, [chatty, chatNonce]);
 
   // limpiar la reacción actual
   useEffect(() => {
@@ -718,6 +738,7 @@ export default function Mascot() {
   // ── toques: simple (menú), doble (voltereta), muchos (se enoja) ──
   const onTap = () => {
     setWake((w) => w + 1);
+    talk();
     if (sneaking) {
       cancelSneak('¡Me atrapaste! 😹 Está bien, me quedo.');
       return;
@@ -816,6 +837,7 @@ export default function Mascot() {
       onPress: () => {
         setTip((x) => x + 1);
         setHiddenKey(null);
+        talk();
       },
     });
     // probar los vestuarios: ninguno → cada fiesta → ninguno…
@@ -828,8 +850,8 @@ export default function Mascot() {
       color: t.primary,
       onPress: () => st.updateSettings({ mascotCostume: next }),
     });
-    // cambiar de personaje: Michi el gato ↔ Capi el capibara
-    const other = CHARACTER_LIST.find((c) => c.id !== character.id) ?? character;
+    // cambiar de personaje: pasa al siguiente (Michi el gato → Capi el capibara → Axo el ajolote → …)
+    const other = CHARACTER_LIST[(CHARACTER_LIST.findIndex((c) => c.id === character.id) + 1) % CHARACTER_LIST.length];
     items.push({
       icon: 'swap-horizontal-outline',
       label: `Cambiar a ${other.name} (${other.species})`,
@@ -868,6 +890,7 @@ export default function Mascot() {
               onPress={() => {
                 if (minimized === 'auto') {
                   if (HAPTICS) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+                  talk();
                   comeBack(character.found);
                   return;
                 }
@@ -938,8 +961,8 @@ export default function Mascot() {
           {...responder.panHandlers}
         >
           {dragging ? null : menuOpen ? (
-            <Menu items={menuItems} gap={gap} side={side} onClose={closeMenu} />
-          ) : hiddenKey !== bubbleKey ? (
+            <Menu items={menuItems} gap={gap} side={side} onClose={closeMenu} note={quiet ? message : undefined} />
+          ) : hiddenKey !== bubbleKey && (!quiet || chatty || petting) ? (
             <Bubble key={bubbleKey} text={message} persist={persist} onHide={hideBubble} gap={gap} side={side} />
           ) : null}
           <Pressable
@@ -953,6 +976,7 @@ export default function Mascot() {
               tapTimer.current = null;
               setMenuOpen(false);
               setPetting(true);
+              talk();
               setWake((w) => w + 1);
               setHiddenKey(null);
             }}

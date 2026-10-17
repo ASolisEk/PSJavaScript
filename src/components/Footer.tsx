@@ -1,5 +1,5 @@
 /** Pie de página: banda verde de la marca con autor, versión y aviso de código libre. */
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '../ui/text';
 import { CURRENT_VERSION } from '../core/updater';
 import { SPACE, useTheme } from '../ui/theme';
@@ -12,10 +12,13 @@ export const CREDITS = `Hecho por ${AUTHOR} • Código libre (MIT) • v${APP_V
 
 export default function Footer() {
   const t = useTheme();
+  // en teléfonos angostos, versión corta en una sola línea
+  const short = useWindowDimensions().width < 400;
   return (
     <View style={[styles.footer, { backgroundColor: t.primary }]}>
-      <Text style={[styles.text, { color: '#d7ffb8' }]}>
-        Hecho por <Text style={{ fontWeight: '800', color: '#ffffff' }}>{AUTHOR}</Text> • Código libre (MIT) • v{APP_VERSION}
+      <Text style={[styles.text, { color: '#d7ffb8' }]} numberOfLines={1}>
+        {short ? '' : 'Hecho por '}
+        <Text style={{ fontWeight: '800', color: '#ffffff' }}>{AUTHOR}</Text> • {short ? 'MIT' : 'Código libre (MIT)'} • v{APP_VERSION}
       </Text>
     </View>
   );

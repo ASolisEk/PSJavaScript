@@ -1,7 +1,7 @@
 /** Pantalla principal del entorno: barra de herramientas, editor y paneles. */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '../ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCode } from '../core/editor/indent';
@@ -19,7 +19,7 @@ import SettingsModal from './modals/SettingsModal';
 import UpdateModal from './modals/UpdateModal';
 import ExamChooserModal from './exam/ExamChooserModal';
 import { useTeacher } from '../store/teacher';
-import { checkForUpdate, isNonWeb } from '../core/updater';
+import { checkForUpdate, isNonWeb, detectDesktopEnvironment } from '../core/updater';
 import ConsolePanel, { InputBar } from './panels/ConsolePanel';
 import DesktopPanel from './panels/DesktopPanel';
 import DiagramPanel from './panels/DiagramPanel';
@@ -27,11 +27,11 @@ import ExplainPanel from './panels/ExplainPanel';
 import ProblemsPanel from './panels/ProblemsPanel';
 import VariablesPanel from './panels/VariablesPanel';
 import Mascot from './Mascot';
-import { Button, IconButton, Tab, Tooltip } from './ui';
+import { Button, IconButton, Tooltip } from './ui';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-/** label: pestaña en pantalla ancha · short: pestaña en pantallas angostas (todas deben caber). */
+/** label: nombre completo (accesibilidad) · short: nombre visible en las pestañas (todas deben caber). */
 const PANELS: { id: PanelId; label: string; short: string; icon: IconName }[] = [
   { id: 'console', label: 'Consola', short: 'Consola', icon: 'terminal-outline' },
   { id: 'diagram', label: 'Diagrama', short: 'Diagrama', icon: 'git-network-outline' },
@@ -258,7 +258,82 @@ function MoreSheet({ onClose }: { onClose(): void }) {
  * Pestañas de los paneles en pantallas angostas (debajo del código): ícono y
  * nombre corto, todas a la vista sin deslizar. Se acomodan al ancho que tienen.
  */
-function PhoneTabs({ errorCount }: { errorCount: number }) {
+/** Límites de la parte del alto que ocupa el código al arrastrar la división. */
+const SHARE_MIN = 0.25;
+const SHARE_MAX = 0.85;
+
+/** En web, evita seleccionar texto de la página mientras se arrastra la división. */
+const lockSelection = (on: boolean) => {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  document.body.style.userSelect = on ? 'none' : '';
+  if (on) window.getSelection?.()?.removeAllRanges();
+};
+
+/**
+ * Teléfono en vertical: el código arriba y abajo las pestañas con su panel.
+ * La manija de en medio se arrastra para repartir el alto (se recuerda) y,
+ * al tocarla, cierra o abre el panel; cerrado, el código ocupa todo y abajo
+ * quedan solo las pestañas.
+ */
+function CodeSplit({ code, errorCount }: { code: React.ReactNode; errorCount: number }) {
+  const t = useTheme();
+  const pane = useApp((s) => s.settings.mobilePane);
+  const sidePanel = useApp((s) => s.sidePanel);
+  const update = useApp((s) => s.updateSettings);
+  const [box, setBox] = useState(0);
+  const [drag, setDrag] = useState<number | null>(null);
+  const share = drag ?? pane.share;
+  const open = drag !== null || pane.open;
+
+  const grip = useMemo(() => {
+    // al empezar: alto actual del código (todo, si el panel está cerrado)
+    const startH = (pane.open ? pane.share : 0.95) * box;
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => lockSelection(true),
+      onPanResponderMove: (_, g) => box && setDrag(Math.min(SHARE_MAX, Math.max(SHARE_MIN, (startH + g.dy) / box))),
+      onPanResponderRelease: (_, g) => {
+        lockSelection(false);
+        setDrag(null);
+        if (Math.abs(g.dy) < 4) return update({ mobilePane: { ...pane, open: !pane.open } });
+        const next = box ? (startH + g.dy) / box : pane.share;
+        // soltar casi abajo cierra el panel
+        if (next > SHARE_MAX + 0.05) update({ mobilePane: { ...pane, open: false } });
+        else update({ mobilePane: { open: true, share: Math.round(Math.min(SHARE_MAX, Math.max(SHARE_MIN, next)) * 100) / 100 } });
+      },
+      onPanResponderTerminate: () => {
+        lockSelection(false);
+        setDrag(null);
+      },
+    });
+  }, [pane, box, update]);
+
+  return (
+    <View style={{ flex: 1 }} onLayout={(e) => setBox(e.nativeEvent.layout.height)}>
+      <View style={{ flex: open ? share : 1, minHeight: 0, position: 'relative' }}>{code}</View>
+      <View
+        {...grip.panHandlers}
+        accessibilityRole="adjustable"
+        accessibilityLabel={open ? 'Cerrar el panel (o arrastra para repartir el espacio)' : 'Abrir el panel (o arrastra hacia arriba)'}
+        style={[styles.gripHit, { backgroundColor: t.surface, borderTopColor: t.border }, Platform.OS === 'web' ? ({ cursor: 'row-resize', userSelect: 'none' } as object) : null]}
+      >
+        <View style={[styles.grip, { backgroundColor: drag !== null ? t.accent : t.borderStrong }]} />
+      </View>
+      <View style={open ? { flex: 1 - share, minHeight: 0 } : null}>
+        <PanelTabs errorCount={errorCount} collapsible />
+        {open ? (
+          <View style={{ flex: 1 }}>
+            <PanelView id={sidePanel} />
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/** `collapsible`: tocar la sección abierta cierra el panel (solo en vertical). */
+function PanelTabs({ errorCount, collapsible }: { errorCount: number; collapsible?: boolean }) {
   const t = useTheme();
   const windowWidth = useWindowDimensions().width;
   const [w, setW] = useState(0);
@@ -269,6 +344,13 @@ function PhoneTabs({ errorCount }: { errorCount: number }) {
   const tiny = per < 56;
   const sidePanel = useApp((s) => s.sidePanel);
   const setSidePanel = useApp((s) => s.setSidePanel);
+  const pane = useApp((s) => s.settings.mobilePane);
+  const updateSettings = useApp((s) => s.updateSettings);
+  // tocar la sección abierta cierra el panel (el código ocupa todo); cualquier otra lo abre
+  const select = (id: PanelId) => {
+    if (collapsible && id === sidePanel && pane.open) updateSettings({ mobilePane: { ...pane, open: false } });
+    else setSidePanel(id);
+  };
   return (
     <View
       accessibilityRole="tablist"
@@ -276,13 +358,13 @@ function PhoneTabs({ errorCount }: { errorCount: number }) {
       style={[styles.phoneTabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}
     >
       {PANELS.map((p) => {
-        const active = sidePanel === p.id;
+        const active = sidePanel === p.id && (pane.open || !collapsible);
         const c = active ? t.primary : t.textMuted;
         const badge = p.id === 'problems' && errorCount ? errorCount : 0;
         return (
           <Pressable
             key={p.id}
-            onPress={() => setSidePanel(p.id)}
+            onPress={() => select(p.id)}
             accessibilityRole="tab"
             accessibilityLabel={p.label}
             accessibilityState={{ selected: active }}
@@ -498,22 +580,41 @@ function FloatingDebugWidget() {
   );
 }
 
-function DebugBar() {
+/**
+ * Instaladores que se publican junto a la versión web (carpeta public/). El logo y el
+ * nombre usan el color característico de cada sistema; `dark` es la variante legible
+ * sobre el tema oscuro (en claro, amarillo y verde se oscurecen para tener contraste).
+ */
+type Download = { file: string; label: string; icon: IconName; color: string; dark: string };
+const DOWNLOADS: Download[] = [
+  { file: 'PSJavaScript.dmg', label: 'macOS', icon: 'logo-apple', color: '#1d1d1f', dark: '#f5f5f7' },
+  { file: 'PSJavaScript-Setup.exe', label: 'Windows', icon: 'logo-windows', color: '#0078d4', dark: '#4cc2ff' },
+  { file: 'PSJavaScript.AppImage', label: 'Linux', icon: 'logo-tux', color: '#b8860b', dark: '#fcc624' },
+  { file: 'PSJavaScript.apk', label: 'Android', icon: 'logo-android', color: '#1f9d55', dark: '#3ddc84' },
+];
+
+/** Enlace de descarga (solo web). Con poco ancho muestra solo el logo; el nombre queda en el tooltip. */
+function DownloadLink({ item, showLabel }: { item: Download; showLabel: boolean }) {
   const t = useTheme();
-  const run = useApp((s) => s.run);
-  // en el teléfono estos controles ya están siempre a la vista en la barra de arriba
-  const { phone } = useLayout();
-  const { runProgram, stepOnce, stepBack, stop } = useApp.getState();
-
-  if (run?.status !== 'paused' || phone) return null;
-
+  const [hover, setHover] = useState(false);
+  const color = t.dark ? item.dark : item.color;
+  const title = `Descargar para ${item.label}`;
   return (
-    <View style={[styles.debugBar, { backgroundColor: t.warningSoft, borderTopColor: t.warning }]}>
-      <Button label="Continuar" kind="primary" icon="play" onPress={() => runProgram('run')} />
-      <Button label="Siguiente" icon="play-skip-forward" onPress={stepOnce} />
-      <Button label="Anterior" icon="play-skip-back" onPress={stepBack} />
-      <IconButton icon="stop" color={t.danger} label="Detener" onPress={stop} />
-    </View>
+    <a
+      href={item.file}
+      download={item.file}
+      title={title}
+      aria-label={title}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ textDecoration: 'none', marginRight: SPACE.sm }}
+    >
+      <View style={[styles.repoLink, { marginRight: 0, borderColor: hover ? color : t.borderStrong, backgroundColor: hover ? t.surfaceAlt : 'transparent' }, !showLabel && { paddingHorizontal: 8 }]}>
+        <Ionicons name={item.icon} size={16} color={color} />
+        {showLabel ? <Text style={[styles.navLabel, { color, marginLeft: 5 }]}>{item.label}</Text> : null}
+        <Ionicons name="download-outline" size={13} color={color} style={{ marginLeft: showLabel ? 6 : 3 }} />
+      </View>
+    </a>
   );
 }
 
@@ -527,7 +628,6 @@ export default function IDE() {
   const modal = useApp((s) => s.modal);
   const diagnostics = useApp((s) => s.diagnostics);
   const fontSize = useApp((s) => s.settings.fontSize);
-  const symbolBar = useApp((s) => s.settings.symbolBar);
   const run = useApp((s) => s.run);
   const { setCode, toggleBreakpoint, setSidePanel, hydrate } = useApp.getState();
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length + (run?.error ? 1 : 0);
@@ -538,24 +638,25 @@ export default function IDE() {
 
   // En plataformas diferentes a web (escritorio / móvil), verificar si existe versión más reciente
   useEffect(() => {
-    if (!isNonWeb()) return;
     let mounted = true;
-    const timer = setTimeout(() => {
-      checkForUpdate()
-        .then((res) => {
-          if (!mounted) return;
-          const { setUpdateInfo, setNotice, setModal } = useApp.getState();
-          setUpdateInfo(res);
-          if (res.hasUpdate) {
-            setNotice(`¡Nueva versión v${res.latestVersion} disponible! Toca "Actualizar" para descargar e instalar.`);
-            // Si el usuario no tiene abierto otro modal, mostrar diálogo de actualización
-            if (!useApp.getState().modal) {
-              setModal('update');
-            }
-          }
-        })
-        .catch(() => { });
-    }, 1500);
+    const timer = setTimeout(async () => {
+      try {
+        const isMobile = Platform.OS === 'android' || Platform.OS === 'ios';
+        const isApp = isMobile || isNonWeb() || (await detectDesktopEnvironment()) !== null;
+        if (!isApp || !mounted) return;
+
+        const res = await checkForUpdate({ allowWebCheck: true });
+        if (!mounted) return;
+
+        const { setUpdateInfo, setNotice, setModal } = useApp.getState();
+        setUpdateInfo(res);
+        if (res.hasUpdate) {
+          setNotice(`¡Nueva versión v${res.latestVersion} disponible! Toca "Actualizar" para descargar e instalar.`);
+          // Mostrar modal notificando al usuario sobre la nueva versión
+          setModal('update');
+        }
+      } catch {}
+    }, 1200);
 
     return () => {
       mounted = false;
@@ -642,7 +743,6 @@ export default function IDE() {
       diagnostics={diagnostics}
       fontSize={fontSize}
       // en web (también en el celular) no se muestra la barra de símbolos; en la app nativa se puede activar
-      showSymbolBar={symbolBar && Platform.OS !== 'web'}
       varDetails={varDetails}
       isDebugging={isDebugging}
     />
@@ -669,24 +769,9 @@ export default function IDE() {
           {/* descargas de escritorio: no tienen sentido en un teléfono */}
           {Platform.OS === 'web' && width >= 700 && (
             <>
-              <a href="PSJavaScript.dmg" download="PSJavaScript.dmg" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
-                  <Ionicons name="logo-apple" size={16} color={t.textMuted} />
-                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>macOS</Text>
-                </View>
-              </a>
-              <a href="PSJavaScript-Setup.exe" download="PSJavaScript-Setup.exe" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
-                  <Ionicons name="logo-windows" size={16} color={t.textMuted} />
-                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Windows</Text>
-                </View>
-              </a>
-              <a href="PSJavaScript.AppImage" download="PSJavaScript.AppImage" style={{ textDecoration: 'none', marginRight: 8 }}>
-                <View style={[styles.repoLink, { borderColor: t.borderStrong }]}>
-                  <Ionicons name="logo-tux" size={16} color={t.textMuted} />
-                  <Text style={[styles.navLabel, { color: t.textMuted, marginLeft: 5 }]}>Linux</Text>
-                </View>
-              </a>
+              {DOWNLOADS.map((d) => (
+                <DownloadLink key={d.file} item={d} showLabel={width >= 1100} />
+              ))}
             </>
           )}
           {/* en el teléfono el enlace está en el menú «Más» para dejarle espacio a los archivos */}
@@ -716,42 +801,44 @@ export default function IDE() {
                 <FloatingDebugWidget />
               </View>
               <View style={{ flex: 0.8, minWidth: 300 }}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
-                  {PANELS.map((p) => (
-                    <Tab key={p.id} label={p.label} icon={p.icon} active={sidePanel === p.id} onPress={() => setSidePanel(p.id)} badge={p.id === 'problems' && errorCount ? errorCount : undefined} />
-                  ))}
-                </ScrollView>
+                <PanelTabs errorCount={errorCount} />
                 <View style={{ flex: 1 }}>
                   <PanelView id={sidePanel} />
                 </View>
               </View>
             </View>
           ) : (
-            // pantalla angosta: el código ocupa el 60 % (arriba, o a la izquierda con el celular acostado)
-            // y el resto las pestañas con su panel
-            <View style={{ flex: 1, flexDirection: split === 'row' ? 'row' : 'column' }}>
-              <View
-                style={[
-                  { flex: CODE_SHARE, minHeight: 0, minWidth: 0, position: 'relative', borderColor: t.border },
-                  split === 'row' ? { borderRightWidth: BORDER } : { borderBottomWidth: BORDER },
-                ]}
-              >
-                {editor}
-                <FloatingDebugWidget />
-              </View>
-              <View style={{ flex: 1 - CODE_SHARE, minHeight: 0, minWidth: 0 }}>
-                <PhoneTabs errorCount={errorCount} />
-                <View style={{ flex: 1 }}>
-                  <PanelView id={sidePanel} />
+            // pantalla angosta: en vertical, código arriba y pestañas con su panel abajo (reparto ajustable);
+            // con el celular acostado, lado a lado (60 % el código)
+            split === 'column' ? (
+              <CodeSplit
+                code={
+                  <>
+                    {editor}
+                    <FloatingDebugWidget />
+                  </>
+                }
+                errorCount={errorCount}
+              />
+            ) : (
+              <View style={{ flex: 1, flexDirection: 'row' }}>
+                <View style={{ flex: CODE_SHARE, minHeight: 0, minWidth: 0, position: 'relative', borderColor: t.border, borderRightWidth: BORDER }}>
+                  {editor}
+                  <FloatingDebugWidget />
+                </View>
+                <View style={{ flex: 1 - CODE_SHARE, minHeight: 0, minWidth: 0 }}>
+                  <PanelTabs errorCount={errorCount} />
+                  <View style={{ flex: 1 }}>
+                    <PanelView id={sidePanel} />
+                  </View>
                 </View>
               </View>
-            </View>
+            )
           )}
           <Mascot />
         </View>
 
         <InputBar />
-        <DebugBar />
         <View style={{ paddingBottom: insets.bottom, backgroundColor: t.primary }}>
           <StatusBar />
           {/* en el teléfono los créditos están en el menú «Más» */}
@@ -783,9 +870,10 @@ const styles = StyleSheet.create({
   toolbar: { alignItems: 'center', paddingHorizontal: SPACE.sm, paddingVertical: 4 },
   sep: { width: BORDER, height: 24, borderRadius: 1, marginHorizontal: SPACE.sm },
   speed: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: SPACE.sm, height: 34, marginLeft: 4 },
-  tabs: { flexGrow: 0, borderBottomWidth: BORDER },
   phoneToolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, paddingVertical: 2 },
   phoneTabs: { flexDirection: 'row', borderBottomWidth: BORDER },
+  gripHit: { height: 18, alignItems: 'center', justifyContent: 'center', borderTopWidth: BORDER },
+  grip: { width: 40, height: 4, borderRadius: 2 },
   phoneTab: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingTop: 6, paddingBottom: 4, borderBottomWidth: 3 },
   phoneBadge: { position: 'absolute', top: -5, right: -10, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center' },
   phoneBadgeText: { color: '#ffffff', fontSize: 10, fontWeight: '900' },
@@ -795,7 +883,6 @@ const styles = StyleSheet.create({
   status: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: SPACE.md, borderTopWidth: BORDER },
   dot: { width: 10, height: 10, borderRadius: 5 },
   notice: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACE.md, paddingVertical: 6, borderBottomWidth: BORDER },
-  debugBar: { flexDirection: 'row', justifyContent: 'center', paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md, borderTopWidth: BORDER, flexWrap: 'wrap', gap: SPACE.sm },
   floatingDebugWidget: {
     position: 'absolute',
     top: 10,

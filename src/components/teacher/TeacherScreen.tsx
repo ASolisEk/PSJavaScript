@@ -6,7 +6,7 @@ import { studentPhase } from '../../core/exam/room';
 import { useApp } from '../../store/app';
 import { TeacherTab, useTeacher } from '../../store/teacher';
 import { BORDER, useTheme } from '../../ui/theme';
-import { Button, Tab } from '../ui';
+import { BackToEditorButton, Tab, useIsPhone } from '../ui';
 import { Banner, ScreenHeader } from '../exam/kit';
 import BuilderTab from './BuilderTab';
 import LibraryTab from './LibraryTab';
@@ -16,6 +16,7 @@ import RoomTab from './RoomTab';
 export default function TeacherScreen() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const phone = useIsPhone();
   const hydrated = useTeacher((s) => s.hydrated);
   const tab = useTeacher((s) => s.tab);
   const room = useTeacher((s) => s.room);
@@ -42,11 +43,11 @@ export default function TeacherScreen() {
           title="Modo Maestro"
           subtitle={room && live && room.status !== 'closed' ? `Sala ${room.code} abierta · ${Object.keys(room.students).length} alumno(s)` : 'Crea, aplica y califica exámenes de programación'}
           color={t.accent}
-          right={<Button label="Volver al editor" icon="arrow-back" onPress={() => useApp.getState().setAppMode('ide')} />}
+          right={<BackToEditorButton onPress={() => useApp.getState().setAppMode('ide')} />}
         />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabs, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
           {tabs.map((x) => (
-            <Tab key={x.id} label={x.label} icon={x.icon} active={tab === x.id} onPress={() => useTeacher.getState().setTab(x.id)} badge={x.badge} />
+            <Tab key={x.id} label={x.label} icon={x.icon} active={tab === x.id} onPress={() => useTeacher.getState().setTab(x.id)} badge={x.badge} compact={phone} />
           ))}
         </ScrollView>
         {storageWarning ? (

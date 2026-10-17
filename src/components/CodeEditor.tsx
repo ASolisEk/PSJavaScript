@@ -37,7 +37,6 @@ interface Props {
   errorLine: number | null;
   diagnostics: Diagnostic[];
   fontSize: number;
-  showSymbolBar: boolean;
   varDetails?: Record<string, VarDetail>;
   isDebugging?: boolean;
   currentVars?: Record<string, string>;
@@ -56,33 +55,6 @@ const PAD_TOP = 8;
 /** En web, Text colapsa los espacios iniciales salvo con white-space: pre. */
 const WEB_PRE: any = Platform.OS === 'web' ? { whiteSpace: 'pre' } : null;
 const PAD_LEFT = 10;
-const SYMBOLS: { label: string; insert: string }[] = [
-  { label: '⇥', insert: INDENT + '$0' },
-  { label: '{ }', insert: '{$0}' },
-  { label: '( )', insert: '($0)' },
-  { label: '[ ]', insert: '[$0]' },
-  { label: ';', insert: ';$0' },
-  { label: '=', insert: '=$0' },
-  { label: '" "', insert: '"$0"' },
-  { label: "' '", insert: "'$0'" },
-  { label: '` `', insert: '`$0`' },
-  { label: '${}', insert: '${$0}' },
-  { label: '<', insert: '<$0' },
-  { label: '>', insert: '>$0' },
-  { label: '+', insert: '+$0' },
-  { label: '-', insert: '-$0' },
-  { label: '*', insert: '*$0' },
-  { label: '/', insert: '/$0' },
-  { label: '%', insert: '%$0' },
-  { label: '!', insert: '!$0' },
-  { label: '&&', insert: ' && $0' },
-  { label: '||', insert: ' || $0' },
-  { label: '.', insert: '.$0' },
-  { label: ',', insert: ', $0' },
-  { label: ':', insert: ': $0' },
-  { label: '=>', insert: ' => $0' },
-];
-
 interface Sel {
   start: number;
   end: number;
@@ -302,7 +274,6 @@ export default function CodeEditor(props: Props) {
     errorLine,
     diagnostics,
     fontSize,
-    showSymbolBar,
     varDetails: propVarDetails,
     isDebugging = false,
     currentVars,
@@ -816,32 +787,6 @@ export default function CodeEditor(props: Props) {
         </ScrollView>
       ) : null}
 
-      {showSymbolBar ? (
-        <ScrollView horizontal keyboardShouldPersistTaps="always" style={[styles.bar, { backgroundColor: theme.surface, borderTopColor: theme.border }]} contentContainerStyle={styles.barContent}>
-          <Pressable onPress={undo} style={[styles.sym, { borderColor: theme.border, backgroundColor: theme.surface }]} accessibilityLabel="Deshacer">
-            <Ionicons name="arrow-undo" size={16} color={theme.accent} />
-          </Pressable>
-          <Pressable onPress={redo} style={[styles.sym, { borderColor: theme.border, backgroundColor: theme.surface }]} accessibilityLabel="Rehacer">
-            <Ionicons name="arrow-redo" size={16} color={theme.accent} />
-          </Pressable>
-          {SYMBOLS.map((s) => (
-            <Pressable key={s.label} onPress={() => insertSnippet(s.insert)} style={[styles.sym, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-              <Text style={{ color: theme.text, fontFamily: MONO, fontSize: 15, fontWeight: '700' }}>{s.label}</Text>
-            </Pressable>
-          ))}
-          <Pressable
-            onPress={() => {
-              const { start, end } = selRef.current;
-              const r = toggleComment(codeRef.current, start, end);
-              apply(r.text, r.end, true);
-            }}
-            style={[styles.sym, { borderColor: theme.border, backgroundColor: theme.surface }]}
-            accessibilityLabel="Comentar líneas"
-          >
-            <Text style={{ color: theme.text, fontFamily: MONO, fontSize: 15, fontWeight: '700' }}>{'//'}</Text>
-          </Pressable>
-        </ScrollView>
-      ) : null}
     </View>
   );
 }
@@ -856,5 +801,4 @@ const styles = StyleSheet.create({
   bar: { flexGrow: 0, borderTopWidth: BORDER },
   barContent: { paddingHorizontal: SPACE.sm, paddingVertical: 6, alignItems: 'center' },
   chip: { paddingHorizontal: SPACE.md, height: 34, justifyContent: 'center', borderRadius: RADIUS.md, borderWidth: BORDER, marginRight: 6 },
-  sym: { minWidth: 40, height: 38, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.md, borderWidth: BORDER, marginRight: 6, alignItems: 'center', justifyContent: 'center' },
 });

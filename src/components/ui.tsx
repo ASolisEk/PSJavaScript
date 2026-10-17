@@ -7,7 +7,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
-import { Platform, Pressable, Switch as RNSwitch, ScrollView, StyleProp, StyleSheet, SwitchProps, TextInputProps, TextStyle, View, ViewStyle } from 'react-native';
+import { Platform, Pressable, Switch as RNSwitch, ScrollView, StyleProp, StyleSheet, SwitchProps, TextInputProps, TextStyle, useWindowDimensions, View, ViewStyle } from 'react-native';
 import { tokenize } from '../core/editor/tokenizer';
 import { Text, TextInput } from '../ui/text';
 import { BORDER, MONO, RADIUS, SPACE, TYPE, useTheme } from '../ui/theme';
@@ -27,6 +27,17 @@ export const tint = (color: string, alpha: number) =>
     : color;
 
 export const ModalContext = React.createContext<boolean>(false);
+
+/** Pantalla de teléfono (menos de 600 px): componentes en versión compacta. */
+export function useIsPhone() {
+  return useWindowDimensions().width < 600;
+}
+
+/** Botón "Volver al editor" de las pantallas de Maestro y Examen (corto en teléfonos). */
+export function BackToEditorButton({ onPress }: { onPress(): void }) {
+  const phone = useIsPhone();
+  return <Button label={phone ? 'Editor' : 'Volver al editor'} icon="arrow-back" size={phone ? 'sm' : 'md'} onPress={onPress} />;
+}
 
 // ───────────────────────────── globo de ayuda ─────────────────────────────
 
@@ -186,16 +197,28 @@ export function Button({
 
 // ───────────────────────────── navegación y selección ─────────────────────────────
 
-/** Pestaña de navegación: etiqueta en mayúsculas, verde y subrayada si está activa. */
-export function Tab({ label, active, onPress, badge, icon }: { label: string; active: boolean; onPress(): void; badge?: number | string; icon?: IconName }) {
+/**
+ * Pestaña de navegación: etiqueta en mayúsculas, verde y subrayada si está
+ * activa. Con `compact` (pantallas angostas) las inactivas muestran solo el icono.
+ */
+export function Tab({ label, active, onPress, badge, icon, compact }: { label: string; active: boolean; onPress(): void; badge?: number | string; icon?: IconName; compact?: boolean }) {
   const t = useTheme();
   const c = active ? t.primary : t.textMuted;
+  const iconOnly = !!compact && !active && !!icon;
   return (
-    <Pressable onPress={onPress} accessibilityRole="tab" accessibilityState={{ selected: active }} style={[styles.tab, { borderBottomColor: active ? t.primary : 'transparent' }]}>
-      {icon ? <Ionicons name={icon} size={15} color={c} style={{ marginRight: 6 }} /> : null}
-      <Text style={[styles.tabText, { color: c }]} numberOfLines={1}>
-        {label}
-      </Text>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      style={[styles.tab, iconOnly && styles.tabIcon, { borderBottomColor: active ? t.primary : 'transparent' }]}
+    >
+      {icon ? <Ionicons name={icon} size={iconOnly ? 18 : 15} color={c} style={iconOnly ? null : { marginRight: 6 }} /> : null}
+      {iconOnly ? null : (
+        <Text style={[styles.tabText, { color: c }]} numberOfLines={1}>
+          {label}
+        </Text>
+      )}
       {badge ? (
         <View style={[styles.badge, { backgroundColor: t.danger }]}>
           <Text style={styles.badgeText}>{badge}</Text>
@@ -542,6 +565,7 @@ const styles = StyleSheet.create({
   btnText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
   // navegación
   tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, height: 44, borderBottomWidth: 3 },
+  tabIcon: { paddingHorizontal: 9 },
   tabText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
   badge: { marginLeft: 6, minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },

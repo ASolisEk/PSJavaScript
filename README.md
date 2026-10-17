@@ -44,11 +44,15 @@ Los sprites (`assets/mascot/`) se generan desde `assets/mascot.jpg` con `scripts
 
 ### Capi, el capibara
 
-Segunda mascota, al estilo de una ilustración kawaii de capibara: sentado de perfil, una sola silueta naranja con contorno café, el hocico café oscuro, un ojito con brillo, orejas redondas y patitas cafés con deditos. Tiene las mismas animaciones, poses y vestuarios que Michi (en reposo mueve la oreja en lugar de la cola; con un error se toca el hocico, pensando; al correr el código teclea con las dos patas). Se elige en **Configuración → Mascota** o desde su menú (**Cambiar a Capi / Cambiar a Michi**). Al esconderse asoma la cabecita. Como de perfil se ve un solo ojo, los lentes y la pintura de calavera se adaptan a un ojo. Sus sprites (`assets/mascot/capibara/`, con pieles oscura y negra para Halloween y Día de Muertos) se dibujan en SVG y se exportan a PNG con `node scripts/generar_capibara.js` (usa el Chromium de Playwright); ese script también imprime las anclas de la cara que usan los vestuarios (`src/components/mascot/characters.ts`).
+Segunda mascota, al estilo de una ilustración kawaii de capibara: sentado de perfil, una sola silueta naranja con contorno café, el hocico café oscuro, un ojito con brillo, orejas redondas y patitas cafés con deditos. Tiene las mismas animaciones, poses y vestuarios que Michi (en reposo mueve la oreja en lugar de la cola; con un error se toca el hocico, pensando; al correr el código teclea con las dos patas). Se elige en **Configuración → Mascota** o desde su menú (**Cambiar a…** pasa al siguiente personaje). Al esconderse asoma la cabecita. Como de perfil se ve un solo ojo, los lentes y la pintura de calavera se adaptan a un ojo. Sus sprites (`assets/mascot/capibara/`, con pieles oscura y negra para Halloween y Día de Muertos) se dibujan en SVG y se exportan a PNG con `node scripts/generar_capibara.js` (usa el Chromium de Playwright); ese script también imprime las anclas de la cara que usan los vestuarios (`src/components/mascot/characters.ts`).
+
+### Axo, el ajolote
+
+Tercera mascota, basada en una ilustración kawaii de ajolote: sentado de frente, con la cabeza grande y redonda, tres branquias coral por lado (con su orilla en picos y sus rayitas), ojitos negros con brillo, cejitas, chapitas, sonrisa, patitas con deditos y la cola con su aleta, que se mece en lugar de la cola del gato. Tiene las mismas animaciones, poses y vestuarios que Michi y Capi; en Halloween es morado con branquias verdes y en Día de Muertos oscuro con branquias de cempasúchil. Se elige en **Configuración → Mascota** o desde su menú (**Cambiar a…** pasa al siguiente personaje). Sus sprites (`assets/mascot/ajolote/`) se generan con `node scripts/generar_ajolote.js`, que también imprime las anclas de la cara para los vestuarios.
 
 ### Vestuarios de temporada
 
-Michi (y Capi) se disfraza solo según la fecha (`src/core/holidays.ts`): se pone el vestuario **un mes antes** del día festivo y lo conserva **10 días después**. Si otra fiesta cae en el mismo mes, la anticipación se acorta a **10 días**. Cuando dos periodos se enciman gana la fiesta más cercana (en empate, la que viene). También se puede elegir en **Configuración → Vestuario de la mascota** o desde su menú ("Vestuario: …" recorre todos). Los accesorios son SVG que siguen las animaciones del cuerpo en todas las poses (`src/components/mascot/costumes.tsx`) y cada fiesta trae sus propias partículas:
+Michi (y Capi y Axo) se disfraza solo según la fecha (`src/core/holidays.ts`): se pone el vestuario **un mes antes** del día festivo y lo conserva **10 días después**. Si otra fiesta cae en el mismo mes, la anticipación se acorta a **10 días**. Cuando dos periodos se enciman gana la fiesta más cercana (en empate, la que viene). También se puede elegir en **Configuración → Vestuario de la mascota** o desde su menú ("Vestuario: …" recorre todos). Los accesorios son SVG que siguen las animaciones del cuerpo en todas las poses (`src/components/mascot/costumes.tsx`) y cada fiesta trae sus propias partículas:
 
 | Fiesta | Día festivo | Periodo automático | Vestuario |
 | --- | --- | --- | --- |
@@ -232,9 +236,16 @@ Los comandos copian automáticamente el instalador a la carpeta `public/` y rege
 
 - **Web**: `npm run export:web` genera `dist/`, publicable en cualquier hosting estático.
 - **Escritorio**: Usa `npm run build:desktop` para generar el empaquetado para GNU/Linux (`.AppImage` / `.deb`), macOS (`.dmg`) o Windows (`.exe`) automáticamente empleando Electron y `electron-builder`.
-- **iOS y Android**: con EAS (`eas.json` incluido):
+- **Android (Compilación Local)**:
+  - Generar APK listo para instalar: `npm run build:android` (o `npm run build:android:apk`). Salida en `dist-android/`.
+  - Generar Android App Bundle para Google Play: `npm run build:android:aab`.
+  - Instalar directo en el dispositivo por USB (ADB): `npm run build:android:install`.
+  - Exportar assets y bundles Hermes estáticos: `npm run export:android`.
+  - Guía completa de firmas y opciones: [docs/EXPORTAR_ANDROID.md](file:///Users/angelsolisek/PSJavaScript/docs/EXPORTAR_ANDROID.md).
+- **iOS y Android (con EAS)**:
   ```bash
-  npx eas-cli@latest build --platform android --profile preview   # APK de prueba
+  npm run build:android:local-eas                                 # Compilación local con EAS CLI
+  npx eas-cli@latest build --platform android --profile preview   # APK en la nube
   npx eas-cli@latest build --platform ios --profile production
   ```
   Identificador de la app: `com.psjavascript.app` (cámbialo en `app.json` antes de publicar).
