@@ -12,6 +12,7 @@ export type StudentEventKind =
   | 'blur'
   | 'focus'
   | 'paste'
+  | 'lockdown'
   | 'run'
   | 'test'
   | 'submit'
@@ -47,6 +48,8 @@ export interface StudentRecord {
   focusLost: number;
   awayMs: number;
   pasteBlocked: number;
+  /** Incidentes del examen bloqueado (pantalla completa, F12, capturas…). */
+  lockdown?: number;
   runs: number;
   tests: number;
   events: StudentEvent[];

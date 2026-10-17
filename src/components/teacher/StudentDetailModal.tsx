@@ -31,6 +31,7 @@ const EVENT_ICON: Record<StudentEventKind, IconName> = {
   blur: 'eye-off-outline',
   focus: 'eye-outline',
   paste: 'clipboard-outline',
+  lockdown: 'lock-open-outline',
   run: 'play-circle-outline',
   test: 'flask-outline',
   submit: 'paper-plane-outline',
@@ -100,6 +101,7 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
           {s.group ? <Pill icon="people-outline" text={s.group} /> : null}
           {total ? <Pill icon="checkmark-done-outline" text={`${answeredCount(s, room)}/${total} respondidas`} color={t.primary} /> : null}
           {s.focusLost ? <Pill icon="eye-off-outline" text={`Salió ${s.focusLost} ${s.focusLost === 1 ? 'vez' : 'veces'} (${formatSince(s.awayMs)})`} color={t.warning} /> : null}
+          {s.lockdown ? <Pill icon="lock-open-outline" text={`${s.lockdown} ${s.lockdown === 1 ? 'incidente' : 'incidentes'} del examen bloqueado`} color={t.danger} /> : null}
           {s.pasteBlocked ? <Pill icon="clipboard-outline" text={`${s.pasteBlocked} ${s.pasteBlocked === 1 ? 'intento' : 'intentos'} de pegar`} color={t.danger} /> : null}
           {s.runs ? <Pill icon="play-outline" text={`${s.runs} ${s.runs === 1 ? 'ejecución' : 'ejecuciones'}`} /> : null}
         </View>
@@ -169,7 +171,7 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
         ) : (
           [...s.events].reverse().map((e, i) => (
             <View key={i} style={[styles.event, { borderBottomColor: t.border }]}>
-              <Ionicons name={EVENT_ICON[e.kind] ?? 'ellipse-outline'} size={15} color={e.kind === 'blur' || e.kind === 'paste' ? t.warning : e.kind === 'disconnect' ? t.danger : t.textMuted} />
+              <Ionicons name={EVENT_ICON[e.kind] ?? 'ellipse-outline'} size={15} color={e.kind === 'blur' || e.kind === 'paste' || e.kind === 'lockdown' ? t.warning : e.kind === 'disconnect' ? t.danger : t.textMuted} />
               <Text style={{ color: t.textMuted, fontFamily: MONO, fontSize: 12, width: 78, marginLeft: 8 }}>{new Date(e.at).toLocaleTimeString()}</Text>
               <Text style={{ color: t.text, fontSize: 13, flex: 1 }}>{e.text}</Text>
             </View>
