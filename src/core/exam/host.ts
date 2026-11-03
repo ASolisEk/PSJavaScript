@@ -236,6 +236,9 @@ export class ExamHost {
         } else if (msg.kind === 'paste') {
           patch.pasteBlocked = s.pasteBlocked + 1;
           text = 'Intentó pegar texto (bloqueado)';
+        } else if (msg.kind === 'lockdown') {
+          patch.lockdown = (s.lockdown ?? 0) + 1;
+          text = String(msg.detail ?? 'Incidente en el examen bloqueado').slice(0, 120);
         } else if (msg.kind === 'run') {
           patch.runs = s.runs + 1;
           text = `Ejecutó su programa${msg.detail ? `: ${msg.detail}` : ''}`;

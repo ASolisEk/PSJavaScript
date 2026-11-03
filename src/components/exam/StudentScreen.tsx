@@ -20,7 +20,9 @@ import { clearExamLink, readExamLink, rememberedStudent, rememberStudent } from 
 import { confirmDialog } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, SCRIM, useTheme } from '../../ui/theme';
 import { BackToEditorButton, Button, Chip, Heading } from '../ui';
-import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, TextField } from './kit';
+import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, Segmented, TextField } from './kit';
+import { clearCodeResults } from './CodeAnswer';
+import { enterFullscreen, exitFullscreen, fullscreenSupported, useExamLockdown } from './lockdown';
 import QuestionView from './QuestionView';
 import RichText from './RichText';
 
@@ -78,6 +80,7 @@ function JoinView() {
   const [spec, setSpec] = useState<TransportSpec>(link?.transport ?? defaultTransport());
   const [showNet, setShowNet] = useState(!!link?.transport && link.transport.kind !== 'internet');
   const options = transportOptions().filter((o) => o.available);
+  useEffect(() => clearCodeResults(), []);
   const valid = isValidRoomCode(code) && name.trim().length >= 2 && (spec.kind !== 'lan' || !!spec.url?.trim());
 
   const join = async () => {
@@ -231,6 +234,7 @@ async function confirmLeave() {
     ? await confirmDialog('¿Salir de la práctica?', 'Se perderán las respuestas de este intento.', 'Salir')
     : await confirmDialog('¿Abandonar el examen?', 'Tu maestro verá que saliste. Si ya comenzaste, lo que no hayas enviado no se calificará.', 'Abandonar');
   if (!ok) return;
+  exitFullscreen();
   useStudent.getState().leave();
   useApp.getState().setAppMode('ide');
 }
@@ -240,6 +244,7 @@ function WaitingView() {
   const s = useStudent((x) => x.session)!;
   const room = s.room;
   const ready = s.phase === 'ready';
+  const lockable = Platform.OS === 'web' && s.transport.kind !== 'practice';
   if (s.roomClosed) return <EndedView />;
   return (
     <View style={{ flex: 1 }}>
@@ -280,8 +285,24 @@ function WaitingView() {
               <Text style={{ color: t.textMuted, fontSize: 13, marginTop: 4 }}>• Las preguntas aparecen en orden aleatorio.</Text>
               <Text style={{ color: t.textMuted, fontSize: 13 }}>• Tu maestro ve tu avance en tiempo real.</Text>
               {room.durationMin ? <Text style={{ color: t.textMuted, fontSize: 13 }}>• El tiempo empieza a contar al presionar «Comenzar». Al terminarse, tu examen se envía solo.</Text> : null}
+              {lockable ? (
+                <Text style={{ color: t.textMuted, fontSize: 13 }}>
+                  • {fullscreenSupported() ? 'El examen se abre en pantalla completa hasta que lo termines. ' : ''}Si cambias de pestaña o ventana, intentas abrir las herramientas del navegador o tomar capturas, el examen se oculta y tu maestro recibe un aviso.
+                </Text>
+              ) : null}
             </Card>
-            <Button label="Comenzar examen" icon="play" kind="primary" onPress={() => useStudent.getState().begin()} disabled={!ready} style={{ height: 50 }} />
+            <Button
+              label="Comenzar examen"
+              icon="play"
+              kind="primary"
+              onPress={() => {
+                // la pantalla completa solo se puede pedir dentro del clic
+                if (lockable) enterFullscreen();
+                useStudent.getState().begin();
+              }}
+              disabled={!ready}
+              style={{ height: 50 }}
+            />
           </>
         )}
       </Narrow>
@@ -396,6 +417,8 @@ function useExamGuards(trackFocus: boolean, blockPaste: boolean, onPasteBlocked:
   }, [trackFocus, blockPaste, onPasteBlocked]);
 }
 
+const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
 /** Minutos restantes en los que se avisa al alumno. */
 const TIME_WARNINGS = [10, 5, 1];
 
@@ -458,6 +481,8 @@ function ExamView() {
     setTimeout(() => setToast(null), 2500);
   }, []);
   useExamGuards(paper.settings.trackFocus, paper.settings.blockPaste, onPasteBlocked);
+  // examen bloqueado (en la sala del maestro; la práctica individual queda libre)
+  const lock = useExamLockdown(s.transport.kind !== 'practice', useCallback((detail: string) => useStudent.getState().report('lockdown', detail), []));
 
   // sin actividad por un rato
   useEffect(() => {
@@ -492,8 +517,67 @@ function ExamView() {
 
   const go = (i: number) => st.goTo(i);
 
+  // atajos de teclado (web): ← → para moverse, letras para elegir opción, V/F
+  const keyState = useRef({ q, current: s.current, total: paper.questions.length, confirm, answers: s.answers });
+  useEffect(() => {
+    keyState.current = { q, current: s.current, total: paper.questions.length, confirm, answers: s.answers };
+  });
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      const k = keyState.current;
+      if (k.confirm || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      const student = useStudent.getState();
+      if (student.session?.phase !== 'exam' || student.session.submitting) return;
+      const key = e.key.toLowerCase();
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        student.goTo(k.current + (e.key === 'ArrowRight' ? 1 : -1));
+        return;
+      }
+      const { q: cur } = k;
+      if (cur.type === 'truefalse' && (key === 'v' || key === 'f')) {
+        student.touch('answering');
+        student.setAnswer(cur.id, key === 'v');
+        return;
+      }
+      if ((cur.type === 'single' || cur.type === 'multiple') && /^[a-z]$/.test(key)) {
+        const opt = cur.options?.[key.charCodeAt(0) - 97];
+        if (!opt) return;
+        student.touch('answering');
+        if (cur.type === 'single') student.setAnswer(cur.id, opt.id);
+        else {
+          const prev = k.answers[cur.id];
+          const sel = Array.isArray(prev) ? prev : [];
+          student.setAnswer(cur.id, sel.includes(opt.id) ? sel.filter((x) => x !== opt.id) : [...sel, opt.id]);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // la lista de preguntas sigue a la pregunta actual (en el celular y en la barra lateral)
+  const navScroll = useRef<ScrollView>(null);
+  const navPos = useRef<Record<number, { x: number; y: number }>>({});
+  const [navSize, setNavSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const p = navPos.current[currentIndex];
+    if (!p || !navScroll.current) return;
+    if (wide) navScroll.current.scrollTo({ y: Math.max(0, p.y - navSize.h / 2 + 19), animated: true });
+    else navScroll.current.scrollTo({ x: Math.max(0, p.x - navSize.w / 2 + 19), animated: true });
+  }, [currentIndex, wide, navSize]);
+
   const nav = (
-    <ScrollView horizontal={!wide} showsHorizontalScrollIndicator={false} contentContainerStyle={wide ? styles.navGrid : styles.navRow}>
+    <ScrollView
+      ref={navScroll}
+      horizontal={!wide}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={wide ? styles.navGrid : styles.navRow}
+      onLayout={(e) => setNavSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+    >
       {paper.questions.map((x, i) => {
         const done = isAnswered(x, s.answers[x.id]);
         const cur = i === s.current;
@@ -501,6 +585,9 @@ function ExamView() {
         return (
           <Pressable
             key={x.id}
+            onLayout={(e) => {
+              navPos.current[i] = { x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y };
+            }}
             onPress={() => go(i)}
             accessibilityLabel={`Pregunta ${i + 1}${done ? ', respondida' : ''}${flag ? ', marcada' : ''}`}
             style={[styles.navBtn, { borderColor: cur ? t.primary : done ? t.primary + '88' : t.border, backgroundColor: done ? t.primary : t.surface, borderWidth: cur ? 2.5 : 1 }]}
@@ -513,44 +600,67 @@ function ExamView() {
     </ScrollView>
   );
 
+  const narrow = width < 600;
+  const status = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: narrow ? 0 : 2, flex: narrow ? 1 : undefined }}>
+      <View style={[styles.dot, { backgroundColor: net === 'online' ? t.success : net === 'connecting' ? t.info : t.warning }]} />
+      <Text style={{ color: t.textMuted, fontSize: 12, flexShrink: 1 }} numberOfLines={1}>
+        {narrow ? '' : `${s.identity.name} · `}
+        {answered}/{paper.questions.length}
+        {narrow ? '' : ' respondidas'} ·{' '}
+        <Text style={{ color: net !== 'online' ? t.warning : pendingSync ? t.textMuted : t.success }}>
+          {net !== 'online' ? (narrow ? 'sin conexión, guardado aquí' : 'guardado en este dispositivo') : pendingSync ? 'guardando…' : 'guardado ✓'}
+        </Text>
+      </Text>
+    </View>
+  );
+  const fontControls = (
+    <View style={[styles.fontBox, { borderColor: t.border }]}>
+      <Pressable onPress={() => st.setFontSize(fontSize - 2)} hitSlop={6} accessibilityLabel="Letra más pequeña" style={styles.fontBtn}>
+        <Text style={{ color: t.text, fontSize: 12, fontWeight: '800' }}>A−</Text>
+      </Pressable>
+      <Pressable onPress={() => st.setFontSize(fontSize + 2)} hitSlop={6} accessibilityLabel="Letra más grande" style={styles.fontBtn}>
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '800' }}>A+</Text>
+      </Pressable>
+    </View>
+  );
+  const openSubmit = () => {
+    setConfirm(true);
+    touch('reviewing');
+  };
+  const sendButton = <Button label={narrow ? 'Terminar' : 'Terminar examen'} icon="checkmark-done-outline" kind="primary" onPress={openSubmit} style={{ marginLeft: narrow ? 0 : 8 }} disabled={s.submitting} />;
+  const title = (
+    <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, flexShrink: 1 }} numberOfLines={1}>
+      {paper.title}
+    </Text>
+  );
+
   return (
     <View style={{ flex: 1 }}>
-      <View style={[styles.examHeader, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
-        <View style={{ flex: 1, minWidth: 140 }}>
-          <Text style={{ color: t.text, fontWeight: '800', fontSize: 15 }} numberOfLines={1}>
-            {paper.title}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-            <View style={[styles.dot, { backgroundColor: net === 'online' ? t.success : net === 'connecting' ? t.info : t.warning }]} />
-            <Text style={{ color: t.textMuted, fontSize: 12, flexShrink: 1 }} numberOfLines={1}>
-              {s.identity.name} · {answered}/{paper.questions.length} respondidas ·{' '}
-              <Text style={{ color: net !== 'online' ? t.warning : pendingSync ? t.textMuted : t.success }}>
-                {net !== 'online' ? 'guardado en este dispositivo' : pendingSync ? 'guardando…' : 'guardado ✓'}
-              </Text>
-            </Text>
+      {narrow ? (
+        // en el celular: título y tiempo arriba; avance, letra y enviar abajo (sin que nada se corte)
+        <View style={[styles.examHeaderNarrow, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
+          <View style={styles.headerRow}>
+            <View style={{ flex: 1 }}>{title}</View>
+            <Timer deadline={s.deadline} onExpire={timeUp} onWarn={onWarn} />
+          </View>
+          <View style={[styles.headerRow, { marginTop: 6 }]}>
+            {status}
+            {fontControls}
+            {sendButton}
           </View>
         </View>
-        <View style={[styles.fontBox, { borderColor: t.border }]}>
-          <Pressable onPress={() => st.setFontSize(fontSize - 2)} hitSlop={6} accessibilityLabel="Letra más pequeña" style={styles.fontBtn}>
-            <Text style={{ color: t.text, fontSize: 12, fontWeight: '800' }}>A−</Text>
-          </Pressable>
-          <Pressable onPress={() => st.setFontSize(fontSize + 2)} hitSlop={6} accessibilityLabel="Letra más grande" style={styles.fontBtn}>
-            <Text style={{ color: t.text, fontSize: 16, fontWeight: '800' }}>A+</Text>
-          </Pressable>
+      ) : (
+        <View style={[styles.examHeader, { backgroundColor: t.surface, borderBottomColor: t.border }]}>
+          <View style={{ flex: 1, minWidth: 140 }}>
+            {title}
+            {status}
+          </View>
+          {fontControls}
+          <Timer deadline={s.deadline} onExpire={timeUp} onWarn={onWarn} />
+          {sendButton}
         </View>
-        <Timer deadline={s.deadline} onExpire={timeUp} onWarn={onWarn} />
-        <Button
-          label={width < 520 ? 'Enviar' : 'Enviar a calificar'}
-          icon="paper-plane-outline"
-          kind="primary"
-          onPress={() => {
-            setConfirm(true);
-            touch('reviewing');
-          }}
-          style={{ marginLeft: 8 }}
-          disabled={s.submitting}
-        />
-      </View>
+      )}
       <ProgressBar value={answered / Math.max(1, paper.questions.length)} height={3} style={{ borderRadius: 0 }} />
 
       <View style={{ flex: 1, flexDirection: wide ? 'row' : 'column' }}>
@@ -573,6 +683,7 @@ function ExamView() {
             {banner ? <Banner icon="megaphone-outline" color={t.accent} text={`Aviso del maestro: ${banner}`} onClose={() => st.dismissBanner()} /> : null}
             {timeWarning ? <Banner icon="alarm-outline" color={t.danger} text={timeWarning} onClose={() => setTimeWarning(null)} /> : null}
             {toast ? <Banner icon="hand-left-outline" color={t.danger} text={toast} /> : null}
+            {lock.devtools ? <Banner icon="construct-outline" color={t.danger} text="Cierra las herramientas de desarrollo del navegador. Tu maestro ya recibió un aviso." /> : null}
             <Card>
               <QuestionView
                 q={q}
@@ -598,21 +709,20 @@ function ExamView() {
               {s.current < paper.questions.length - 1 ? (
                 <Button label="Siguiente" icon="chevron-forward" kind="primary" onPress={() => go(s.current + 1)} />
               ) : (
-                <Button
-                  label="Revisar y enviar"
-                  icon="checkmark-done-outline"
-                  kind="primary"
-                  onPress={() => {
-                    setConfirm(true);
-                    touch('reviewing');
-                  }}
-                />
+                <Button label="Revisar y terminar" icon="checkmark-done-outline" kind="primary" onPress={openSubmit} />
               )}
             </View>
+            {wide && Platform.OS === 'web' ? (
+              <Text style={{ color: t.textMuted, fontSize: 12, textAlign: 'center', marginTop: -12, marginBottom: 24 }}>
+                Atajos: ← → para cambiar de pregunta
+                {q.type === 'single' || q.type === 'multiple' ? ` · A–${LETTERS[Math.max(0, (q.options?.length ?? 1) - 1)]} para elegir` : q.type === 'truefalse' ? ' · V o F para responder' : ''}
+              </Text>
+            ) : null}
           </View>
         </ScrollView>
       </View>
-      {confirm ? (
+      {lock.cover && !s.submitting ? <LockCover reason={lock.cover} onResume={lock.resume} /> : null}
+      {confirm && !lock.cover ? (
         <SubmitDialog
           questions={paper.questions}
           onCancel={() => {
@@ -642,6 +752,24 @@ function ExamView() {
   );
 }
 
+/** Oculta el examen mientras el alumno no está en pantalla completa o está en otra ventana. */
+function LockCover({ reason, onResume }: { reason: 'fullscreen' | 'away'; onResume(): void }) {
+  const t = useTheme();
+  const fs = reason === 'fullscreen';
+  return (
+    <View style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: t.bg }]} accessibilityViewIsModal>
+      <Card accent={t.danger} style={{ alignItems: 'center', padding: 24, maxWidth: 460, width: '100%' }}>
+        <Ionicons name={fs ? 'expand-outline' : 'eye-off-outline'} size={44} color={t.danger} />
+        <Heading style={{ marginTop: 8, textAlign: 'center' }}>{fs ? 'El examen se ocultó' : 'Regresa a tu examen'}</Heading>
+        <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
+          {fs ? 'El examen solo se puede responder en pantalla completa.' : 'Cambiaste de ventana o de pestaña.'} Tu maestro ya recibió un aviso. El tiempo sigue corriendo y tus respuestas están guardadas.
+        </Text>
+        <Button label={fs ? 'Volver a pantalla completa' : 'Continuar el examen'} icon={fs ? 'expand-outline' : 'play'} kind="primary" onPress={onResume} style={{ marginTop: 16, height: 46 }} />
+      </Card>
+    </View>
+  );
+}
+
 function Legend({ color, text, filled, dot }: { color: string; text: string; filled?: boolean; dot?: boolean }) {
   const t = useTheme();
   return (
@@ -657,33 +785,53 @@ function SubmitDialog({ questions, onCancel, onSubmit, onGo }: { questions: Pape
   const s = useStudent((x) => x.session)!;
   const pending = questions.map((q, i) => ({ q, i })).filter(({ q }) => !isAnswered(q, s.answers[q.id]));
   const flagged = questions.map((q, i) => ({ q, i })).filter(({ q }) => s.flagged.includes(q.id));
+  const left = s.deadline === null ? null : s.deadline - serverNow();
+  const all = !pending.length && !flagged.length;
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onCancel}>
       <View style={styles.overlay}>
         <View style={[styles.dialog, { backgroundColor: t.surface, borderColor: t.border }]}>
-          <Heading level="title" style={{ marginBottom: 6 }}>¿Enviar tu examen a calificar?</Heading>
-          <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 12 }}>Una vez enviado ya no podrás cambiar tus respuestas.</Text>
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-            <Pill icon="checkmark-done-outline" color={t.success} text={`${questions.length - pending.length} respondidas`} />
-            {pending.length ? <Pill icon="alert-circle-outline" color={t.danger} text={`${pending.length} sin responder`} /> : null}
-            {flagged.length ? <Pill icon="flag-outline" color={t.warning} text={`${flagged.length} marcadas`} /> : null}
-          </View>
-          {pending.length || flagged.length ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {[...pending, ...flagged.filter((f) => !pending.some((p) => p.i === f.i))].map(({ i, q }) => (
-                <Pressable key={q.id} onPress={() => onGo(i)} style={[styles.goChip, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
-                  <Text style={{ color: t.text, fontSize: 12, fontWeight: '700' }}>Ir a la {i + 1}</Text>
-                </Pressable>
-              ))}
+          <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 4 }}>
+            <Heading level="title" style={{ marginBottom: 6 }}>{all ? '¡Respondiste todo! ¿Terminar tu examen?' : '¿Terminar tu examen?'}</Heading>
+            <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 12 }}>
+              Se enviará a calificar y ya no podrás cambiar tus respuestas.
+              {left !== null && left > 60_000 ? ` Aún te quedan ${formatDuration(left)}.` : ''}
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <Pill icon="checkmark-done-outline" color={t.success} text={`${questions.length - pending.length} de ${questions.length} respondidas`} />
             </View>
-          ) : null}
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+            <JumpList title={`Sin responder (${pending.length})`} icon="alert-circle-outline" color={t.danger} items={pending.map((x) => x.i)} onGo={onGo} />
+            <JumpList title={`Marcadas para revisar (${flagged.length})`} icon="flag-outline" color={t.warning} items={flagged.map((x) => x.i)} onGo={onGo} />
+          </ScrollView>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
             <Button label="Seguir respondiendo" onPress={onCancel} />
-            <Button label="Sí, enviar" icon="paper-plane" kind="primary" onPress={onSubmit} />
+            <Button label="Sí, terminar y enviar" icon="paper-plane" kind="primary" onPress={onSubmit} />
           </View>
         </View>
       </View>
     </Modal>
+  );
+}
+
+/** Números de pregunta a los que se puede saltar desde la confirmación de envío. */
+function JumpList({ title, icon, color, items, onGo }: { title: string; icon: IconName; color: string; items: number[]; onGo(i: number): void }) {
+  const t = useTheme();
+  if (!items.length) return null;
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+        <Ionicons name={icon} size={14} color={color} />
+        <Text style={{ color: t.text, fontSize: 13, fontWeight: '700', marginLeft: 5 }}>{title}</Text>
+        <Text style={{ color: t.textMuted, fontSize: 12, marginLeft: 6 }}>· toca un número para ir</Text>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {items.map((i) => (
+          <Pressable key={i} onPress={() => onGo(i)} accessibilityRole="button" accessibilityLabel={`Ir a la pregunta ${i + 1}`} style={({ pressed }) => [styles.jump, { borderColor: color + '88', backgroundColor: pressed ? color + '30' : color + '12' }]}>
+            <Text style={{ color: t.text, fontSize: 13, fontWeight: '800' }}>{i + 1}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -696,117 +844,175 @@ const STATUS: Record<string, { icon: IconName; label: string; color: 'success' |
   blank: { icon: 'ellipse-outline', label: 'Sin responder', color: 'textMuted' },
 };
 
+type ResultFilter = 'all' | 'review' | 'correct';
+
+/** Certificación de una práctica individual («fcc/simulacro»; las claves sin prefijo son de freeCodeCamp). */
+function practiceCertification(key: string) {
+  const slash = key.indexOf('/');
+  return CERTIFICATIONS.find((c) => slash > 0 && c.id === key.slice(0, slash)) ?? CERTIFICATIONS.find((c) => c.id === 'fcc') ?? CERTIFICATIONS[0];
+}
+
+/** Vuelve a practicar (la misma práctica u otra, p. ej. un tema débil) con el mismo nombre. */
+function practiceAgain(key: string) {
+  const name = useStudent.getState().session?.identity.name ?? '';
+  useStudent.getState().leave();
+  useStudent.getState().practice(key, name);
+}
+
 function ResultView() {
   const t = useTheme();
   const s = useStudent((x) => x.session)!;
   const r: StudentResultView | null = s.result;
+  const [filter, setFilter] = useState<ResultFilter>('all');
+  // el examen terminó: se sale del modo bloqueado
+  useEffect(() => exitFullscreen(), []);
+  const [topic, setTopic] = useState<string | null>(null);
+  const scroll = useRef<ScrollView>(null);
+  const listY = useRef(0);
   const exit = () => {
     useStudent.getState().leave();
     useApp.getState().setAppMode('ide');
   };
   const review = r?.visibility === 'review';
   const reason = s.submitReason === 'timeout' ? 'Se terminó el tiempo y tu examen se envió automáticamente.' : s.submitReason === 'closed' ? 'El maestro cerró el examen y tus respuestas se enviaron automáticamente.' : s.submitReason === 'teacher' ? 'El maestro recogió tu examen.' : s.practiceKey ? 'Revisa abajo qué acertaste y la respuesta correcta de cada pregunta.' : 'Tu examen fue entregado.';
+  const graded = !!r && r.visibility !== 'none';
+  const questions = (r?.questions ?? []).map((qr, i) => ({ qr, i, pq: s.paper?.questions.find((x) => x.id === qr.questionId) }));
+  const toReview = questions.filter((x) => x.qr.status !== 'correct').length;
+  const shown = questions.filter(({ qr, pq }) => (filter === 'all' || (filter === 'correct' ? qr.status === 'correct' : qr.status !== 'correct')) && (!topic || pq?.topic === topic));
+  // temas de la misma certificación que se pueden practicar por separado
+  const cert = s.practiceKey ? practiceCertification(s.practiceKey) : null;
+  const practiceTopics = cert ? new Set(cert.practiceOptions().topics.map((o) => o.key)) : null;
+  const topicKey = (name: string) => (cert ? practiceKey(cert.id, `tema:${name}`) : '');
+  const pickTopic = (name: string) => {
+    setTopic((cur) => (cur === name ? null : name));
+    // lleva al alumno a las preguntas de ese tema
+    setTimeout(() => scroll.current?.scrollTo({ y: Math.max(0, listY.current - 8), animated: true }), 50);
+  };
   return (
     <View style={{ flex: 1 }}>
       <ScreenHeader icon="school-outline" title={s.paper?.title ?? s.room?.title ?? 'Examen'} subtitle={`${s.identity.name} · ${placeLabel(s)}`} color={t.success} right={r ? <Button label="Salir" icon="exit-outline" kind="primary" onPress={exit} /> : null} />
-      <Narrow>
-        {!r ? (
-          <Card style={{ alignItems: 'center' }}>
-            <ActivityIndicator color={t.primary} />
-            <Text style={{ color: t.text, marginTop: 10 }}>Esperando la calificación…</Text>
-          </Card>
-        ) : (
-          <>
-            <Card accent={r.visibility === 'none' ? t.success : r.passed ? t.success : t.danger} style={{ alignItems: 'center', paddingVertical: 24 }}>
-              <Ionicons name="checkmark-done-circle" size={54} color={t.success} />
-              <Heading level="display" style={{ marginTop: 6, textAlign: 'center' }}>{s.practiceKey ? '¡Práctica terminada!' : '¡Examen enviado!'}</Heading>
-              <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 4, textAlign: 'center' }}>{reason}</Text>
-              {r.visibility !== 'none' ? (
-                <>
-                  <Text style={{ color: r.passed ? t.success : t.danger, fontSize: 52, fontWeight: '900', marginTop: 12 }}>
-                    {r.grade}
-                    <Text style={{ fontSize: 22, color: t.textMuted }}> / {r.scale}</Text>
-                  </Text>
-                  <Text style={{ color: t.textMuted, fontSize: 14 }}>
-                    {r.score} de {r.max} puntos · {r.percent}%
-                  </Text>
-                  <View style={{ marginTop: 10 }}>
-                    <Pill solid icon={r.passed ? 'ribbon-outline' : 'alert-outline'} text={r.passed ? 'Aprobado' : 'No aprobado'} color={r.passed ? t.success : t.danger} />
-                  </View>
-                </>
-              ) : (
-                <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 10, textAlign: 'center' }}>Tu maestro te dará a conocer la calificación.</Text>
-              )}
+      <ScrollView ref={scroll} contentContainerStyle={{ padding: 16, alignItems: 'center' }} keyboardShouldPersistTaps="handled">
+        <View style={{ width: '100%', maxWidth: 620 }}>
+          {!r ? (
+            <Card style={{ alignItems: 'center' }}>
+              <ActivityIndicator color={t.primary} />
+              <Text style={{ color: t.text, marginTop: 10 }}>Esperando la calificación…</Text>
             </Card>
-            {r.topics?.length ? <TopicsCard topics={r.topics} passPercent={s.paper?.settings.passPercent ?? 60} /> : null}
-            {r.questions?.map((qr, i) => {
-              const pq = s.paper?.questions.find((x) => x.id === qr.questionId);
-              const st = STATUS[qr.status];
-              const c = (t as any)[st.color] as string;
-              return (
-                <Card key={qr.questionId} accent={c}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                    <Ionicons name={st.icon} size={20} color={c} />
-                    <Text style={{ color: t.text, fontWeight: '800', marginLeft: 8, flex: 1 }}>
-                      Pregunta {i + 1} · {st.label}
+          ) : (
+            <>
+              <Card accent={!graded ? t.success : r.passed ? t.success : t.danger} style={{ alignItems: 'center', paddingVertical: 24 }}>
+                <Ionicons name={!graded ? 'checkmark-done-circle' : r.passed ? 'ribbon' : 'school'} size={54} color={!graded || r.passed ? t.success : t.danger} />
+                <Heading level="display" style={{ marginTop: 6, textAlign: 'center' }}>{s.practiceKey ? '¡Práctica terminada!' : '¡Examen enviado!'}</Heading>
+                <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 4, textAlign: 'center' }}>{reason}</Text>
+                {graded ? (
+                  <>
+                    <Text style={{ color: r.passed ? t.success : t.danger, fontSize: 52, fontWeight: '900', marginTop: 12 }}>
+                      {r.grade}
+                      <Text style={{ fontSize: 22, color: t.textMuted }}> / {r.scale}</Text>
                     </Text>
-                    <Text style={{ color: t.textMuted, fontWeight: '700' }}>
-                      {qr.score}/{qr.max}
+                    <Text style={{ color: t.textMuted, fontSize: 14 }}>
+                      {r.score} de {r.max} puntos · {r.percent}%{s.paper ? ` · mínimo para aprobar ${s.paper.settings.passPercent}%` : ''}
                     </Text>
-                  </View>
-                  {pq ? (
-                    review ? (
-                      <View style={{ marginBottom: 6 }}>
-                        {/* en el repaso se muestra también el código de la pregunta */}
-                        <RichText text={pq.code ? `${pq.prompt}\n\n\`\`\`js\n${pq.code}\n\`\`\`` : pq.prompt} style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }} />
-                      </View>
-                    ) : (
-                      <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 4 }} numberOfLines={3}>
-                        {plainText(pq.prompt)}
-                      </Text>
-                    )
-                  ) : null}
-                  {pq && review && (pq.type === 'single' || pq.type === 'multiple') ? <ChosenAnswer q={pq} value={s.answers[pq.id]} /> : null}
-                  <RichText text={qr.feedback} style={{ color: t.text, fontSize: 13 }} />
-                  {qr.tests?.map((x) => (
-                    <View key={x.id} style={{ marginTop: 3 }}>
-                      <Text style={{ color: x.passed ? t.success : t.danger, fontSize: 12, fontFamily: x.call ? MONO : undefined }}>
-                        {x.passed ? '✓' : '✗'} {x.name}
-                        {x.hidden ? ' (oculto)' : ''}
-                      </Text>
-                      {review && !x.passed && x.expected !== undefined ? (
-                        <Text style={{ color: t.textMuted, fontSize: 11, fontFamily: MONO, marginLeft: 14 }}>
-                          esperado {x.expected.split('\n').join(' ⏎ ') || '(vacío)'} · obtenido {x.error ? x.error : x.actual?.split('\n').join(' ⏎ ') || '(vacío)'}
-                        </Text>
-                      ) : null}
+                    <View style={{ marginTop: 10 }}>
+                      <Pill solid icon={r.passed ? 'ribbon-outline' : 'alert-outline'} text={r.passed ? 'Aprobado' : 'No aprobado'} color={r.passed ? t.success : t.danger} />
                     </View>
-                  ))}
-                </Card>
-              );
-            })}
-            {s.practiceKey ? (
-              <Button
-                label="Practicar de nuevo (otras preguntas)"
-                icon="refresh"
-                onPress={() => {
-                  const key = s.practiceKey!;
-                  const name = s.identity.name;
-                  useStudent.getState().leave();
-                  useStudent.getState().practice(key, name);
-                }}
-                style={{ height: 46, marginTop: 6 }}
-              />
-            ) : null}
-            <Button label="Salir del modo examen" icon="exit-outline" kind="primary" onPress={exit} style={{ height: 46, marginTop: 6 }} />
-          </>
-        )}
-      </Narrow>
+                  </>
+                ) : (
+                  <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 10, textAlign: 'center' }}>Tu maestro te dará a conocer la calificación.</Text>
+                )}
+                {s.practiceKey ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16, justifyContent: 'center' }}>
+                    <Button label="Practicar de nuevo" icon="refresh" kind="primary" onPress={() => practiceAgain(s.practiceKey!)} />
+                  </View>
+                ) : null}
+              </Card>
+              {r.topics?.length ? <TopicsCard topics={r.topics} passPercent={s.paper?.settings.passPercent ?? 60} selected={topic} onPick={questions.length ? pickTopic : undefined} canPractice={(name) => !!practiceTopics?.has(`tema:${name}`) && s.practiceKey !== topicKey(name) && s.practiceKey !== `tema:${name}`} onPractice={(name) => practiceAgain(topicKey(name))} /> : null}
+              {questions.length ? (
+                <View
+                  onLayout={(e) => {
+                    listY.current = e.nativeEvent.layout.y;
+                  }}
+                  style={{ marginBottom: 12 }}
+                >
+                  <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 8 }}>{review ? 'Repaso pregunta por pregunta' : 'Tus preguntas'}</Text>
+                  <Segmented<ResultFilter>
+                    value={filter}
+                    onChange={setFilter}
+                    options={[
+                      { id: 'all', label: `Todas (${questions.length})` },
+                      { id: 'review', label: `Por repasar (${toReview})` },
+                      { id: 'correct', label: `Correctas (${questions.length - toReview})` },
+                    ]}
+                  />
+                  {topic ? (
+                    <Pressable onPress={() => setTopic(null)} accessibilityRole="button" accessibilityLabel="Quitar filtro de tema" style={[styles.topicFilter, { borderColor: t.primary, backgroundColor: t.primary + '14' }]}>
+                      <Ionicons name="pricetag-outline" size={13} color={t.primary} />
+                      <Text style={{ color: t.primary, fontSize: 12, fontWeight: '700', marginHorizontal: 5 }}>Tema: {topic}</Text>
+                      <Ionicons name="close" size={14} color={t.primary} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+              {questions.length && !shown.length ? (
+                <Text style={{ color: t.textMuted, fontSize: 13, textAlign: 'center', marginBottom: 12 }}>{filter === 'review' ? '¡No hay preguntas por repasar aquí!' : 'No hay preguntas con este filtro.'}</Text>
+              ) : null}
+              {shown.map(({ qr, i, pq }) => {
+                const st = STATUS[qr.status];
+                const c = (t as any)[st.color] as string;
+                return (
+                  <Card key={qr.questionId} accent={c}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+                      <Ionicons name={st.icon} size={20} color={c} />
+                      <Text style={{ color: t.text, fontWeight: '800', flex: 1, minWidth: 140 }}>
+                        Pregunta {i + 1} · {st.label}
+                      </Text>
+                      {pq?.topic ? <Pill text={pq.topic} icon="pricetag-outline" /> : null}
+                      <Text style={{ color: t.textMuted, fontWeight: '700' }}>
+                        {qr.score}/{qr.max}
+                      </Text>
+                    </View>
+                    {pq ? (
+                      review ? (
+                        <View style={{ marginBottom: 6 }}>
+                          {/* en el repaso se muestra también el código de la pregunta */}
+                          <RichText text={pq.code ? `${pq.prompt}\n\n\`\`\`js\n${pq.code}\n\`\`\`` : pq.prompt} style={{ color: t.textMuted, fontSize: 13, lineHeight: 19 }} />
+                        </View>
+                      ) : (
+                        <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 4 }} numberOfLines={3}>
+                          {plainText(pq.prompt)}
+                        </Text>
+                      )
+                    ) : null}
+                    {pq && review && (pq.type === 'single' || pq.type === 'multiple') ? <ChosenAnswer q={pq} value={s.answers[pq.id]} /> : null}
+                    <RichText text={qr.feedback} style={{ color: t.text, fontSize: 13 }} />
+                    {qr.tests?.map((x) => (
+                      <View key={x.id} style={{ marginTop: 3 }}>
+                        <Text style={{ color: x.passed ? t.success : t.danger, fontSize: 12, fontFamily: x.call ? MONO : undefined }}>
+                          {x.passed ? '✓' : '✗'} {x.name}
+                          {x.hidden ? ' (oculto)' : ''}
+                        </Text>
+                        {review && !x.passed && x.expected !== undefined ? (
+                          <Text style={{ color: t.textMuted, fontSize: 11, fontFamily: MONO, marginLeft: 14 }}>
+                            esperado {x.expected.split('\n').join(' ⏎ ') || '(vacío)'} · obtenido {x.error ? x.error : x.actual?.split('\n').join(' ⏎ ') || '(vacío)'}
+                          </Text>
+                        ) : null}
+                      </View>
+                    ))}
+                  </Card>
+                );
+              })}
+              {s.practiceKey ? <Button label="Practicar de nuevo (otras preguntas)" icon="refresh" onPress={() => practiceAgain(s.practiceKey!)} style={{ height: 46, marginTop: 6 }} /> : null}
+              <Button label="Salir del modo examen" icon="exit-outline" kind="primary" onPress={exit} style={{ height: 46, marginTop: 6, marginBottom: 16 }} />
+            </>
+          )}
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
-/** Resultado por tema: dónde reforzar antes de la certificación. */
-function TopicsCard({ topics, passPercent }: { topics: TopicScore[]; passPercent: number }) {
+/** Resultado por tema: dónde reforzar antes de la certificación. Al tocar un tema se ven solo sus preguntas. */
+function TopicsCard({ topics, passPercent, selected, onPick, canPractice, onPractice }: { topics: TopicScore[]; passPercent: number; selected: string | null; onPick?(topic: string): void; canPractice(topic: string): boolean; onPractice(topic: string): void }) {
   const t = useTheme();
   const sorted = [...topics].sort((a, b) => a.score / (a.max || 1) - b.score / (b.max || 1));
   const weak = sorted.filter((x) => (x.max ? (x.score / x.max) * 100 : 0) < passPercent).length;
@@ -815,21 +1021,38 @@ function TopicsCard({ topics, passPercent }: { topics: TopicScore[]; passPercent
       <Text style={{ color: t.text, fontWeight: '800', fontSize: 15 }}>Resultado por tema</Text>
       <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 10 }}>
         {weak ? `Repasa ${weak === 1 ? 'el tema' : `los ${weak} temas`} por debajo de ${passPercent} % (aparecen primero).` : `Superaste ${passPercent} % en todos los temas.`}
+        {onPick ? ' Toca un tema para ver sus preguntas.' : ''}
       </Text>
       {sorted.map((x) => {
         const pct = x.max ? Math.round((x.score / x.max) * 100) : 0;
         const c = pct >= passPercent ? t.success : pct >= 50 ? t.warning : t.danger;
+        const on = selected === x.topic;
+        const practice = pct < passPercent && canPractice(x.topic);
         return (
-          <View key={x.topic} style={{ marginBottom: 8 }}>
-            <View style={{ flexDirection: 'row', marginBottom: 3 }}>
-              <Text style={{ color: t.text, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                {x.topic}
-              </Text>
-              <Text style={{ color: c, fontSize: 12, fontWeight: '800' }}>
-                {x.correct}/{x.total} · {pct}%
-              </Text>
-            </View>
-            <ProgressBar value={pct / 100} color={c} />
+          <View key={x.topic} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+            <Pressable
+              onPress={onPick ? () => onPick(x.topic) : undefined}
+              disabled={!onPick}
+              accessibilityRole={onPick ? 'button' : undefined}
+              accessibilityLabel={onPick ? `Ver preguntas de ${x.topic}` : undefined}
+              style={({ pressed }) => [styles.topicRow, { backgroundColor: on ? t.primary + '14' : pressed ? t.surfaceAlt : 'transparent', borderColor: on ? t.primary : 'transparent' }]}
+            >
+              <View style={{ flexDirection: 'row', marginBottom: 3 }}>
+                <Text style={{ color: t.text, fontSize: 13, flex: 1, fontWeight: on ? '700' : '400' }} numberOfLines={1}>
+                  {x.topic}
+                </Text>
+                <Text style={{ color: c, fontSize: 12, fontWeight: '800' }}>
+                  {x.correct}/{x.total} · {pct}%
+                </Text>
+              </View>
+              <ProgressBar value={pct / 100} color={c} />
+            </Pressable>
+            {practice ? (
+              <Pressable onPress={() => onPractice(x.topic)} accessibilityRole="button" accessibilityLabel={`Practicar ${x.topic}`} hitSlop={4} style={({ pressed }) => [styles.practiceBtn, { borderColor: t.accent, backgroundColor: pressed ? t.accent + '30' : t.accent + '12' }]}>
+                <Ionicons name="barbell-outline" size={14} color={t.accent} />
+                <Text style={{ color: t.accent, fontSize: 12, fontWeight: '700', marginLeft: 4 }}>Practicar</Text>
+              </Pressable>
+            ) : null}
           </View>
         );
       })}
@@ -856,6 +1079,8 @@ function ChosenAnswer({ q, value }: { q: PaperQuestion; value: unknown }) {
 }
 
 const styles = StyleSheet.create({
+  examHeaderNarrow: { paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: BORDER },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   examHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: BORDER, gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   fontBox: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, marginRight: 4 },
@@ -868,8 +1093,12 @@ const styles = StyleSheet.create({
   flagDot: { position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: 6, borderWidth: 2 },
   footerNav: { flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 24 },
   overlay: { flex: 1, backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 16 },
-  dialog: { width: '100%', maxWidth: 480, borderRadius: RADIUS.lg, borderWidth: BORDER, padding: 20 },
+  dialog: { width: '100%', maxWidth: 520, maxHeight: '90%', borderRadius: RADIUS.lg, borderWidth: BORDER, padding: 20 },
+  topicRow: { flex: 1, borderWidth: BORDER, borderRadius: RADIUS.sm, paddingHorizontal: 6, paddingVertical: 5 },
+  topicFilter: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 10, paddingVertical: 4, marginTop: 8 },
+  practiceBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 6 },
   topicBtn: { borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 6, flexGrow: 1, flexBasis: 160 },
-  goChip: { borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 5 },
+  jump: { minWidth: 36, height: 32, borderWidth: BORDER, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  cover: { alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 },
   sending: { backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 20 },
 });
