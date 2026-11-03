@@ -2,7 +2,10 @@
 
 /** Atajo bloqueado → descripción para el maestro (o null si se permite). */
 export function blockedShortcut(e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>): string | null {
-  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  // en Mac, Opción cambia la letra (Cmd+Opt+J llega como «∆» y Cmd+Opt+I como acento «Dead»):
+  // si no es una letra, se toma la tecla física (KeyJ → j)
+  const letter = /^[a-z]$/i.test(e.key) ? e.key.toLowerCase() : /^Key[A-Z]$/.test(e.code) ? e.code.slice(3).toLowerCase() : null;
+  const key = letter ?? e.key;
   const mod = e.ctrlKey || e.metaKey;
   if (key === 'F12') return 'Intentó abrir las herramientas de desarrollo (F12)';
   if (mod && e.shiftKey && ['i', 'j', 'c', 'k', 'e', 'm'].includes(key)) return 'Intentó abrir las herramientas de desarrollo';

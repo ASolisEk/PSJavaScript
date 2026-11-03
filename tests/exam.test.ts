@@ -557,10 +557,16 @@ test('servidor del aula: reenvía mensajes por WebSocket', { skip: typeof WebSoc
 
 test('examen bloqueado: atajos que se impiden', async () => {
   const { blockedShortcut } = await import('../src/core/exam/lockdown');
-  const k = (key: string, m: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) => blockedShortcut({ key, code: '', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...m });
+  const k = (key: string, m: Partial<{ code: string; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) =>
+    blockedShortcut({ key, code: '', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...m });
   assert.match(k('F12')!, /herramientas/);
   assert.match(k('I', { ctrlKey: true, shiftKey: true })!, /herramientas/);
   assert.match(k('i', { metaKey: true, altKey: true })!, /herramientas/);
+  // Mac: con Opción el navegador entrega otro carácter; cuenta la tecla física
+  assert.match(k('Dead', { code: 'KeyI', metaKey: true, altKey: true })!, /herramientas/);
+  assert.match(k('∆', { code: 'KeyJ', metaKey: true, altKey: true })!, /herramientas/);
+  assert.match(k('ç', { code: 'KeyC', metaKey: true, altKey: true })!, /herramientas/);
+  assert.match(k('Dead', { code: 'KeyU', metaKey: true, altKey: true })!, /herramientas/);
   assert.match(k('u', { ctrlKey: true })!, /código/);
   assert.match(k('p', { ctrlKey: true })!, /imprimir/);
   assert.match(k('t', { ctrlKey: true })!, /pestaña/);
