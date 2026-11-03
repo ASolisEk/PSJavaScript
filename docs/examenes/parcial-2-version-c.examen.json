@@ -1,0 +1,441 @@
+{
+  "format": "psjavascript-exam",
+  "version": 1,
+  "id": "exd2z1ahd9i2",
+  "title": "Parcial 2 — Versión C",
+  "description": "Versión C. Tienes 20 preguntas: conceptos de declaración de variables, tipos de datos y operadores; ciclos while, do…while y for; ejercicios para completar código y dos programas para escribir.\n\nEn las preguntas de programación puedes ejecutar tu código y probarlo con los ejemplos antes de entregar. No uses arreglos. Puedes moverte entre preguntas y cambiar tus respuestas; al terminar presiona «Terminar examen».",
+  "author": "PSJavaScript",
+  "durationMin": 90,
+  "pickCount": 0,
+  "topicPicks": {},
+  "shuffleQuestions": true,
+  "shuffleOptions": true,
+  "passPercent": 60,
+  "scale": 10,
+  "showResults": "detailed",
+  "profileId": "estandar",
+  "allowRun": true,
+  "allowAssist": false,
+  "showDiagnostics": true,
+  "blockPaste": true,
+  "trackFocus": true,
+  "questions": [
+    {
+      "id": "qlid3ovcuji",
+      "type": "single",
+      "prompt": "¿Qué significa **declarar** una variable?",
+      "points": 1,
+      "topic": "Declaración de variables",
+      "options": [
+        {
+          "id": "oaud3ogcuji",
+          "text": "Crearla con un nombre para poder guardar valores en ella",
+          "correct": true
+        },
+        {
+          "id": "o1e1n4icuji",
+          "text": "Mostrar su valor en la consola",
+          "correct": false
+        },
+        {
+          "id": "omx96h9cuji",
+          "text": "Borrarla de la memoria",
+          "correct": false
+        },
+        {
+          "id": "o2ikwy8cuji",
+          "text": "Convertirla en número",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "qtoitdpcuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 1,
+      "code": "let mensaje = \"Hola\";\nmensaje = mensaje + \" mundo\";\nconsole.log(mensaje);\n",
+      "topic": "Declaración de variables",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qyfc0oocuji",
+      "type": "truefalse",
+      "prompt": "Se recomienda usar `const` para valores que no cambian, por ejemplo `const PI = 3.1416;`",
+      "points": 1,
+      "topic": "Declaración de variables",
+      "answer": true
+    },
+    {
+      "id": "qwf47wecuji",
+      "type": "truefalse",
+      "prompt": "`prompt()` siempre devuelve un texto (string), aunque el usuario escriba un número.",
+      "points": 1,
+      "topic": "Tipos de datos",
+      "answer": true
+    },
+    {
+      "id": "qvu5gngcuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 1,
+      "code": "const a = \"5\";\nconst b = 3;\nconsole.log(a + b);\nconsole.log(Number(a) + b);\n",
+      "topic": "Tipos de datos",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qulmelpcuji",
+      "type": "single",
+      "prompt": "¿Qué muestra este código?",
+      "points": 1,
+      "code": "let z;\nconsole.log(typeof z);\n",
+      "topic": "Tipos de datos",
+      "options": [
+        {
+          "id": "oyuvtdicuji",
+          "text": "undefined",
+          "correct": true
+        },
+        {
+          "id": "og3kefvcuji",
+          "text": "null",
+          "correct": false
+        },
+        {
+          "id": "o5lkid7cuji",
+          "text": "number",
+          "correct": false
+        },
+        {
+          "id": "of5qmrscuji",
+          "text": "object",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "q1lj958cuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 1,
+      "code": "let a = 5;\nlet b = a++;\nconsole.log(a);\nconsole.log(b);\n",
+      "topic": "Operadores",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "q44wvijcuji",
+      "type": "single",
+      "prompt": "¿Cuál es el resultado de `17 % 5`?",
+      "points": 1,
+      "topic": "Operadores",
+      "options": [
+        {
+          "id": "o12l7t1cuji",
+          "text": "2",
+          "correct": true
+        },
+        {
+          "id": "odq4odocuji",
+          "text": "3.4",
+          "correct": false
+        },
+        {
+          "id": "of0xbp2cuji",
+          "text": "3",
+          "correct": false
+        },
+        {
+          "id": "olmly13cuji",
+          "text": "12",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "q3at53fcuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 1,
+      "code": "console.log(10 - 2 * 3);\n",
+      "topic": "Operadores",
+      "answer": 4,
+      "tolerance": 0
+    },
+    {
+      "id": "quqiizzcuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 2,
+      "code": "let i = 1;\nwhile (i <= 4) {\n  console.log(i);\n  i++;\n}\n",
+      "topic": "Ciclo while",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "quax9wzcuji",
+      "type": "single",
+      "prompt": "¿Qué condición hace que el ciclo se repita **mientras** el usuario no escriba \"salir\"?",
+      "points": 2,
+      "code": "let respuesta = prompt(\"Escribe algo:\");\nwhile (________) {\n  respuesta = prompt(\"Escribe algo:\");\n}\n",
+      "topic": "Ciclo while",
+      "options": [
+        {
+          "id": "ogov957cuji",
+          "text": "respuesta !== \"salir\"",
+          "correct": true
+        },
+        {
+          "id": "ohqj4xncuji",
+          "text": "respuesta === \"salir\"",
+          "correct": false
+        },
+        {
+          "id": "ocnc18lcuji",
+          "text": "respuesta = \"salir\"",
+          "correct": false
+        },
+        {
+          "id": "oljypzxcuji",
+          "text": "!respuesta",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "qqfjzn0cuji",
+      "type": "truefalse",
+      "prompt": "En un `do…while`, el punto y coma después de `while (condición)` forma parte de la sintaxis.",
+      "points": 2,
+      "topic": "Ciclo do…while",
+      "answer": true
+    },
+    {
+      "id": "qjvcs3ocuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 2,
+      "code": "let x = 1;\nlet veces = 0;\ndo {\n  x = x * 2;\n  veces++;\n} while (x < 20);\nconsole.log(veces);\n",
+      "topic": "Ciclo do…while",
+      "answer": 5,
+      "tolerance": 0
+    },
+    {
+      "id": "qvtniavcuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa? (ciclos anidados)",
+      "points": 2,
+      "code": "for (let i = 1; i <= 2; i++) {\n  for (let j = 1; j <= 3; j++) {\n    console.log(i + \"-\" + j);\n  }\n}\n",
+      "topic": "Ciclo for",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "q7rn6wocuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 2,
+      "code": "let total = 0;\nfor (let i = 1; i <= 4; i++) {\n  total += i * i;\n}\nconsole.log(total);\n",
+      "topic": "Ciclo for",
+      "answer": 30,
+      "tolerance": 0
+    },
+    {
+      "id": "q88dbigcuji",
+      "type": "short",
+      "prompt": "Escribe la condición que va en el espacio `________` para que el programa muestre los números del 1 al 10.",
+      "points": 2,
+      "code": "let n = 1;\nwhile (________) {\n  console.log(n);\n  n++;\n}\n",
+      "topic": "Completar código",
+      "answers": [
+        "n <= 10",
+        "n<=10",
+        "n < 11",
+        "n<11",
+        "10 >= n",
+        "10>=n",
+        "11 > n",
+        "11>n"
+      ],
+      "caseSensitive": true
+    },
+    {
+      "id": "qlplz56cuji",
+      "type": "code",
+      "prompt": "Completa el ciclo `for` para que muestre los números pares desde 2 hasta `n` (incluido si es par). Sustituye los comentarios por la condición y el incremento.",
+      "points": 2,
+      "topic": "Completar código",
+      "starter": "const n = Number(prompt(\"Número:\"));\nfor (let i = 2; /* condición */; /* incremento */) {\n  console.log(i);\n}\n",
+      "solution": "const n = Number(prompt(\"Número:\"));\nfor (let i = 2; i <= n; i += 2) {\n  console.log(i);\n}\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "t9t2rcccuji",
+          "name": "n = 10",
+          "inputs": [
+            "10"
+          ],
+          "expected": "2\n4\n6\n8\n10",
+          "hidden": false
+        },
+        {
+          "id": "tdzrq4ecuji",
+          "name": "n = 7",
+          "inputs": [
+            "7"
+          ],
+          "expected": "2\n4\n6",
+          "hidden": false
+        },
+        {
+          "id": "tl784rmcuji",
+          "name": "n = 2",
+          "inputs": [
+            "2"
+          ],
+          "expected": "2",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "rfqlyr1cuji",
+          "kind": "contains",
+          "pattern": "for",
+          "message": "Usa el ciclo for."
+        },
+        {
+          "id": "rez4ekccuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    },
+    {
+      "id": "qvuq7gucuji",
+      "type": "short",
+      "prompt": "Escribe el operador que va en el espacio `__` para saber si `n` es par.",
+      "points": 2,
+      "code": "const n = 8;\nif (n __ 2 === 0) {\n  console.log(\"par\");\n}\n",
+      "topic": "Completar código",
+      "answers": [
+        "%"
+      ],
+      "caseSensitive": true
+    },
+    {
+      "id": "qxfag3icuji",
+      "type": "code",
+      "prompt": "Escribe un programa que lea un límite `n` y muestre una tabla de conversión de grados Celsius a Fahrenheit, de 0 hasta `n` grados, de 10 en 10, con el formato `C °C = F °F`. Fórmula: `F = C * 9 / 5 + 32`. Usa un ciclo `for`.\n\nPor ejemplo, la primera línea es `0 °C = 32 °F`.",
+      "points": 5,
+      "topic": "Ejercicios de programación",
+      "starter": "const n = Number(prompt(\"Límite en °C:\"));\n",
+      "solution": "const n = Number(prompt(\"Límite en °C:\"));\nfor (let c = 0; c <= n; c += 10) {\n  console.log(c + \" °C = \" + (c * 9 / 5 + 32) + \" °F\");\n}\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "tx3u6kicuji",
+          "name": "Hasta 30",
+          "inputs": [
+            "30"
+          ],
+          "expected": "0 °C = 32 °F\n10 °C = 50 °F\n20 °C = 68 °F\n30 °C = 86 °F",
+          "hidden": false
+        },
+        {
+          "id": "teflubwcuji",
+          "name": "Hasta 10",
+          "inputs": [
+            "10"
+          ],
+          "expected": "0 °C = 32 °F\n10 °C = 50 °F",
+          "hidden": false
+        },
+        {
+          "id": "ttbhhi8cuji",
+          "name": "Hasta 100",
+          "inputs": [
+            "100"
+          ],
+          "expected": "0 °C = 32 °F\n10 °C = 50 °F\n20 °C = 68 °F\n30 °C = 86 °F\n40 °C = 104 °F\n50 °C = 122 °F\n60 °C = 140 °F\n70 °C = 158 °F\n80 °C = 176 °F\n90 °C = 194 °F\n100 °C = 212 °F",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "r6qwa62cuji",
+          "kind": "contains",
+          "pattern": "for",
+          "message": "Usa un ciclo for."
+        },
+        {
+          "id": "rntwo40cuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    },
+    {
+      "id": "qsavro2cuji",
+      "type": "code",
+      "prompt": "Escribe un programa que pida una contraseña con `prompt()` hasta que el usuario escriba `abc123`. Al final muestra `Intentos: N` (cuántas veces la escribió) y luego `Acceso concedido`. Usa un ciclo `do…while`.",
+      "points": 5,
+      "topic": "Ejercicios de programación",
+      "starter": "let clave;\nlet intentos = 0;\n",
+      "solution": "let clave;\nlet intentos = 0;\ndo {\n  clave = prompt(\"Contraseña:\");\n  intentos++;\n} while (clave !== \"abc123\");\nconsole.log(\"Intentos: \" + intentos);\nconsole.log(\"Acceso concedido\");\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "tb3y0vfcuji",
+          "name": "Al tercer intento",
+          "inputs": [
+            "hola",
+            "123",
+            "abc123"
+          ],
+          "expected": "Intentos: 3\nAcceso concedido",
+          "hidden": false
+        },
+        {
+          "id": "twvdvobcuji",
+          "name": "Al primer intento",
+          "inputs": [
+            "abc123"
+          ],
+          "expected": "Intentos: 1\nAcceso concedido",
+          "hidden": false
+        },
+        {
+          "id": "t5gquhlcuji",
+          "name": "Al segundo intento",
+          "inputs": [
+            "ABC123",
+            "abc123"
+          ],
+          "expected": "Intentos: 2\nAcceso concedido",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "rn5cw86cuji",
+          "kind": "contains",
+          "pattern": "do",
+          "message": "Usa un ciclo do…while."
+        },
+        {
+          "id": "rol2s6dcuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    }
+  ],
+  "createdAt": 1793674283200,
+  "updatedAt": 1793674359922
+}

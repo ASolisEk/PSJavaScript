@@ -1,0 +1,440 @@
+{
+  "format": "psjavascript-exam",
+  "version": 1,
+  "id": "ex4132o3d9i2",
+  "title": "Parcial 2 — Versión B",
+  "description": "Versión B. Tienes 20 preguntas: conceptos de declaración de variables, tipos de datos y operadores; ciclos while, do…while y for; ejercicios para completar código y dos programas para escribir.\n\nEn las preguntas de programación puedes ejecutar tu código y probarlo con los ejemplos antes de entregar. No uses arreglos. Puedes moverte entre preguntas y cambiar tus respuestas; al terminar presiona «Terminar examen».",
+  "author": "PSJavaScript",
+  "durationMin": 90,
+  "pickCount": 0,
+  "topicPicks": {},
+  "shuffleQuestions": true,
+  "shuffleOptions": true,
+  "passPercent": 60,
+  "scale": 10,
+  "showResults": "detailed",
+  "profileId": "estandar",
+  "allowRun": true,
+  "allowAssist": false,
+  "showDiagnostics": true,
+  "blockPaste": true,
+  "trackFocus": true,
+  "questions": [
+    {
+      "id": "qqintx3cuji",
+      "type": "single",
+      "prompt": "¿Cuál de estos es un nombre de variable válido en JavaScript?",
+      "points": 1,
+      "topic": "Declaración de variables",
+      "options": [
+        {
+          "id": "otudsp4cuji",
+          "text": "edadAlumno",
+          "correct": true
+        },
+        {
+          "id": "o51ickrcuji",
+          "text": "2edad",
+          "correct": false
+        },
+        {
+          "id": "owffd9wcuji",
+          "text": "edad alumno",
+          "correct": false
+        },
+        {
+          "id": "omi0chrcuji",
+          "text": "let",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "qssb0aucuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 1,
+      "code": "let a = 2;\nlet b = a;\na = 10;\nconsole.log(a);\nconsole.log(b);\n",
+      "topic": "Declaración de variables",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qykzgtacuji",
+      "type": "truefalse",
+      "prompt": "JavaScript distingue mayúsculas de minúsculas: `edad` y `Edad` son dos variables distintas.",
+      "points": 1,
+      "topic": "Declaración de variables",
+      "answer": true
+    },
+    {
+      "id": "qsmm1z9cuji",
+      "type": "truefalse",
+      "prompt": "`NaN` significa \"Not a Number\" (no es un número), pero `typeof NaN` da `number`.",
+      "points": 1,
+      "topic": "Tipos de datos",
+      "answer": true
+    },
+    {
+      "id": "q3w1bsncuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 1,
+      "code": "console.log(String(25) + 5);\nconsole.log(25 + 5);\n",
+      "topic": "Tipos de datos",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "q5j942hcuji",
+      "type": "single",
+      "prompt": "¿Qué muestra este código?",
+      "points": 1,
+      "code": "console.log(10 / 4);\n",
+      "topic": "Tipos de datos",
+      "options": [
+        {
+          "id": "okc0t7gcuji",
+          "text": "2.5",
+          "correct": true
+        },
+        {
+          "id": "osflkcccuji",
+          "text": "2",
+          "correct": false
+        },
+        {
+          "id": "oeq8qpkcuji",
+          "text": "3",
+          "correct": false
+        },
+        {
+          "id": "onxl9m9cuji",
+          "text": "2.4",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "qlvgkt9cuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 1,
+      "code": "let x = 10;\nx += 5;\nx -= 3;\nx *= 2;\nconsole.log(x);\n",
+      "topic": "Operadores",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qqt3knocuji",
+      "type": "single",
+      "prompt": "¿Qué muestra este código?",
+      "points": 1,
+      "code": "console.log(!true);\n",
+      "topic": "Operadores",
+      "options": [
+        {
+          "id": "omzjlwvcuji",
+          "text": "false",
+          "correct": true
+        },
+        {
+          "id": "ofovz02cuji",
+          "text": "true",
+          "correct": false
+        },
+        {
+          "id": "ofhqfdscuji",
+          "text": "!true",
+          "correct": false
+        },
+        {
+          "id": "odezvomcuji",
+          "text": "undefined",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "qydd9wicuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 1,
+      "code": "console.log(2 + 3 * 4);\n",
+      "topic": "Operadores",
+      "answer": 14,
+      "tolerance": 0
+    },
+    {
+      "id": "qsycdwycuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 2,
+      "code": "let n = 10;\nlet pasos = 0;\nwhile (n > 1) {\n  n = n / 2;\n  pasos++;\n}\nconsole.log(pasos);\n",
+      "topic": "Ciclo while",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qg9i5mxcuji",
+      "type": "single",
+      "prompt": "¿Cuántas veces se ejecuta el cuerpo de este ciclo?",
+      "points": 2,
+      "code": "let i = 5;\nwhile (i < 5) {\n  console.log(i);\n  i++;\n}\n",
+      "topic": "Ciclo while",
+      "options": [
+        {
+          "id": "ohevtzpcuji",
+          "text": "Ninguna (0 veces)",
+          "correct": true
+        },
+        {
+          "id": "onuoxwhcuji",
+          "text": "1 vez",
+          "correct": false
+        },
+        {
+          "id": "o3audvdcuji",
+          "text": "5 veces",
+          "correct": false
+        },
+        {
+          "id": "o6qg4wncuji",
+          "text": "Infinitas veces",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "qbco59acuji",
+      "type": "truefalse",
+      "prompt": "El cuerpo de un ciclo `do…while` se ejecuta al menos una vez, aunque la condición sea falsa desde el inicio.",
+      "points": 2,
+      "topic": "Ciclo do…while",
+      "answer": true
+    },
+    {
+      "id": "qsmm4c2cuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 2,
+      "code": "let n = 5;\nlet veces = 0;\ndo {\n  veces++;\n  n--;\n} while (n > 10);\nconsole.log(veces);\n",
+      "topic": "Ciclo do…while",
+      "answer": 1,
+      "tolerance": 0
+    },
+    {
+      "id": "qssqrlzcuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 2,
+      "code": "let texto = \"\";\nfor (let i = 1; i <= 4; i++) {\n  texto += \"*\";\n}\nconsole.log(texto);\n",
+      "topic": "Ciclo for",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qmxuvdxcuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 2,
+      "code": "let suma = 0;\nfor (let i = 2; i <= 10; i += 2) {\n  suma += i;\n}\nconsole.log(suma);\n",
+      "topic": "Ciclo for",
+      "answer": 30,
+      "tolerance": 0
+    },
+    {
+      "id": "q6lhpjwcuji",
+      "type": "short",
+      "prompt": "Escribe la palabra reservada que va en el espacio `____`.",
+      "points": 2,
+      "code": "let i = 1;\ndo {\n  console.log(i);\n  i++;\n} ____ (i <= 5);\n",
+      "topic": "Completar código",
+      "answers": [
+        "while"
+      ],
+      "caseSensitive": true
+    },
+    {
+      "id": "qduk48ocuji",
+      "type": "code",
+      "prompt": "Completa la condición del `do…while` para que vuelva a pedir el número mientras **no** sea positivo (mayor que 0).",
+      "points": 2,
+      "topic": "Completar código",
+      "starter": "let n;\ndo {\n  n = Number(prompt(\"Número positivo:\"));\n} while (/* condición */);\nconsole.log(\"Correcto: \" + n);\n",
+      "solution": "let n;\ndo {\n  n = Number(prompt(\"Número positivo:\"));\n} while (n <= 0);\nconsole.log(\"Correcto: \" + n);\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "tkgjr4bcuji",
+          "name": "-3, 0 y 5",
+          "inputs": [
+            "-3",
+            "0",
+            "5"
+          ],
+          "expected": "Correcto: 5",
+          "hidden": false
+        },
+        {
+          "id": "ts0dwmlcuji",
+          "name": "8 a la primera",
+          "inputs": [
+            "8"
+          ],
+          "expected": "Correcto: 8",
+          "hidden": false
+        },
+        {
+          "id": "tj43irxcuji",
+          "name": "-1 y 2",
+          "inputs": [
+            "-1",
+            "2"
+          ],
+          "expected": "Correcto: 2",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "rwenxvlcuji",
+          "kind": "contains",
+          "pattern": "do",
+          "message": "Usa el ciclo do…while."
+        },
+        {
+          "id": "ro25d16cuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    },
+    {
+      "id": "qcnafcxcuji",
+      "type": "short",
+      "prompt": "Escribe la palabra que va en el espacio `____` (la variable cambia de valor en la segunda línea).",
+      "points": 2,
+      "code": "____ nombre = \"Ana\";\nnombre = \"Luis\";\nconsole.log(nombre);\n",
+      "topic": "Completar código",
+      "answers": [
+        "let"
+      ],
+      "caseSensitive": true
+    },
+    {
+      "id": "qbpa8o3cuji",
+      "type": "code",
+      "prompt": "Escribe un programa que lea un número `n` y muestre los cuadrados del 1 hasta `n` con el formato `i al cuadrado es r`, una línea por número. Usa un ciclo `for`.\n\nPor ejemplo, la tercera línea para `n = 4` es `3 al cuadrado es 9`.",
+      "points": 5,
+      "topic": "Ejercicios de programación",
+      "starter": "const n = Number(prompt(\"Número:\"));\n",
+      "solution": "const n = Number(prompt(\"Número:\"));\nfor (let i = 1; i <= n; i++) {\n  console.log(i + \" al cuadrado es \" + i * i);\n}\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "t3kjnaucuji",
+          "name": "n = 4",
+          "inputs": [
+            "4"
+          ],
+          "expected": "1 al cuadrado es 1\n2 al cuadrado es 4\n3 al cuadrado es 9\n4 al cuadrado es 16",
+          "hidden": false
+        },
+        {
+          "id": "tnpkbshcuji",
+          "name": "n = 2",
+          "inputs": [
+            "2"
+          ],
+          "expected": "1 al cuadrado es 1\n2 al cuadrado es 4",
+          "hidden": false
+        },
+        {
+          "id": "tnjxtvicuji",
+          "name": "n = 6",
+          "inputs": [
+            "6"
+          ],
+          "expected": "1 al cuadrado es 1\n2 al cuadrado es 4\n3 al cuadrado es 9\n4 al cuadrado es 16\n5 al cuadrado es 25\n6 al cuadrado es 36",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "rmjtym5cuji",
+          "kind": "contains",
+          "pattern": "for",
+          "message": "Usa un ciclo for."
+        },
+        {
+          "id": "rfy6be1cuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    },
+    {
+      "id": "qqpjcw7cuji",
+      "type": "code",
+      "prompt": "Escribe un programa que pida números con `prompt()` hasta que el usuario escriba `0`, y al final muestre la suma de todos los números leídos. Usa un ciclo `do…while`.\n\nPor ejemplo, si escriben `4`, `6` y `0` debe mostrar `10`.",
+      "points": 5,
+      "topic": "Ejercicios de programación",
+      "starter": "let suma = 0;\nlet n;\n",
+      "solution": "let suma = 0;\nlet n;\ndo {\n  n = Number(prompt(\"Número (0 para terminar):\"));\n  suma += n;\n} while (n !== 0);\nconsole.log(suma);\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "t5b87l2cuji",
+          "name": "4, 6 y 0",
+          "inputs": [
+            "4",
+            "6",
+            "0"
+          ],
+          "expected": "10",
+          "hidden": false
+        },
+        {
+          "id": "tk9s3qwcuji",
+          "name": "Solo 0",
+          "inputs": [
+            "0"
+          ],
+          "expected": "0",
+          "hidden": false
+        },
+        {
+          "id": "tuv7yzncuji",
+          "name": "Con negativos",
+          "inputs": [
+            "-2",
+            "5",
+            "10",
+            "0"
+          ],
+          "expected": "13",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "r7vr1uvcuji",
+          "kind": "contains",
+          "pattern": "do",
+          "message": "Usa un ciclo do…while."
+        },
+        {
+          "id": "rocphdbcuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    }
+  ],
+  "createdAt": 1793674283200,
+  "updatedAt": 1793674359922
+}

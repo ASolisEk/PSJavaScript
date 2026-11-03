@@ -1,0 +1,426 @@
+{
+  "format": "psjavascript-exam",
+  "version": 1,
+  "id": "exgxqpyud9i1",
+  "title": "Parcial 2 — Versión A",
+  "description": "Versión A. Tienes 20 preguntas: conceptos de declaración de variables, tipos de datos y operadores; ciclos while, do…while y for; ejercicios para completar código y dos programas para escribir.\n\nEn las preguntas de programación puedes ejecutar tu código y probarlo con los ejemplos antes de entregar. No uses arreglos. Puedes moverte entre preguntas y cambiar tus respuestas; al terminar presiona «Terminar examen».",
+  "author": "PSJavaScript",
+  "durationMin": 90,
+  "pickCount": 0,
+  "topicPicks": {},
+  "shuffleQuestions": true,
+  "shuffleOptions": true,
+  "passPercent": 60,
+  "scale": 10,
+  "showResults": "detailed",
+  "profileId": "estandar",
+  "allowRun": true,
+  "allowAssist": false,
+  "showDiagnostics": true,
+  "blockPaste": true,
+  "trackFocus": true,
+  "questions": [
+    {
+      "id": "qevtqbpcuji",
+      "type": "single",
+      "prompt": "¿Cuál de estas palabras **no** sirve para declarar variables en JavaScript?",
+      "points": 1,
+      "topic": "Declaración de variables",
+      "options": [
+        {
+          "id": "owpr7tncuji",
+          "text": "int",
+          "correct": true
+        },
+        {
+          "id": "o1zs4u4cuji",
+          "text": "let",
+          "correct": false
+        },
+        {
+          "id": "o99lzkucuji",
+          "text": "const",
+          "correct": false
+        },
+        {
+          "id": "oudkuu1cuji",
+          "text": "var",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "qjnrrmccuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa? (intercambio de valores)",
+      "points": 1,
+      "code": "let x = 3;\nlet y = 4;\nlet temp = x;\nx = y;\ny = temp;\nconsole.log(x);\nconsole.log(y);\n",
+      "topic": "Declaración de variables",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "q0hxk9kcuji",
+      "type": "truefalse",
+      "prompt": "Una variable declarada con `let` puede cambiar de valor después de declararla.",
+      "points": 1,
+      "topic": "Declaración de variables",
+      "answer": true
+    },
+    {
+      "id": "q6hipt0cuji",
+      "type": "truefalse",
+      "prompt": "`Boolean(0)` da como resultado `false`.",
+      "points": 1,
+      "topic": "Tipos de datos",
+      "answer": true
+    },
+    {
+      "id": "qyyhqd6cuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 1,
+      "code": "const edad = \"15\";\nconsole.log(typeof edad);\nconsole.log(typeof Number(edad));\n",
+      "topic": "Tipos de datos",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qc2sndecuji",
+      "type": "single",
+      "prompt": "¿Qué tipo de dato es el valor `3.5` en JavaScript?",
+      "points": 1,
+      "topic": "Tipos de datos",
+      "options": [
+        {
+          "id": "o8muv59cuji",
+          "text": "number",
+          "correct": true
+        },
+        {
+          "id": "oehs342cuji",
+          "text": "float",
+          "correct": false
+        },
+        {
+          "id": "o490dpocuji",
+          "text": "decimal",
+          "correct": false
+        },
+        {
+          "id": "ovetbo9cuji",
+          "text": "double",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "qqmgokicuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 1,
+      "code": "const n = 15;\nconsole.log(n % 2 === 0);\nconsole.log(n % 3 === 0);\n",
+      "topic": "Operadores",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "q85pnb1cuji",
+      "type": "single",
+      "prompt": "¿Qué muestra este código?",
+      "points": 1,
+      "code": "console.log(2 ** 3);\n",
+      "topic": "Operadores",
+      "options": [
+        {
+          "id": "oxlgdhtcuji",
+          "text": "8",
+          "correct": true
+        },
+        {
+          "id": "orqzbgacuji",
+          "text": "6",
+          "correct": false
+        },
+        {
+          "id": "oqvkefocuji",
+          "text": "9",
+          "correct": false
+        },
+        {
+          "id": "ot36u8xcuji",
+          "text": "5",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "q40jbmgcuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 1,
+      "code": "console.log(20 / 4 + 1);\n",
+      "topic": "Operadores",
+      "answer": 6,
+      "tolerance": 0
+    },
+    {
+      "id": "qrjloamcuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 2,
+      "code": "let i = 10;\nwhile (i > 0) {\n  console.log(i);\n  i -= 3;\n}\n",
+      "topic": "Ciclo while",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qccprgacuji",
+      "type": "single",
+      "prompt": "¿Qué muestra este código?",
+      "points": 2,
+      "code": "let x = 0;\nwhile (x < 10) {\n  x += 4;\n}\nconsole.log(x);\n",
+      "topic": "Ciclo while",
+      "options": [
+        {
+          "id": "oodbz2zcuji",
+          "text": "12",
+          "correct": true
+        },
+        {
+          "id": "ocvjsb5cuji",
+          "text": "10",
+          "correct": false
+        },
+        {
+          "id": "o3ydqpgcuji",
+          "text": "8",
+          "correct": false
+        },
+        {
+          "id": "o20800ycuji",
+          "text": "16",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "q5le6iicuji",
+      "type": "truefalse",
+      "prompt": "Un `while` y un `do…while` con la misma condición siempre repiten su cuerpo el mismo número de veces.",
+      "points": 2,
+      "topic": "Ciclo do…while",
+      "answer": false
+    },
+    {
+      "id": "qu3bm3kcuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 2,
+      "code": "let x = 100;\nlet pasos = 0;\ndo {\n  x = x - 30;\n  pasos++;\n} while (x > 0);\nconsole.log(pasos);\n",
+      "topic": "Ciclo do…while",
+      "answer": 4,
+      "tolerance": 0
+    },
+    {
+      "id": "q8acfffcuji",
+      "type": "output",
+      "prompt": "¿Qué muestra en la consola el siguiente programa?",
+      "points": 2,
+      "code": "for (let i = 10; i >= 0; i -= 5) {\n  console.log(i);\n}\n",
+      "topic": "Ciclo for",
+      "inputs": [],
+      "match": "flexible"
+    },
+    {
+      "id": "qfch1uqcuji",
+      "type": "numeric",
+      "prompt": "¿Qué número muestra este programa?",
+      "points": 2,
+      "code": "let cuenta = 0;\nfor (let i = 1; i <= 30; i++) {\n  if (i % 3 === 0) {\n    cuenta++;\n  }\n}\nconsole.log(cuenta);\n",
+      "topic": "Ciclo for",
+      "answer": 10,
+      "tolerance": 0
+    },
+    {
+      "id": "q9p45tacuji",
+      "type": "short",
+      "prompt": "Escribe la palabra que va en el espacio `____` para declarar una constante.",
+      "points": 2,
+      "code": "____ IVA = 0.16;\n",
+      "topic": "Completar código",
+      "answers": [
+        "const"
+      ],
+      "caseSensitive": true
+    },
+    {
+      "id": "qhtm3wgcuji",
+      "type": "code",
+      "prompt": "Completa el ciclo `while` para que muestre los múltiplos de 5 desde 5 hasta `n` (incluido si es múltiplo). Sustituye el comentario de la condición y agrega el incremento.",
+      "points": 2,
+      "topic": "Completar código",
+      "starter": "const n = Number(prompt(\"Límite:\"));\nlet i = 5;\nwhile (/* condición */) {\n  console.log(i);\n  // incrementa i de 5 en 5\n}\n",
+      "solution": "const n = Number(prompt(\"Límite:\"));\nlet i = 5;\nwhile (i <= n) {\n  console.log(i);\n  i += 5;\n}\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "thdvz36cuji",
+          "name": "n = 20",
+          "inputs": [
+            "20"
+          ],
+          "expected": "5\n10\n15\n20",
+          "hidden": false
+        },
+        {
+          "id": "tn8nhhfcuji",
+          "name": "n = 12",
+          "inputs": [
+            "12"
+          ],
+          "expected": "5\n10",
+          "hidden": false
+        },
+        {
+          "id": "t1kv1hfcuji",
+          "name": "n = 5",
+          "inputs": [
+            "5"
+          ],
+          "expected": "5",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "rl5i6k2cuji",
+          "kind": "contains",
+          "pattern": "while",
+          "message": "Usa el ciclo while."
+        },
+        {
+          "id": "rmcdqzocuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    },
+    {
+      "id": "qd3jekocuji",
+      "type": "short",
+      "prompt": "Escribe la inicialización que va en el espacio `____` para que el ciclo muestre los números del 1 al 5.",
+      "points": 2,
+      "code": "for (____; i <= 5; i++) {\n  console.log(i);\n}\n",
+      "topic": "Completar código",
+      "answers": [
+        "let i = 1",
+        "let i=1"
+      ],
+      "caseSensitive": true
+    },
+    {
+      "id": "qy4js5ecuji",
+      "type": "code",
+      "prompt": "Escribe un programa que lea un número `n` y muestre su tabla de multiplicar del 1 al 10 con un ciclo `for`, una línea por resultado con el formato `n x i = resultado`.\n\nPor ejemplo, para `3` la primera línea es `3 x 1 = 3` y la última `3 x 10 = 30`.",
+      "points": 5,
+      "topic": "Ejercicios de programación",
+      "starter": "const n = Number(prompt(\"Número:\"));\n",
+      "solution": "const n = Number(prompt(\"Número:\"));\nfor (let i = 1; i <= 10; i++) {\n  console.log(n + \" x \" + i + \" = \" + n * i);\n}\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "tii953vcuji",
+          "name": "Tabla del 3",
+          "inputs": [
+            "3"
+          ],
+          "expected": "3 x 1 = 3\n3 x 2 = 6\n3 x 3 = 9\n3 x 4 = 12\n3 x 5 = 15\n3 x 6 = 18\n3 x 7 = 21\n3 x 8 = 24\n3 x 9 = 27\n3 x 10 = 30",
+          "hidden": false
+        },
+        {
+          "id": "t9ug8cqcuji",
+          "name": "Tabla del 7",
+          "inputs": [
+            "7"
+          ],
+          "expected": "7 x 1 = 7\n7 x 2 = 14\n7 x 3 = 21\n7 x 4 = 28\n7 x 5 = 35\n7 x 6 = 42\n7 x 7 = 49\n7 x 8 = 56\n7 x 9 = 63\n7 x 10 = 70",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "rr4dsescuji",
+          "kind": "contains",
+          "pattern": "for",
+          "message": "Usa un ciclo for."
+        },
+        {
+          "id": "ro9enptcuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    },
+    {
+      "id": "qsv4r3vcuji",
+      "type": "code",
+      "prompt": "Escribe un programa que pida una calificación y la vuelva a pedir mientras no esté entre 0 y 10. Cuando sea válida muestra `Calificación registrada: X`. Usa un ciclo `do…while`.",
+      "points": 5,
+      "topic": "Ejercicios de programación",
+      "starter": "let calificacion;\n",
+      "solution": "let calificacion;\ndo {\n  calificacion = Number(prompt(\"Calificación (0 a 10):\"));\n} while (calificacion < 0 || calificacion > 10);\nconsole.log(\"Calificación registrada: \" + calificacion);\n",
+      "match": "flexible",
+      "tests": [
+        {
+          "id": "tecoxbocuji",
+          "name": "12, -1 y 8",
+          "inputs": [
+            "12",
+            "-1",
+            "8"
+          ],
+          "expected": "Calificación registrada: 8",
+          "hidden": false
+        },
+        {
+          "id": "tfo89ymcuji",
+          "name": "10 a la primera",
+          "inputs": [
+            "10"
+          ],
+          "expected": "Calificación registrada: 10",
+          "hidden": false
+        },
+        {
+          "id": "t0j9fricuji",
+          "name": "11 y 0",
+          "inputs": [
+            "11",
+            "0"
+          ],
+          "expected": "Calificación registrada: 0",
+          "hidden": true
+        }
+      ],
+      "rules": [
+        {
+          "id": "r65n0mrcuji",
+          "kind": "contains",
+          "pattern": "do",
+          "message": "Usa un ciclo do…while."
+        },
+        {
+          "id": "r3b7k1gcuji",
+          "kind": "notContains",
+          "pattern": "[",
+          "message": "No uses arreglos."
+        }
+      ]
+    }
+  ],
+  "createdAt": 1793674283200,
+  "updatedAt": 1793674359922
+}
