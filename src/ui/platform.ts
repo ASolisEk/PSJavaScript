@@ -33,6 +33,21 @@ export async function saveTextFile(filename: string, text: string, mime = 'text/
   await Share.share({ title: filename, message: text });
 }
 
+/**
+ * Selector de archivos del sistema (Android/iOS) y lectura del texto.
+ * Se piden todos los tipos: muchos administradores de archivos de Android entregan
+ * un .json como application/octet-stream y quedaría deshabilitado al filtrar.
+ */
+export async function pickTextFileNative(): Promise<{ name: string; text: string } | null> {
+  if (Platform.OS === 'web') return null;
+  const DocumentPicker = await import('expo-document-picker');
+  const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
+  const asset = res.canceled ? null : res.assets?.[0];
+  if (!asset) return null;
+  const { File } = await import('expo-file-system');
+  return { name: asset.name, text: await new File(asset.uri).text() };
+}
+
 /** Abre el selector de archivos del navegador y devuelve el texto (solo web). */
 export function pickTextFileWeb(accept = '.js,.txt,.psc'): Promise<{ name: string; text: string } | null> {
   return new Promise((resolve) => {

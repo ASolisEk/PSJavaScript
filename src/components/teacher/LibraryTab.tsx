@@ -7,7 +7,8 @@ import { examFileName, hasExamErrors, questionsPerStudent, questionTypeInfo, ser
 import { Certification, CERTIFICATIONS } from '../../core/exam/certs';
 import type { ExamConfig } from '../../core/exam/types';
 import { useTeacher } from '../../store/teacher';
-import { confirmDialog, pickTextFileWeb, saveTextFile } from '../../ui/platform';
+import { SecurityCard } from './Security';
+import { confirmDialog, pickTextFileNative, pickTextFileWeb, saveTextFile } from '../../ui/platform';
 import { BORDER, RADIUS, SCRIM, useTheme } from '../../ui/theme';
 import { Button, Heading } from '../ui';
 import { Banner, Card, IconName, Pill, TextField } from '../exam/kit';
@@ -47,6 +48,8 @@ export default function LibraryTab() {
             <Button label="Importar configuración" icon="cloud-upload-outline" onPress={importFile} />
           </View>
         </Card>
+
+        <SecurityCard />
 
         {CERTIFICATIONS.map((c) => (
           <CertCard key={c.id} cert={c} onAdded={(text) => setMsg({ ok: true, text })} />
@@ -182,12 +185,29 @@ function ImportDialog({ onClose, onImported }: { onClose(): void; onImported(e: 
   const t = useTheme();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const importText = (src: string, name?: string) => {
+    try {
+      onImported(useTeacher.getState().importExam(src));
+    } catch (e: any) {
+      setError(`${name ? `No se pudo importar ${name}: ` : ''}${e?.message ?? String(e)}`);
+    }
+  };
+  const pickFile = async () => {
+    setError(null);
+    try {
+      const f = await pickTextFileNative();
+      if (f) importText(f.text, f.name);
+    } catch (e: any) {
+      setError(`No se pudo leer el archivo: ${e?.message ?? String(e)}`);
+    }
+  };
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={[styles.dialog, { backgroundColor: t.surface, borderColor: t.border }]}>
           <Text style={{ color: t.text, fontWeight: '800', fontSize: 17, marginBottom: 8 }}>Importar configuración</Text>
-          <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 8 }}>Pega aquí el contenido del archivo .examen.json.</Text>
+          <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 10 }}>Elige el archivo .json del examen o pega su contenido.</Text>
+          <Button label="Elegir archivo" icon="document-outline" kind="primary" onPress={pickFile} style={{ alignSelf: 'flex-start', marginBottom: 10 }} />
           <TextField value={text} onChangeText={setText} mono multiline minHeight={180} />
           {error ? <Banner icon="alert-circle" color={t.danger} text={error} /> : null}
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
@@ -195,15 +215,9 @@ function ImportDialog({ onClose, onImported }: { onClose(): void; onImported(e: 
             <Button
               label="Importar"
               icon="cloud-upload-outline"
-              kind="primary"
+              kind={text.trim() ? 'primary' : 'default'}
               disabled={!text.trim()}
-              onPress={() => {
-                try {
-                  onImported(useTeacher.getState().importExam(text));
-                } catch (e: any) {
-                  setError(e?.message ?? String(e));
-                }
-              }}
+              onPress={() => importText(text)}
             />
           </View>
         </View>

@@ -3,6 +3,8 @@
  * e historial de exámenes aplicados. Todo se guarda en el dispositivo.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ExpoCrypto from 'expo-crypto';
+import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { cloneExam, createExam, parseExam, sampleExam } from '../core/exam/config';
 import { getCertification } from '../core/exam/certs';
@@ -12,6 +14,7 @@ import { roomCode } from '../core/exam/random';
 import { compactRoom, createRoom, RoomState } from '../core/exam/room';
 import { createHostTransport, TransportError, TransportSpec } from '../core/exam/transport';
 import type { ExamConfig } from '../core/exam/types';
+import { createVault, decryptText, defaultRandom, encryptText, isEncrypted, openVault, RandomBytes, VaultMeta } from '../core/vault';
 
 export type TeacherTab = 'library' | 'editor' | 'room' | 'results';
 
@@ -21,6 +24,12 @@ const EXAMS_KEY = 'psjs.teacher.exams.v2';
 const HISTORY_INDEX_KEY = 'psjs.teacher.history.v2';
 const historyItemKey = (key: string) => `${HISTORY_INDEX_KEY}:${key}`;
 const ROOM_KEY = 'psjs.teacher.room.v1';
+/** Datos para reconocer la contraseña del modo Maestro (si existe, todo lo demás va cifrado). */
+const LOCK_KEY = 'psjs.teacher.lock.v1';
+const TEACHER_PREFIX = 'psjs.teacher.';
+/** Sin actividad durante este tiempo, el modo Maestro protegido se bloquea solo. */
+export const AUTO_LOCK_MS = 10 * 60_000;
+const random: RandomBytes = Platform.OS === 'web' ? defaultRandom : (n) => ExpoCrypto.getRandomBytes(n);
 const MAX_HISTORY = 30;
 /** Cada cuánto se guarda la sala activa mientras cambia (la interfaz se actualiza más seguido). */
 const ROOM_SAVE_MS = 2000;
@@ -52,6 +61,10 @@ interface TeacherState {
   viewingKey: string | null;
   /** Problema al guardar en el dispositivo (sin espacio). */
   storageWarning: string | null;
+  /** El modo Maestro tiene contraseña: lo guardado está cifrado. */
+  secured: boolean;
+  /** Pantalla bloqueada: hace falta la contraseña para ver o usar los exámenes. */
+  locked: boolean;
 
   hydrate(): Promise<void>;
   setTab(t: TeacherTab): void;
@@ -81,6 +94,19 @@ interface TeacherState {
   viewHistory(key: string | null): void;
   deleteHistory(key: string): void;
   dismissStorageWarning(): void;
+
+  /** Abre el modo Maestro con la contraseña; false si es incorrecta. */
+  unlock(password: string): Promise<boolean>;
+  /** Bloquea (si hay una sala en vivo sigue funcionando, solo se oculta). */
+  lock(): Promise<void>;
+  /** ¿Es la contraseña actual? */
+  checkPassword(password: string): Promise<boolean>;
+  /** Pone o cambia la contraseña y vuelve a cifrar todo. */
+  setPassword(password: string): Promise<void>;
+  /** Quita la contraseña: los datos se guardan otra vez sin cifrar. */
+  removePassword(): Promise<void>;
+  /** Contraseña olvidada: borra todos los datos del modo Maestro de este dispositivo. */
+  forgetAll(): Promise<void>;
 }
 
 /** Identificador de una sala del historial. */
@@ -92,6 +118,33 @@ let pendingRoom: RoomState | null = null;
 let examsTimer: any = null;
 let saveRoomTimer: any = null;
 let lastRoomSave = 0;
+/** Clave de cifrado (solo en memoria, mientras el modo Maestro está abierto). */
+let vaultKey: Uint8Array | null = null;
+let vaultMeta: VaultMeta | null = null;
+/** Exámenes, historial y sala ya están en memoria (se descargan al bloquear). */
+let dataLoaded = false;
+/** Escrituras del historial en curso (se esperan antes de bloquear o cambiar la contraseña). */
+let historyChain: Promise<void> = Promise.resolve();
+
+/** Texto a guardar: JSON, cifrado si hay contraseña. null = no se puede guardar ahora (bloqueado). */
+function pack(value: unknown): string | null {
+  const json = JSON.stringify(value);
+  if (!vaultMeta) return json;
+  return vaultKey ? encryptText(vaultKey, json, random) : null;
+}
+
+/** Lee lo guardado (cifrado o no). Sin la clave, lo cifrado no se puede leer. */
+function unpack(raw: string | null): any {
+  if (!raw) return null;
+  if (isEncrypted(raw)) return vaultKey ? JSON.parse(decryptText(vaultKey, raw)) : null;
+  return JSON.parse(raw);
+}
+
+/** Guarda (cifrado si corresponde). Nunca escribe en claro algo que debería ir cifrado. */
+async function save(key: string, value: unknown): Promise<boolean> {
+  const text = pack(value);
+  return text === null ? true : safeSet(key, text);
+}
 
 export const useTeacher = create<TeacherState>((set, get) => {
   const NO_SPACE = 'El dispositivo se quedó sin espacio para guardar. Exporta tus exámenes y borra resultados antiguos del historial.';
@@ -99,14 +152,19 @@ export const useTeacher = create<TeacherState>((set, get) => {
   const persistExams = () => {
     clearTimeout(examsTimer);
     examsTimer = setTimeout(async () => {
-      if (!(await safeSet(EXAMS_KEY, JSON.stringify(get().exams)))) set({ storageWarning: NO_SPACE });
+      examsTimer = null;
+      if (!(await save(EXAMS_KEY, get().exams))) set({ storageWarning: NO_SPACE });
     }, 300);
   };
 
-  /** Guarda el índice y las salas del historial; si no hay espacio, descarta las más antiguas. */
-  const persistHistory = async (changed?: RoomState) => {
+  /** Guarda el índice y las salas del historial (en orden); si no hay espacio, descarta las más antiguas. */
+  const persistHistory = (changed?: RoomState) => {
+    historyChain = historyChain.then(() => writeHistory(changed)).catch(() => {});
+    return historyChain;
+  };
+  const writeHistory = async (changed?: RoomState) => {
     let history = get().history;
-    if (changed && !(await safeSet(historyItemKey(roomKey(changed)), JSON.stringify(changed)))) {
+    if (changed && !(await save(historyItemKey(roomKey(changed)), changed))) {
       // libera espacio borrando las salas más antiguas (nunca la que se acaba de guardar)
       let dropped = 0;
       let saved = false;
@@ -116,7 +174,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
         history = history.slice(0, -1);
         dropped++;
         await AsyncStorage.removeItem(historyItemKey(roomKey(old))).catch(() => {});
-        saved = await safeSet(historyItemKey(roomKey(changed)), JSON.stringify(changed));
+        saved = await save(historyItemKey(roomKey(changed)), changed);
       }
       set({
         history,
@@ -125,14 +183,14 @@ export const useTeacher = create<TeacherState>((set, get) => {
           : NO_SPACE,
       });
     }
-    if (!(await safeSet(HISTORY_INDEX_KEY, JSON.stringify(history.map(roomKey))))) set({ storageWarning: NO_SPACE });
+    if (!(await save(HISTORY_INDEX_KEY, history.map(roomKey)))) set({ storageWarning: NO_SPACE });
   };
 
   const writeRoom = (room: RoomState | null) => {
     clearTimeout(saveRoomTimer);
     saveRoomTimer = null;
     lastRoomSave = Date.now();
-    if (room) safeSet(ROOM_KEY, JSON.stringify(room)).then((ok) => ok || set({ storageWarning: NO_SPACE }));
+    if (room) save(ROOM_KEY, room).then((ok) => ok || set({ storageWarning: NO_SPACE }));
     else AsyncStorage.removeItem(ROOM_KEY).catch(() => {});
   };
 
@@ -204,6 +262,66 @@ export const useTeacher = create<TeacherState>((set, get) => {
     persistRoom(host.state, true);
   };
 
+  /** Lee exámenes, historial y sala del dispositivo (descifrando si hay contraseña). */
+  const loadAll = async () => {
+    const read = async (key: string) => {
+      try {
+        return unpack(await AsyncStorage.getItem(key));
+      } catch {
+        return null;
+      }
+    };
+    let rawExams: any[] = (await read(EXAMS_KEY)) ?? [];
+    let history: RoomState[] = [];
+    const index: string[] = (await read(HISTORY_INDEX_KEY)) ?? [];
+    for (const k of index) {
+      const r = await read(historyItemKey(k));
+      if (r) history.push(r);
+    }
+    // migración desde la versión con una sola clave
+    const legacy = await read(LEGACY_KEY);
+    if (legacy) {
+      rawExams = [...rawExams, ...(legacy.exams ?? []).filter((e: any) => !rawExams.some((x) => x?.id === e?.id))];
+      const keys = new Set(history.map(roomKey));
+      history = [...history, ...(Array.isArray(legacy.history) ? legacy.history : []).filter((h: RoomState) => !keys.has(roomKey(h))).map((h: RoomState) => compactRoom(h))];
+    }
+    const exams: ExamConfig[] = [];
+    for (const e of rawExams) {
+      try {
+        exams.push(parseExam(JSON.stringify(e)));
+      } catch {
+        /* se omite */
+      }
+    }
+    set({ exams, history: history.slice(0, MAX_HISTORY), room: await read(ROOM_KEY) });
+    dataLoaded = true;
+    if (legacy) {
+      const ok = await save(EXAMS_KEY, exams);
+      for (const h of get().history) await persistHistory(h);
+      if (ok) await AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
+    }
+  };
+
+  /** Escribe ya lo pendiente (antes de bloquear o de cambiar la contraseña). */
+  const flush = async () => {
+    if (examsTimer) {
+      clearTimeout(examsTimer);
+      examsTimer = null;
+      await save(EXAMS_KEY, get().exams);
+    }
+    if (saveRoomTimer) writeRoom(host?.state ?? get().room);
+    await historyChain;
+  };
+
+  /** Vuelve a guardar todo con la clave actual (o sin cifrar si ya no hay contraseña). */
+  const rewriteAll = async () => {
+    await save(EXAMS_KEY, get().exams);
+    for (const h of get().history) await save(historyItemKey(roomKey(h)), h);
+    await save(HISTORY_INDEX_KEY, get().history.map(roomKey));
+    const room = host?.state ?? get().room;
+    if (room) await save(ROOM_KEY, room);
+  };
+
   return {
     hydrated: false,
     exams: [],
@@ -217,45 +335,95 @@ export const useTeacher = create<TeacherState>((set, get) => {
     history: [],
     viewingKey: null,
     storageWarning: null,
+    secured: false,
+    locked: false,
 
     async hydrate() {
       if (get().hydrated) return;
-      const read = async (key: string) => {
-        try {
-          const raw = await AsyncStorage.getItem(key);
-          return raw ? JSON.parse(raw) : null;
-        } catch {
-          return null;
-        }
-      };
-      let rawExams: any[] = (await read(EXAMS_KEY)) ?? [];
-      let history: RoomState[] = [];
-      const index: string[] = (await read(HISTORY_INDEX_KEY)) ?? [];
-      for (const k of index) {
-        const r = await read(historyItemKey(k));
-        if (r) history.push(r);
+      try {
+        const raw = await AsyncStorage.getItem(LOCK_KEY);
+        vaultMeta = raw ? JSON.parse(raw) : null;
+      } catch {
+        vaultMeta = null;
       }
-      // migración desde la versión con una sola clave
-      const legacy = await read(LEGACY_KEY);
-      if (legacy) {
-        rawExams = [...rawExams, ...(legacy.exams ?? []).filter((e: any) => !rawExams.some((x) => x?.id === e?.id))];
-        const keys = new Set(history.map(roomKey));
-        history = [...history, ...(Array.isArray(legacy.history) ? legacy.history : []).filter((h: RoomState) => !keys.has(roomKey(h))).map((h: RoomState) => compactRoom(h))];
+      // con contraseña no se lee nada hasta desbloquear
+      if (vaultMeta && !vaultKey) {
+        set({ hydrated: true, secured: true, locked: true });
+        return;
       }
-      const exams: ExamConfig[] = [];
-      for (const e of rawExams) {
-        try {
-          exams.push(parseExam(JSON.stringify(e)));
-        } catch {
-          /* se omite */
-        }
+      await loadAll();
+      set({ hydrated: true, secured: !!vaultMeta, locked: false });
+    },
+
+    async unlock(password) {
+      if (!vaultMeta) return true;
+      const key = await openVault(password, vaultMeta);
+      if (!key) return false;
+      vaultKey = key;
+      // con la sala en vivo los datos siguen en memoria (solo estaba oculta)
+      if (!dataLoaded) await loadAll();
+      set({ locked: false });
+      // la sala que estaba abierta al recargar vuelve a recibir alumnos
+      const room = get().room;
+      if (room && room.status !== 'closed' && !host) get().reopenRoom();
+      return true;
+    },
+
+    async lock() {
+      if (!vaultMeta) return;
+      await flush();
+      if (host) {
+        set({ locked: true });
+        return;
       }
-      set({ exams, history: history.slice(0, MAX_HISTORY), room: await read(ROOM_KEY), hydrated: true });
-      if (legacy) {
-        const ok = await safeSet(EXAMS_KEY, JSON.stringify(exams));
-        for (const h of get().history) await persistHistory(h);
-        if (ok) await AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
+      vaultKey = null;
+      dataLoaded = false;
+      set({ locked: true, exams: [], history: [], room: null, editingId: null, viewingKey: null, tab: 'library' });
+    },
+
+    async checkPassword(password) {
+      return !vaultMeta || !!(await openVault(password, vaultMeta));
+    },
+
+    async setPassword(password) {
+      if (get().locked) throw new Error('Primero desbloquea el modo Maestro.');
+      await flush();
+      const { key, meta } = await createVault(password, random);
+      // primero la contraseña y luego los datos: si se interrumpe, lo no reescrito sigue legible (en claro)
+      if (!(await safeSet(LOCK_KEY, JSON.stringify(meta)))) throw new Error('No se pudo guardar la contraseña en el dispositivo.');
+      vaultMeta = meta;
+      vaultKey = key;
+      await rewriteAll();
+      set({ secured: true });
+    },
+
+    async removePassword() {
+      if (get().locked || !vaultMeta) return;
+      await flush();
+      vaultMeta = null;
+      vaultKey = null;
+      await rewriteAll();
+      await AsyncStorage.removeItem(LOCK_KEY).catch(() => {});
+      set({ secured: false });
+    },
+
+    async forgetAll() {
+      host?.dispose();
+      host = null;
+      clearTimeout(examsTimer);
+      clearTimeout(saveRoomTimer);
+      examsTimer = saveRoomTimer = null;
+      await historyChain;
+      try {
+        const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(TEACHER_PREFIX));
+        if (keys.length) await AsyncStorage.multiRemove(keys);
+      } catch {
+        /* se ignora */
       }
+      vaultMeta = null;
+      vaultKey = null;
+      dataLoaded = true;
+      set({ exams: [], history: [], room: null, live: false, editingId: null, viewingKey: null, tab: 'library', secured: false, locked: false });
     },
 
     setTab(tab) {
