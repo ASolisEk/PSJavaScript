@@ -17,9 +17,10 @@
  * o app, la tecla Impr Pant del sistema, herramientas abiertas desde el menú) se
  * detecta: el examen se oculta hasta que el alumno regresa y se avisa al maestro.
  */
+import { NavigationBar } from 'expo-navigation-bar';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Platform } from 'react-native';
+import { AppState, BackHandler, Platform, StatusBar } from 'react-native';
 import { blockedShortcut } from '../../core/exam/lockdown';
 
 const web = () => Platform.OS === 'web' && typeof document !== 'undefined' && typeof window !== 'undefined';
@@ -115,6 +116,8 @@ export function useExamLockdown(active: boolean, onIncident: (detail: string) =>
       check();
     };
     const onKey = (e: KeyboardEvent) => {
+      // con el teclado capturado, Esc llega a la página: no saca de pantalla completa
+      if (e.key === 'Escape' && isFullscreen()) e.preventDefault();
       const why = blockedShortcut(e);
       if (!why) return;
       e.preventDefault();
@@ -131,6 +134,11 @@ export function useExamLockdown(active: boolean, onIncident: (detail: string) =>
       if (e.key !== 'PrintScreen') return;
       report('Presionó Impr Pant (captura de pantalla)');
       navigator.clipboard?.writeText('').catch(() => {});
+    };
+    // El navegador no deja impedir que se salga de pantalla completa (Esc mantenido, F11, menú),
+    // pero sí volver a entrar con un gesto del alumno: cualquier clic o tecla la recupera.
+    const regain = () => {
+      if (needFs && !isFullscreen()) enterFullscreen().then(() => setTimeout(check, 50));
     };
     const block = (e: Event) => e.preventDefault();
     // seleccionar el texto del examen (sí se puede dentro del propio código)
@@ -150,6 +158,8 @@ export function useExamLockdown(active: boolean, onIncident: (detail: string) =>
 
     document.addEventListener('fullscreenchange', onFs);
     window.addEventListener('keydown', onKey, true);
+    document.addEventListener('pointerdown', regain, true);
+    document.addEventListener('keydown', regain, true);
     window.addEventListener('keyup', onKeyUp, true);
     document.addEventListener('contextmenu', block, true);
     document.addEventListener('dragstart', block, true);
@@ -181,6 +191,8 @@ export function useExamLockdown(active: boolean, onIncident: (detail: string) =>
     return () => {
       document.removeEventListener('fullscreenchange', onFs);
       window.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('pointerdown', regain, true);
+      document.removeEventListener('keydown', regain, true);
       window.removeEventListener('keyup', onKeyUp, true);
       document.removeEventListener('contextmenu', block, true);
       document.removeEventListener('dragstart', block, true);
@@ -206,12 +218,28 @@ export function useExamLockdown(active: boolean, onIncident: (detail: string) =>
     if (!active || Platform.OS === 'web') return;
     // sin capturas ni grabaciones de pantalla, y en blanco en «Recientes»
     ScreenCapture.preventScreenCaptureAsync(CAPTURE_KEY).catch(() => {});
+    // pantalla completa: sin barra de estado ni barra de navegación (se asoman solo al deslizar)
+    const immersive = (on: boolean) => {
+      StatusBar.setHidden(on, 'fade');
+      if (Platform.OS === 'android') {
+        try {
+          NavigationBar.setHidden(on);
+        } catch {
+          /* versión de Android sin soporte */
+        }
+      }
+    };
+    immersive(true);
     let left = false;
     const app = AppState.addEventListener('change', (state) => {
       if (state !== 'active') left = true;
-      else if (left) {
-        left = false;
-        setCover('away');
+      else {
+        // al volver a la app, el sistema puede mostrar de nuevo las barras
+        immersive(true);
+        if (left) {
+          left = false;
+          setCover('away');
+        }
       }
     });
     // el botón Atrás no saca del examen
@@ -219,6 +247,7 @@ export function useExamLockdown(active: boolean, onIncident: (detail: string) =>
     // iOS no deja impedir las capturas de pantalla: se avisa al maestro
     const shot = Platform.OS === 'ios' ? ScreenCapture.addScreenshotListener(() => incident.current('Tomó una captura de pantalla')) : null;
     return () => {
+      immersive(false);
       ScreenCapture.allowScreenCaptureAsync(CAPTURE_KEY).catch(() => {});
       app.remove();
       back.remove();

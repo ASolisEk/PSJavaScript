@@ -786,9 +786,14 @@ function LockCover({ reason, onResume }: { reason: 'fullscreen' | 'away'; onResu
     <View style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: t.bg }]} accessibilityViewIsModal>
       <Card accent={t.danger} style={{ alignItems: 'center', padding: 24, maxWidth: 460, width: '100%' }}>
         <Ionicons name={fs ? 'expand-outline' : 'eye-off-outline'} size={44} color={t.danger} />
-        <Heading style={{ marginTop: 8, textAlign: 'center' }}>{fs ? 'El examen se ocultó' : 'Regresa a tu examen'}</Heading>
+        <Heading style={{ marginTop: 8, textAlign: 'center' }}>{fs ? 'El examen sigue en pantalla completa' : 'Regresa a tu examen'}</Heading>
         <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
-          {fs ? 'El examen solo se puede responder en pantalla completa.' : 'Cambiaste de ventana o de pestaña.'} Tu maestro ya recibió un aviso. El tiempo sigue corriendo y tus respuestas están guardadas.
+          {fs
+            ? 'No puedes salir de pantalla completa hasta terminar el examen. Toca cualquier parte o presiona una tecla para volver.'
+            : Platform.OS === 'web'
+              ? 'Cambiaste de ventana o de pestaña.'
+              : 'Saliste de la app del examen.'}{' '}
+          Tu maestro ya recibió un aviso. El tiempo sigue corriendo y tus respuestas están guardadas.
         </Text>
         <Button label={fs ? 'Volver a pantalla completa' : 'Continuar el examen'} icon={fs ? 'expand-outline' : 'play'} kind="primary" onPress={onResume} style={{ marginTop: 16, height: 46 }} />
       </Card>
