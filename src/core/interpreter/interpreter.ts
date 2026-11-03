@@ -31,7 +31,12 @@ export interface InputEvent {
   mode: 'prompt' | 'confirm';
   defaultValue?: string;
 }
-export type InterpEvent = StepEvent | InputEvent;
+/** Espera real antes de un temporizador (setTimeout/setInterval) cuando `realTimers` está activo. */
+export interface WaitEvent {
+  type: 'wait';
+  ms: number;
+}
+export type InterpEvent = StepEvent | InputEvent | WaitEvent;
 export type G<T = any> = Generator<InterpEvent, T, any>;
 
 export type OutputKind = 'log' | 'info' | 'warn' | 'error' | 'alert' | 'input' | 'system' | 'canvas';
@@ -140,6 +145,11 @@ export interface InterpreterOptions {
   io: IOHandler;
   random?: () => number;
   explain?: boolean;
+  /**
+   * Los temporizadores esperan su tiempo de verdad (avisa con un evento 'wait'). Sin esta
+   * opción el tiempo es virtual y se ejecutan al instante (al calificar, por ejemplo).
+   */
+  realTimers?: boolean;
 }
 
 interface Frame {
@@ -182,6 +192,7 @@ export class Interpreter {
   private timers: { id: number; fn: any; args: any[]; time: number; seq: number; interval: number | null }[] = [];
   private timerSeq = 0;
   private virtualTime = 0;
+  private realTimers = false;
   private watchCache = new Map<string, N>();
   readonly profile: Profile;
   private io: IOHandler;
@@ -192,6 +203,7 @@ export class Interpreter {
     this.io = opts.io;
     this.random = opts.random ?? Math.random;
     this.explainEnabled = !!opts.explain;
+    this.realTimers = !!opts.realTimers;
     this.ast = parseProgram(source);
     this.builtins = new Scope(null, 'builtin', 'Predefinidas');
     this.global = new Scope(this.builtins, 'global', 'Global');
@@ -387,7 +399,9 @@ export class Interpreter {
     while (this.timers.length) {
       this.timers.sort((a, b) => a.time - b.time || a.seq - b.seq);
       const t = this.timers.shift()!;
+      const wait = t.time - this.virtualTime;
       this.virtualTime = t.time;
+      if (wait > 0 && this.realTimers) yield { type: 'wait', ms: wait };
       if (t.interval !== null) this.timers.push({ ...t, time: t.time + t.interval, seq: ++this.timerSeq });
       this.explain(`Se ejecuta el temporizador #${t.id} (t = ${t.time} ms)`);
       yield* this.callFunction(t.fn, undefined, t.args, undefined, null);
@@ -1264,12 +1278,15 @@ export class Interpreter {
   private checkTypes(op: string, l: any, r: any, node: N) {
     const tl = typeof l;
     const tr = typeof r;
+    // texto mezclado con número: casi siempre es un dato leído con prompt() sin convertir
+    const fromText = (tl === 'string' && tr === 'number') || (tl === 'number' && tr === 'string');
     const fail = (why: string) => {
-      throw this.err(TypeError, `Tipos incompatibles en '${this.src(node)}': ${why}`, node, 'type-mismatch');
+      const tip = fromText ? '. Si el texto viene de prompt(), conviértelo a número: Number(prompt("..."))' : '';
+      throw this.err(TypeError, `Tipos incompatibles en '${this.src(node)}': ${why}${tip}`, node, 'type-mismatch');
     };
     if (op === '+') {
       if (!(SIMPLE_TYPES.has(tl) && SIMPLE_TYPES.has(tr)) || tl !== tr)
-        fail(`no se puede sumar ${typeName(l)} con ${typeName(r)}. Convierte con Number() o String()`);
+        fail(`no se puede sumar ${typeName(l)} con ${typeName(r)}${fromText ? '' : '. Convierte con Number() o String()'}`);
     } else if (['-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>', '>>>'].includes(op)) {
       if (!((tl === 'number' && tr === 'number') || (tl === 'bigint' && tr === 'bigint')))
         fail(`el operador '${op}' requiere números y recibió ${typeName(l)} y ${typeName(r)}`);

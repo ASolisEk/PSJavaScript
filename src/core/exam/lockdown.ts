@@ -8,6 +8,8 @@ export function blockedShortcut(e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey
   const key = letter ?? e.key;
   const mod = e.ctrlKey || e.metaKey;
   if (key === 'F12') return 'Intentó abrir las herramientas de desarrollo (F12)';
+  // con el teclado capturado (pantalla completa en Chrome/Edge) llegan Alt+Tab y Cmd/Win+Tab
+  if (key === 'Tab' && (e.altKey || e.metaKey)) return 'Intentó cambiar de ventana';
   if (mod && e.shiftKey && ['i', 'j', 'c', 'k', 'e', 'm'].includes(key)) return 'Intentó abrir las herramientas de desarrollo';
   if (e.metaKey && e.altKey && ['i', 'j', 'c', 'u'].includes(key)) return 'Intentó abrir las herramientas de desarrollo';
   if (mod && e.shiftKey && key === 's') return 'Intentó tomar una captura de pantalla';

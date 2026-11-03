@@ -146,7 +146,10 @@ export const FUNCTIONS: CatalogItem[] = [
   fn('.has', 'Colecciones', 'set.has(valor)', 'Devuelve true si el conjunto contiene el valor.', undefined, '.has($0)'),
   fn('.delete', 'Colecciones', 'set.delete(valor)', 'Elimina un valor del conjunto.', undefined, '.delete($0)'),
   { label: '.size', kind: 'property', category: 'Colecciones', insert: '.size$0', doc: 'Cantidad de elementos en un Set o Map.' },
-  fn('setTimeout', 'Tiempo', 'setTimeout(funcion, milisegundos)', 'Ejecuta la función después de un tiempo (simulado).'),
+  fn('setTimeout', 'Tiempo', 'setTimeout(funcion, milisegundos)', 'Ejecuta la función después de esperar los milisegundos indicados (1000 = 1 segundo).', undefined, 'setTimeout(() => {\n  $0\n}, 1000)'),
+  fn('setInterval', 'Tiempo', 'setInterval(funcion, milisegundos)', 'Repite la función cada cierto tiempo hasta detenerla con clearInterval.', undefined, 'const id = setInterval(() => {\n  $0\n}, 1000)'),
+  fn('clearInterval', 'Tiempo', 'clearInterval(id)', 'Detiene una repetición creada con setInterval.', undefined, 'clearInterval($0)'),
+  fn('clearTimeout', 'Tiempo', 'clearTimeout(id)', 'Cancela un setTimeout antes de que se ejecute.', undefined, 'clearTimeout($0)'),
 ];
 
 export const OPERATORS: CatalogItem[] = [

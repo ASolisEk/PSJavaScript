@@ -337,7 +337,19 @@ export const HELP: HelpTopic[] = [
     title: 'Características no soportadas',
     group: 'Lenguaje',
     blocks: [
-      { p: 'El intérprete cubre JavaScript moderno para aprendizaje. No soporta: funciones async/await, promesas, generadores (function*), módulos import/export, DOM (document/window) ni acceso a la red. setTimeout y setInterval funcionan con tiempo simulado.' },
+      { p: 'El intérprete cubre JavaScript moderno para aprendizaje. No soporta: funciones async/await, promesas, generadores (function*), módulos import/export, DOM (document/window) ni acceso a la red.' },
+    ],
+  },
+  {
+    id: 'esperar',
+    title: 'Esperar: setTimeout y setInterval',
+    group: 'Lenguaje',
+    blocks: [
+      { p: 'setTimeout(funcion, ms) ejecuta la función después de esperar ms milisegundos (1000 ms = 1 segundo). El programa no se detiene: sigue con lo que viene después y la función se ejecuta cuando se cumple el tiempo.' },
+      { code: 'console.log("Preparando...");\nsetTimeout(() => {\n  console.log("¡Listo! Pasaron 2 segundos");\n}, 2000);\nconsole.log("Esto se muestra primero");' },
+      { p: 'Para repetir algo cada cierto tiempo usa setInterval y detenlo con clearInterval. Así se hace una cuenta regresiva:' },
+      { code: 'let segundos = 5;\nconst reloj = setInterval(() => {\n  console.log(segundos);\n  segundos--;\n  if (segundos === 0) {\n    clearInterval(reloj);\n    console.log("¡Despegue!");\n  }\n}, 1000);' },
+      { p: 'En el editor la espera es real (verás la consola avanzar segundo a segundo); en «Paso a paso» y al calificar un examen no se espera, para no hacerte perder tiempo. Mientras espera, la consola muestra «Esperando…» y puedes detener el programa.' },
     ],
   },
 ];

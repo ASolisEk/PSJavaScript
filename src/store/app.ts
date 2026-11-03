@@ -214,6 +214,8 @@ export const useApp = create<AppState>((set, get) => {
       speed: s.settings.speed,
       replayInputs,
       trackDesktop: true,
+      // setTimeout/setInterval esperan su tiempo de verdad
+      realTime: true,
       onUpdate: (snap) => {
         if (snap.status === 'finished' || snap.status === 'error' || snap.status === 'stopped') lastInputs = snap.inputs;
         // runSeq cambia junto con la primera instantánea de cada ejecución

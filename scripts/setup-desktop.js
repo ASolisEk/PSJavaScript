@@ -148,6 +148,21 @@ const { spawn } = require('child_process');
 
 let server;
 let currentDownload = null;
+let examLocked = false;
+
+/**
+ * Examen bloqueado: las capturas y grabaciones de pantalla salen en negro (Windows y
+ * macOS), la ventana queda en modo quiosco y siempre al frente (en macOS además se
+ * desactiva Cmd+Tab) y no se pueden abrir las herramientas de desarrollo.
+ */
+function setExamLock(win, on) {
+  examLocked = on;
+  if (win.isDestroyed()) return;
+  try { win.setContentProtection(on); } catch (e) {}
+  try { win.setAlwaysOnTop(on, 'screen-saver'); } catch (e) {}
+  try { win.setKiosk(on); } catch (e) {}
+  if (on && win.webContents.isDevToolsOpened()) win.webContents.closeDevTools();
+}
 
 function downloadAndInstall(fileUrl, customName, callback) {
   const defaultExt = process.platform === 'win32' ? '.exe' : process.platform === 'darwin' ? '.dmg' : '.AppImage';
@@ -288,6 +303,33 @@ function createWindow() {
 
   setupMenu(win);
 
+  // durante el examen: sin herramientas de desarrollo, recargar ni cerrar con el teclado
+  win.webContents.on('devtools-opened', () => {
+    if (examLocked) win.webContents.closeDevTools();
+  });
+  win.webContents.on('before-input-event', (event, input) => {
+    if (!examLocked || input.type !== 'keyDown') return;
+    const k = (input.key || '').toLowerCase();
+    const mod = input.control || input.meta;
+    if (
+      input.key === 'F12' ||
+      input.key === 'F5' ||
+      (input.alt && input.key === 'F4') ||
+      (mod && input.shift && ['i', 'j', 'c'].includes(k)) ||
+      (input.meta && input.alt && ['i', 'j', 'c'].includes(k)) ||
+      (mod && ['r', 'w', 'q', 'h', 'm'].includes(k))
+    ) {
+      event.preventDefault();
+    }
+  });
+  win.on('close', (event) => {
+    // para salir hay que usar «Abandonar» o terminar el examen
+    if (examLocked) event.preventDefault();
+  });
+  // si la página falla, no se deja al alumno atrapado en modo quiosco
+  win.webContents.on('render-process-gone', () => setExamLock(win, false));
+  win.on('unresponsive', () => setExamLock(win, false));
+
   if (process.platform === 'darwin' && app.dock && fs.existsSync(iconPng)) {
     try {
       app.dock.setIcon(iconPng);
@@ -306,6 +348,11 @@ function createWindow() {
       arch: process.arch,
       appVersion: app.getVersion()
     });
+  });
+
+  expApp.post('/api/desktop/exam-lock', (req, res) => {
+    setExamLock(win, !!(req.body && req.body.on));
+    res.json({ locked: examLocked });
   });
 
   expApp.get('/api/desktop/download-progress', (req, res) => {

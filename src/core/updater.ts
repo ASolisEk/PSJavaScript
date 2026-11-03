@@ -50,6 +50,8 @@ export interface ReleaseInfo {
 
 export interface UpdateCheckResult {
   hasUpdate: boolean;
+  /** Descarga pedida a la fuerza («Forzar versión más reciente»), aunque la versión coincida. */
+  forced?: boolean;
   currentVersion: string;
   latestVersion: string;
   release?: ReleaseInfo;
@@ -196,11 +198,30 @@ export function findBestAsset(
 }
 
 /** Resuelve el asset adecuado a descargar según la plataforma */
-function resolveDownloadAsset(platform: PlatformType, assets: any[] = []): { downloadUrl: string; assetName: string } {
+/** Instaladores que se publican en la carpeta public/ de la rama main (los de la página web). */
+const MAIN_BINARIES: Partial<Record<PlatformType, string>> = {
+  android: 'PSJavaScript.apk',
+  'electron-win': 'PSJavaScript-Setup.exe',
+  'electron-mac': 'PSJavaScript.dmg',
+  'electron-linux': 'PSJavaScript.AppImage',
+};
+
+/** Enlace directo al instalador más reciente de la rama main (null si la plataforma no tiene). */
+export function mainBinary(platform: PlatformType, version?: string): { downloadUrl: string; assetName: string } | null {
+  const file = MAIN_BINARIES[platform];
+  if (!file) return null;
+  // el parámetro evita que una caché intermedia entregue un instalador anterior
+  return { downloadUrl: `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/public/${file}?v=${encodeURIComponent(version ?? String(Date.now()))}`, assetName: file };
+}
+
+function resolveDownloadAsset(platform: PlatformType, assets: any[] = [], version?: string): { downloadUrl: string; assetName: string } {
   const found = findBestAsset(assets, platform);
   if (found) {
     return { downloadUrl: found.browser_download_url, assetName: found.name };
   }
+  // sin instalador en la release: el que está publicado en main (antes se abría la página de releases)
+  const main = mainBinary(platform, version);
+  if (main) return main;
 
   // Fallback si no hay release binaria específica
   let fallbackName = 'PSJavaScript-update';
@@ -276,7 +297,7 @@ export async function checkForUpdate(options: { allowWebCheck?: boolean } = {}):
     const hasUpdate = isNewerVersion(CURRENT_VERSION, latestVer);
     // Si la release de GitHub coincide con la versión más reciente, usar sus assets
     const assets = !useRawPkg && ghReleaseData?.assets ? ghReleaseData.assets : [];
-    const asset = resolveDownloadAsset(platform, assets);
+    const asset = resolveDownloadAsset(platform, assets, latestVer);
 
     const release: ReleaseInfo = {
       version: latestVer,
@@ -310,6 +331,57 @@ export async function checkForUpdate(options: { allowWebCheck?: boolean } = {}):
     platformLabel: getPlatformLabel(platform),
     isNonWeb: nonWeb,
   };
+}
+
+/**
+ * Navegador: borra lo que haya en caché y recarga la página pidiendo todo de nuevo al
+ * servidor, para quedarse con la última versión publicada.
+ */
+export async function reloadLatestWeb(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const w = window as any;
+  try {
+    const keys: string[] = (await w.caches?.keys?.()) ?? [];
+    await Promise.all(keys.map((k) => w.caches.delete(k)));
+  } catch {}
+  try {
+    const regs: readonly any[] = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
+    await Promise.all(regs.map((r) => r.unregister()));
+  } catch {}
+  try {
+    await fetch(window.location.href, { cache: 'reload' });
+  } catch {}
+  const url = new URL(window.location.href);
+  url.searchParams.set('v', String(Date.now()));
+  window.location.replace(url.toString());
+}
+
+/**
+ * «Forzar versión más reciente». En el navegador recarga sin caché; en la app de escritorio
+ * y en Android prepara la descarga del instalador más reciente aunque la versión coincida.
+ */
+export async function forceLatest(): Promise<{ kind: 'reload' } | { kind: 'download'; info: UpdateCheckResult } | { kind: 'error'; error: string }> {
+  if (getPlatformType() === 'web') await detectDesktopEnvironment();
+  const platform = getPlatformType();
+  if (!isNonWeb()) {
+    await reloadLatestWeb();
+    return { kind: 'reload' };
+  }
+  const res = await checkForUpdate({ allowWebCheck: true });
+  const binary = mainBinary(platform, res.latestVersion);
+  let release = res.release;
+  // si la release no trae un archivo para esta plataforma, se usa el de main
+  if (!release || (release.downloadUrl === GITHUB_RELEASES_URL && binary)) {
+    if (!binary) return { kind: 'error', error: 'No hay un instalador para esta plataforma. Descárgalo desde la página del proyecto.' };
+    release = {
+      version: res.latestVersion,
+      name: `Versión ${res.latestVersion}`,
+      notes: 'Se descargará de nuevo el instalador más reciente publicado.',
+      releaseUrl: GITHUB_RELEASES_URL,
+      ...binary,
+    };
+  }
+  return { kind: 'download', info: { ...res, hasUpdate: true, forced: true, release } };
 }
 
 /**

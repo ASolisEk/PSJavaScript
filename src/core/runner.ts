@@ -100,12 +100,23 @@ export interface RunnerOptions {
   trackDesktop?: boolean;
   /** Cada cuántos pasos se pregunta si hay un ciclo infinito (modo ejecutar). */
   loopWarnEvery?: number;
+  /**
+   * setTimeout/setInterval esperan su tiempo de verdad (en el editor). Sin esta opción el
+   * tiempo es virtual y todo corre al instante (al calificar).
+   */
+  realTime?: boolean;
   onUpdate?: (s: RunnerSnapshot) => void;
 }
 
 const MAX_OUTPUT = 5000;
 const MAX_ROWS = 1000;
 const CHUNK_MS = 16;
+/** Espera máxima de un temporizador (para que un setTimeout enorme no deje la ejecución colgada). */
+const MAX_WAIT_MS = 10 * 60_000;
+
+function waitLabel(ms: number): string {
+  return ms < 1000 ? `${ms} ms` : `${Math.round(ms / 100) / 10} s`;
+}
 
 export class Runner {
   private interp: Interpreter | null = null;
@@ -118,6 +129,8 @@ export class Runner {
   private line: number | null = null;
   private prevLine = 0;
   private eventSteps = 0;
+  private waitMs = 0;
+  private waiting = false;
   private error: RuntimeErrorInfo | null = null;
   private inputs: InputValue[] = [];
   private replayQueue: InputValue[] = [];
@@ -230,6 +243,8 @@ export class Runner {
     this.status = 'running';
     while (this.status === 'running' && this.eventSteps < target) {
       const r = this.next();
+      // al retroceder no se espera
+      if (r === 'wait') continue;
       if (r !== 'step') break;
     }
     this.silentUntil = -1;
@@ -291,6 +306,8 @@ export class Runner {
     this.truncated = false;
     this.pending = undefined;
     this.lastWarnAt = 0;
+    this.waiting = false;
+    this.waitMs = 0;
     this.startedAt = Date.now();
     this.elapsed = null;
     this.randIdx = 0;
@@ -298,6 +315,7 @@ export class Runner {
       this.interp = new Interpreter(this.opts.code, {
         profile: this.opts.profile,
         explain: this.explain,
+        realTimers: !!this.opts.realTime,
         random: () => {
           if (this.randIdx < this.randoms.length) return this.randoms[this.randIdx++];
           const v = Math.random();
@@ -365,7 +383,7 @@ export class Runner {
   }
 
   /** Avanza el generador un evento. */
-  private next(): 'step' | 'input' | 'done' {
+  private next(): 'step' | 'input' | 'wait' | 'done' {
     if (!this.gen || !this.interp) return 'done';
     let r: IteratorResult<InterpEvent, void>;
     try {
@@ -385,6 +403,10 @@ export class Runner {
       return 'done';
     }
     const ev = r.value;
+    if (ev.type === 'wait') {
+      this.waitMs = Math.min(ev.ms, MAX_WAIT_MS);
+      return 'wait';
+    }
     if (ev.type === 'input') {
       const req = { prompt: ev.prompt, mode: ev.mode, defaultValue: ev.defaultValue };
       if (this.replayQueue.length) {
@@ -435,11 +457,24 @@ export class Runner {
     this.write('error', `${info.name}${info.line ? ` (línea ${info.line})` : ''}: ${info.message}`);
   }
 
+  /** Espera real de un setTimeout/setInterval: avisa en la consola y sigue después. */
+  private waitTimer() {
+    this.waiting = true;
+    this.notice = `Esperando ${waitLabel(this.waitMs)} (setTimeout)…`;
+    this.publish();
+    this.schedule(this.waitMs);
+  }
+
   private pump() {
     if (this.status !== 'running') return;
+    if (this.waiting) {
+      this.waiting = false;
+      this.notice = null;
+    }
     const warnEvery = this.opts.loopWarnEvery ?? 2_000_000;
     if (this.mode === 'animate') {
       const r = this.next();
+      if (r === 'wait') return this.waitTimer();
       if (r === 'step' && this.status === 'running') {
         if (this.breakpoints.has(this.line!) && this.eventSteps > 1) {
           this.status = 'paused';
@@ -453,6 +488,7 @@ export class Runner {
     let n = 0;
     while (this.status === 'running') {
       const r = this.next();
+      if (r === 'wait') return this.waitTimer();
       if (r !== 'step') break;
       if (this.status !== 'running') break;
       if (this.breakpoints.has(this.line!)) {
@@ -476,7 +512,9 @@ export class Runner {
   }
 
   private advanceToNextStep() {
-    const r = this.next();
+    let r = this.next();
+    // paso a paso: el temporizador se ejecuta sin esperar
+    while (r === 'wait') r = this.next();
     if (r === 'step' && this.status === 'running') this.status = 'paused';
     this.publish();
   }

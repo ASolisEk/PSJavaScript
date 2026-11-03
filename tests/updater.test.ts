@@ -27,3 +27,14 @@ test('updater: selección de instalador adecuado por plataforma', () => {
   assert.equal(findBestAsset(assets, 'mac')?.name, 'PSJavaScript-1.1.0.dmg');
   assert.equal(findBestAsset(assets, 'android')?.name, 'PSJavaScript-1.1.0.apk');
 });
+
+test('updater: sin instalador en la release se usa el publicado en main', async () => {
+  const { mainBinary } = await import('../src/core/updater');
+  const apk = mainBinary('android', '1.0.4')!;
+  assert.equal(apk.assetName, 'PSJavaScript.apk');
+  assert.ok(apk.downloadUrl.startsWith('https://raw.githubusercontent.com/ASolisEk/PSJavaScript/main/public/PSJavaScript.apk?v='));
+  assert.equal(mainBinary('electron-win')!.assetName, 'PSJavaScript-Setup.exe');
+  assert.equal(mainBinary('electron-mac')!.assetName, 'PSJavaScript.dmg');
+  assert.equal(mainBinary('electron-linux')!.assetName, 'PSJavaScript.AppImage');
+  assert.equal(mainBinary('web'), null);
+});

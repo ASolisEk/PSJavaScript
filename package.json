@@ -17,6 +17,7 @@
     "expo-haptics": "~57.0.3",
     "expo-linking": "~57.0.12",
     "expo-router": "~57.0.25",
+    "expo-screen-capture": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "peerjs": "^1.5.5",
     "qrcode": "^1.5.4",

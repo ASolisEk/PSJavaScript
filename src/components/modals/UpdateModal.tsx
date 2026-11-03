@@ -31,6 +31,8 @@ export default function UpdateModal() {
   const release = updateInfo?.release;
   const currentVer = updateInfo?.currentVersion ?? CURRENT_VERSION;
   const latestVer = updateInfo?.latestVersion ?? release?.version ?? CURRENT_VERSION;
+  // descarga forzada: puede ser la misma versión que ya está instalada
+  const forced = !!updateInfo?.forced;
 
   const handleStartUpdate = async () => {
     if (!release) return;
@@ -73,21 +75,23 @@ export default function UpdateModal() {
   };
 
   return (
-    <ModalShell title="Actualización disponible" onClose={() => setModal(null)} wide>
+    <ModalShell title={forced ? 'Descargar la versión más reciente' : 'Actualización disponible'} onClose={() => setModal(null)} wide>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.header}>
           <View style={[styles.iconBox, { backgroundColor: t.primary + '18' }]}>
             <Ionicons name="sparkles" size={32} color={t.primary} />
           </View>
           <View style={{ flex: 1, marginLeft: 14 }}>
-            <Heading>¡Nueva versión de PSJavaScript!</Heading>
+            <Heading>{forced ? 'Volver a instalar la versión más reciente' : '¡Nueva versión de PSJavaScript!'}</Heading>
             <View style={styles.badgeRow}>
               <View style={[styles.versionBadge, { backgroundColor: t.surfaceAlt, borderColor: t.border }]}>
                 <Text style={[styles.versionText, { color: t.textMuted }]}>Actual: v{currentVer}</Text>
               </View>
               <Ionicons name="arrow-forward" size={14} color={t.textMuted} style={{ marginHorizontal: 6 }} />
               <View style={[styles.versionBadge, { backgroundColor: t.success + '20', borderColor: t.success }]}>
-                <Text style={[styles.versionText, { color: t.success, fontWeight: '700' }]}>Nueva: v{latestVer}</Text>
+                <Text style={[styles.versionText, { color: t.success, fontWeight: '700' }]}>
+                  {forced ? 'Se descargará' : 'Nueva'}: v{latestVer}
+                </Text>
               </View>
             </View>
             <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>

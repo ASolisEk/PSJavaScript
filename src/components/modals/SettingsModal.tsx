@@ -5,7 +5,8 @@ import { Text } from '../../ui/text';
 import { FLAG_LABELS, getProfile, PROFILES, ProfileFlags } from '../../core/profiles';
 import { SPEEDS, useApp, useProfile } from '../../store/app';
 import { BORDER, RADIUS, useTheme } from '../../ui/theme';
-import { checkForUpdate, CURRENT_VERSION, getPlatformLabel } from '../../core/updater';
+import { checkForUpdate, CURRENT_VERSION, forceLatest, getPlatformLabel, isNonWeb } from '../../core/updater';
+import { confirmDialog } from '../../ui/platform';
 import { COSTUMES, costumeForDate } from '../../core/holidays';
 import { Button, Chip, SectionTitle, Switch } from '../ui';
 import { CHARACTER_LIST } from '../mascot/characters';
@@ -57,6 +58,35 @@ export default function SettingsModal() {
       setUpdateStatusColor(t.danger);
     } finally {
       setCheckingUpdate(false);
+    }
+  };
+
+  const [forcing, setForcing] = React.useState(false);
+  const handleForceLatest = async () => {
+    const ok = await confirmDialog(
+      '¿Descargar la versión más reciente?',
+      !isNonWeb()
+        ? 'Se borrará la caché del navegador y la página se recargará para cargar la última versión publicada. Tus archivos se conservan.'
+        : 'Se descargará de nuevo el instalador más reciente aunque ya tengas la misma versión (útil si algo quedó desactualizado). Tus archivos se conservan.',
+      'Descargar',
+    );
+    if (!ok) return;
+    setForcing(true);
+    setUpdateStatusText(null);
+    try {
+      const res = await forceLatest();
+      if (res.kind === 'download') {
+        setUpdateInfo(res.info);
+        setModal('update');
+      } else if (res.kind === 'error') {
+        setUpdateStatusText(res.error);
+        setUpdateStatusColor(t.danger);
+      }
+    } catch {
+      setUpdateStatusText('No se pudo descargar la versión más reciente en este momento.');
+      setUpdateStatusColor(t.danger);
+    } finally {
+      setForcing(false);
     }
   };
 
@@ -173,9 +203,18 @@ export default function SettingsModal() {
           <Button
             label={checkingUpdate ? 'Buscando...' : 'Buscar actualizaciones'}
             icon="cloud-download-outline"
-            disabled={checkingUpdate}
+            disabled={checkingUpdate || forcing}
             onPress={handleCheckUpdate}
           />
+        </View>
+        <View style={[styles.row, { borderBottomColor: t.border }]}>
+          <View style={{ flex: 1, paddingRight: 10 }}>
+            <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>Forzar la versión más reciente</Text>
+            <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 2, lineHeight: 17 }}>
+              Si algo se ve desactualizado: en el navegador recarga sin caché; en la app de escritorio y en Android vuelve a descargar el instalador más reciente aunque la versión sea la misma.
+            </Text>
+          </View>
+          <Button label={forcing ? 'Descargando...' : 'Forzar descarga'} icon="refresh-circle-outline" disabled={forcing || checkingUpdate} onPress={handleForceLatest} />
         </View>
       </ScrollView>
     </ModalShell>

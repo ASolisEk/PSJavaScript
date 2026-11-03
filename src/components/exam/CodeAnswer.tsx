@@ -91,6 +91,7 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
       profile,
       speed: 0,
       trackDesktop: false,
+      realTime: true,
       onUpdate: (snap) => {
         setRun(snap);
         const busy = snap.status === 'running' || snap.status === 'input' || snap.status === 'paused';

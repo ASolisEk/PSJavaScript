@@ -577,4 +577,9 @@ test('examen bloqueado: atajos que se impiden', async () => {
   assert.equal(k('c', { ctrlKey: true }), null);
   assert.equal(k('Enter', { ctrlKey: true }), null);
   assert.equal(k('ArrowRight'), null);
+  // con el teclado capturado: cambiar de ventana se impide, pero Tab sigue sangrando el código
+  assert.match(k('Tab', { altKey: true })!, /ventana/);
+  assert.match(k('Tab', { metaKey: true })!, /ventana/);
+  assert.equal(k('Tab'), null);
+  assert.equal(k('Tab', { shiftKey: true }), null);
 });

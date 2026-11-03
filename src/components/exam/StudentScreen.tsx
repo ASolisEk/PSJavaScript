@@ -244,7 +244,8 @@ function WaitingView() {
   const s = useStudent((x) => x.session)!;
   const room = s.room;
   const ready = s.phase === 'ready';
-  const lockable = Platform.OS === 'web' && s.transport.kind !== 'practice';
+  // examen bloqueado: en la sala del maestro (la práctica individual queda libre)
+  const lockable = s.transport.kind !== 'practice';
   if (s.roomClosed) return <EndedView />;
   return (
     <View style={{ flex: 1 }}>
@@ -287,9 +288,13 @@ function WaitingView() {
               {room.durationMin ? <Text style={{ color: t.textMuted, fontSize: 13 }}>• El tiempo empieza a contar al presionar «Comenzar». Al terminarse, tu examen se envía solo.</Text> : null}
               {lockable ? (
                 <Text style={{ color: t.textMuted, fontSize: 13 }}>
-                  • {fullscreenSupported() ? 'El examen se abre en pantalla completa hasta que lo termines. ' : ''}Si cambias de pestaña o ventana, intentas abrir las herramientas del navegador o tomar capturas, el examen se oculta y tu maestro recibe un aviso.
+                  • {fullscreenSupported() ? 'El examen se abre en pantalla completa hasta que lo termines. ' : ''}
+                  {Platform.OS === 'web'
+                    ? 'Si cambias de pestaña o ventana, intentas abrir las herramientas del navegador o tomar capturas, el examen se oculta y tu maestro recibe un aviso.'
+                    : 'No se pueden tomar capturas ni grabar la pantalla. Si sales de la app, el examen se oculta y tu maestro recibe un aviso.'}
                 </Text>
               ) : null}
+              {lockable ? <Text style={{ color: t.textMuted, fontSize: 13 }}>• Tu nombre aparece como marca de agua sobre el examen; no se puede copiar ni seleccionar su texto.</Text> : null}
             </Card>
             <Button
               label="Comenzar examen"
@@ -721,6 +726,7 @@ function ExamView() {
           </View>
         </ScrollView>
       </View>
+      {s.transport.kind !== 'practice' ? <Watermark text={`${s.identity.name} · Sala ${s.code}`} /> : null}
       {lock.cover && !s.submitting ? <LockCover reason={lock.cover} onResume={lock.resume} /> : null}
       {confirm && !lock.cover ? (
         <SubmitDialog
@@ -748,6 +754,26 @@ function ExamView() {
           </Card>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Marca de agua con el nombre del alumno y la sala sobre todo el examen: si alguien
+ * fotografía o captura la pantalla, se sabe de quién es. No estorba al tocar ni al leer.
+ */
+function Watermark({ text }: { text: string }) {
+  const t = useTheme();
+  const row = Array.from({ length: 6 }, () => text).join('        ');
+  return (
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { overflow: 'hidden', zIndex: 40 }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={styles.watermark}>
+        {Array.from({ length: 22 }, (_, i) => (
+          <Text key={i} numberOfLines={1} style={{ color: t.text, opacity: t.dark ? 0.07 : 0.055, fontSize: 15, fontWeight: '800', marginBottom: 56, marginLeft: (i % 2) * 120 }}>
+            {row}
+          </Text>
+        ))}
+      </View>
     </View>
   );
 }
@@ -1101,5 +1127,6 @@ const styles = StyleSheet.create({
   topicBtn: { borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 6, flexGrow: 1, flexBasis: 160 },
   jump: { minWidth: 36, height: 32, borderWidth: BORDER, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   cover: { alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 },
+  watermark: { position: 'absolute', top: '-60%', left: '-60%', width: '220%', height: '220%', justifyContent: 'center', transform: [{ rotate: '-24deg' }] },
   sending: { backgroundColor: SCRIM, alignItems: 'center', justifyContent: 'center', padding: 20 },
 });
