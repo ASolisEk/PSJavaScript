@@ -27,7 +27,7 @@ if (fs.existsSync(licenseFile)) {
 const rootPkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
 const packageJson = {
   name: 'psjavascript-desktop',
-  version: rootPkg.version || '1.0.2',
+  version: rootPkg.version || '1.0.4',
   description: 'PSJavaScript Entorno Educativo de Programación',
   author: {
     name: 'Angel Solís Ek',

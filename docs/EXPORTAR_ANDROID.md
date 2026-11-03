@@ -31,7 +31,7 @@ npm run build:android
 # o equivalente:
 npm run build:android:apk
 ```
-* **Salida:** `dist-android/PSJavaScript-1.0.1-release.apk`, copiado también a `public/PSJavaScript.apk` (botón «Android» de la versión web).
+* **Salida:** `dist-android/PSJavaScript-1.0.4-release.apk`, copiado también a `public/PSJavaScript.apk` (botón «Android» de la versión web).
 * Solo incluye ARM (`arm64-v8a`, `armeabi-v7a`), que cubre todos los teléfonos reales, para no pasar de 100 MB (límite de GitHub). Para incluir x86/x86_64 (emuladores Intel): `npm run build:android -- --all-abis`.
 
 ---
@@ -41,7 +41,7 @@ Compila el paquete oficial requerido para subir a Google Play Console:
 ```bash
 npm run build:android:aab
 ```
-* **Salida:** `dist-android/PSJavaScript-1.0.1-release.aab`
+* **Salida:** `dist-android/PSJavaScript-1.0.4-release.aab`
 
 ---
 
@@ -59,7 +59,7 @@ Para compilar un APK en modo depuración sin optimizaciones pesadas:
 ```bash
 npm run build:android:debug
 ```
-* **Salida:** `dist-android/PSJavaScript-1.0.1-debug.apk`
+* **Salida:** `dist-android/PSJavaScript-1.0.4-debug.apk`
 
 ---
 
