@@ -9,7 +9,7 @@ import type { ExamConfig, Question, QuestionType } from '../../core/exam/types';
 import { plainText } from '../../core/exam/richText';
 import { useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
-import { BORDER, RADIUS, useTheme } from '../../ui/theme';
+import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button } from '../ui';
 import { Banner, BigChoice, IconName, Pill } from '../exam/kit';
 import BankModal from './BankModal';
@@ -19,6 +19,17 @@ import QuestionEditor from './QuestionEditor';
 import QuickTextModal from './QuickTextModal';
 
 type Sel = 'settings' | 'add' | string;
+
+/** Primeras líneas del código de la pregunta: distingue las que tienen el mismo enunciado («¿Qué muestra…?»). */
+function codeHint(q: Question): string {
+  const src = q.type === 'order' ? q.lines.join('\n') : q.type === 'code' ? '' : q.code ?? '';
+  return src
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('  ⏎  ');
+}
 
 export default function BuilderTab() {
   const t = useTheme();
@@ -104,6 +115,7 @@ export default function BuilderTab() {
             icon={info.icon as IconName}
             number={i + 1}
             title={plainText(q.prompt).trim() || '(sin enunciado)'}
+            hint={codeHint(q)}
             subtitle={`${info.label} · ${q.points} pts${q.topic && !topic ? ` · ${q.topic}` : ''}`}
             active={sel === q.id}
             warn={bad ? 'error' : qIssues.length ? 'warning' : undefined}
@@ -255,7 +267,7 @@ export default function BuilderTab() {
   );
 }
 
-function ListItem({ icon, title, subtitle, active, onPress, number, warn }: { icon: IconName; title: string; subtitle: string; active: boolean; onPress(): void; number?: number; warn?: 'error' | 'warning' }) {
+function ListItem({ icon, title, subtitle, hint, active, onPress, number, warn }: { icon: IconName; title: string; subtitle: string; hint?: string; active: boolean; onPress(): void; number?: number; warn?: 'error' | 'warning' }) {
   const t = useTheme();
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.item, { borderColor: active ? t.primary : t.border, backgroundColor: active ? t.primary + '12' : pressed ? t.surfaceAlt : t.surface }]}>
@@ -264,9 +276,14 @@ function ListItem({ icon, title, subtitle, active, onPress, number, warn }: { ic
         <Ionicons name={icon} size={17} color={active ? t.primary : t.textMuted} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ color: t.text, fontWeight: '700', fontSize: 13 }} numberOfLines={1}>
+        <Text style={{ color: t.text, fontWeight: '700', fontSize: 13, lineHeight: 18 }} numberOfLines={hint ? 2 : 3}>
           {title}
         </Text>
+        {hint ? (
+          <Text style={{ color: t.syntax.keyword, fontFamily: MONO, fontSize: 11, marginVertical: 2 }} numberOfLines={1}>
+            {hint}
+          </Text>
+        ) : null}
         <Text style={{ color: t.textMuted, fontSize: 12 }} numberOfLines={1}>
           {subtitle}
         </Text>

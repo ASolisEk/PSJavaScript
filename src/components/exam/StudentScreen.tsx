@@ -20,7 +20,7 @@ import { clearExamLink, readExamLink, rememberedStudent, rememberStudent } from 
 import { confirmDialog } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, SCRIM, useTheme } from '../../ui/theme';
 import { BackToEditorButton, Button, Chip, Heading } from '../ui';
-import { Banner, BigChoice, Card, Field, formatDuration, IconName, Pill, ProgressBar, ScreenHeader, Segmented, TextField } from './kit';
+import { Banner, BigChoice, Card, Field, formatDuration, IconName, IOBlock, Pill, ProgressBar, ScreenHeader, Segmented, TextField } from './kit';
 import { clearCodeResults } from './CodeAnswer';
 import { enterFullscreen, exitFullscreen, fullscreenSupported, useExamLockdown } from './lockdown';
 import QuestionView from './QuestionView';
@@ -992,9 +992,10 @@ function ResultView() {
                           {x.hidden ? ' (oculto)' : ''}
                         </Text>
                         {review && !x.passed && x.expected !== undefined ? (
-                          <Text style={{ color: t.textMuted, fontSize: 11, fontFamily: MONO, marginLeft: 14 }}>
-                            esperado {x.expected.split('\n').join(' ⏎ ') || '(vacío)'} · obtenido {x.error ? x.error : x.actual?.split('\n').join(' ⏎ ') || '(vacío)'}
-                          </Text>
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginLeft: 14, marginTop: 3 }}>
+                            <IOBlock label="Esperado" text={x.expected} color={t.success} />
+                            <IOBlock label="Obtenido" text={x.error ?? x.actual ?? ''} color={t.danger} />
+                          </View>
                         ) : null}
                       </View>
                     ))}

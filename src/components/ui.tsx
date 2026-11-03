@@ -6,7 +6,7 @@
  * para la acción principal y azul para lo interactivo y la selección.
  */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo } from 'react';
+import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { Platform, Pressable, Switch as RNSwitch, ScrollView, StyleProp, StyleSheet, SwitchProps, TextInputProps, TextStyle, useWindowDimensions, View, ViewStyle } from 'react-native';
 import { tokenize } from '../core/editor/tokenizer';
 import { Text, TextInput } from '../ui/text';
@@ -478,10 +478,26 @@ export function Field({ label, hint, children, style }: { label: string; hint?: 
   );
 }
 
-export function TextField({ mono, style, minHeight, ...props }: TextInputProps & { mono?: boolean; minHeight?: number }) {
+/**
+ * Campo de texto. En web, el multilínea crece con su contenido (hasta `maxHeight`; después
+ * aparece la barra de desplazamiento) para que se lea completo; en el teléfono ya crece solo.
+ */
+export function TextField({ mono, style, minHeight, maxHeight = 560, ...props }: TextInputProps & { mono?: boolean; minHeight?: number; maxHeight?: number }) {
   const t = useTheme();
+  const ref = useRef<any>(null);
+  const autoGrow = Platform.OS === 'web' && !!props.multiline;
+  const base = minHeight ?? (props.multiline ? 72 : 44);
+  useLayoutEffect(() => {
+    const el = ref.current as HTMLTextAreaElement | null;
+    if (!autoGrow || !el?.style) return;
+    el.style.height = 'auto';
+    const full = el.scrollHeight + 2 * BORDER;
+    el.style.height = `${Math.min(maxHeight, Math.max(base, full))}px`;
+    el.style.overflowY = full > maxHeight ? 'auto' : 'hidden';
+  }, [autoGrow, props.value, base, maxHeight]);
   return (
     <TextInput
+      ref={ref}
       placeholderTextColor={t.textFaint}
       autoCorrect={!mono}
       autoCapitalize={mono ? 'none' : props.autoCapitalize}

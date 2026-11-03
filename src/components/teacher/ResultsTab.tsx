@@ -6,12 +6,14 @@ import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
 import { plainText } from '../../core/exam/richText';
 import type { RoomState } from '../../core/exam/room';
+import { answersCsv, correctText, roomReportHtml } from '../../core/exam/report';
 import { summarizeRoom, summaryCsv } from '../../core/exam/summary';
 import { roomKey, useResultsRoom, useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button, Empty, Heading } from '../ui';
-import { Banner, Card, IconName, Pill, ProgressBar, Stat } from '../exam/kit';
+import { Banner, Card, CodeBlock, IconName, Pill, ProgressBar, Stat } from '../exam/kit';
+import RichText from '../exam/RichText';
 import StudentDetailModal from './StudentDetailModal';
 
 const slug = (s: string) =>
@@ -83,6 +85,14 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
   const t = useTheme();
   const sum = useMemo(() => summarizeRoom(room), [room]);
   const [detail, setDetail] = useState<string | null>(null);
+  const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const toggle = (id: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const maxBar = Math.max(1, ...sum.histogram);
   const date = new Date(sum.openedAt);
 
@@ -96,9 +106,19 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
             {sum.closedAt ? ` · cerrada a las ${new Date(sum.closedAt).toLocaleTimeString()}` : ''}
           </Text>
         </View>
-        <Button label="Exportar CSV (Excel)" icon="grid-outline" kind="primary" onPress={() => saveTextFile(`resultados-${slug(sum.title)}.csv`, summaryCsv(sum), 'text/csv')} />
-        <Button label="Respaldo completo (JSON)" icon="download-outline" onPress={() => saveTextFile(`sala-${sum.code}-${slug(sum.title)}.json`, JSON.stringify(room, null, 2), 'application/json')} />
       </View>
+      <Card>
+        <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 4 }}>Exportar</Text>
+        <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 10, lineHeight: 17 }}>
+          El concentrado trae una fila por alumno. Las respuestas cruzan cada pregunta que le tocó a cada alumno con lo que respondió, la respuesta correcta y sus puntos. El reporte detallado se abre en el navegador y se puede imprimir o guardar como PDF.
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <Button label="Concentrado (CSV)" icon="grid-outline" kind="primary" onPress={() => saveTextFile(`concentrado-${slug(sum.title)}.csv`, summaryCsv(sum), 'text/csv')} />
+          <Button label="Respuestas por pregunta (CSV)" icon="list-outline" onPress={() => saveTextFile(`respuestas-${slug(sum.title)}.csv`, answersCsv(room), 'text/csv')} />
+          <Button label="Reporte detallado (HTML)" icon="document-text-outline" onPress={() => saveTextFile(`reporte-${slug(sum.title)}.html`, roomReportHtml(room), 'text/html')} />
+          <Button label="Respaldo (JSON)" icon="download-outline" onPress={() => saveTextFile(`sala-${sum.code}-${slug(sum.title)}.json`, JSON.stringify(room, null, 2), 'application/json')} />
+        </View>
+      </Card>
       {room.status !== 'closed' ? <Banner icon="information-circle-outline" color={t.info} text="El examen sigue en curso: estos resultados son provisionales." /> : null}
 
       <View style={styles.stats}>
@@ -154,18 +174,34 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
         </View>
 
         <Card style={{ flex: 1.3, minWidth: 300 }}>
-          <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 10 }}>Análisis por pregunta</Text>
+          <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 2 }}>Análisis por pregunta</Text>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 10 }}>Toca una pregunta para verla completa con su respuesta correcta.</Text>
           {sum.questions.map((q) => {
             const diff = q.attempts === 0 ? null : q.avgPercent >= 80 ? { l: 'Fácil', c: t.success } : q.avgPercent >= 50 ? { l: 'Media', c: t.warning } : { l: 'Difícil', c: t.danger };
+            const full = open.has(q.questionId) ? room.exam.questions.find((x) => x.id === q.questionId) : undefined;
             return (
               <View key={q.questionId} style={{ marginBottom: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <Pressable onPress={() => toggle(q.questionId)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                   <Ionicons name={questionTypeInfo(q.type).icon as IconName} size={14} color={t.textMuted} />
-                  <Text style={{ color: t.text, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                    <Text style={{ fontWeight: '800' }}>P{q.index + 1}.</Text> {plainText(q.prompt)}
+                  <Text style={{ color: t.text, fontSize: 13, flex: 1 }} numberOfLines={full ? undefined : 2}>
+                    <Text style={{ fontWeight: '800' }}>P{q.index + 1}.</Text> {full ? '' : plainText(q.prompt)}
                   </Text>
                   {diff ? <Pill text={diff.l} color={diff.c} /> : null}
-                </View>
+                  <Ionicons name={full ? 'chevron-up' : 'chevron-down'} size={14} color={t.textMuted} />
+                </Pressable>
+                {full ? (
+                  <View style={[styles.full, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+                    <RichText text={full.prompt} style={{ color: t.text, fontSize: 13, lineHeight: 19 }} />
+                    {full.code?.trim() ? <CodeBlock code={full.code} style={{ marginTop: 6 }} /> : null}
+                    {full.topic ? <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 6 }}>Tema: {full.topic}</Text> : null}
+                    <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '800', marginTop: 8 }}>{full.type === 'code' ? 'SOLUCIÓN DE REFERENCIA' : 'RESPUESTA CORRECTA'}</Text>
+                    {full.type === 'code' || full.type === 'order' || full.type === 'output' ? (
+                      <CodeBlock code={correctText(full, firstResult(room, full.id)) || '(se calcula al calificar)'} style={{ marginTop: 4 }} />
+                    ) : (
+                      <Text style={{ color: t.success, fontWeight: '700', marginTop: 2 }}>{correctText(full)}</Text>
+                    )}
+                  </View>
+                ) : null}
                 <ProgressBar value={q.avgPercent / 100} color={diff?.c} />
                 <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 2 }}>
                   {q.attempts ? `${q.avgPercent}% de aciertos · ${q.correct}/${q.attempts} completas · ${q.attempts - q.answered} sin responder` : 'No le tocó a nadie (banco aleatorio) o nadie ha entregado.'}
@@ -223,6 +259,15 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
 
 const COLS = [190, 90, 64, 64, 80, 84, 60, 96, 56, 130];
 
+/** Primer resultado calificado de una pregunta (trae la salida real de «¿Qué imprime?»). */
+function firstResult(room: RoomState, id: string) {
+  for (const s of Object.values(room.students)) {
+    const r = s.result?.questions.find((x) => x.questionId === id);
+    if (r) return r;
+  }
+  return undefined;
+}
+
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 },
@@ -231,5 +276,6 @@ const styles = StyleSheet.create({
   tr: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: BORDER, paddingVertical: 8 },
   th: { fontSize: 11, fontWeight: '800', paddingHorizontal: 6 },
   td: { fontSize: 13, paddingHorizontal: 6 },
+  full: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginTop: 4, marginBottom: 4 },
   hist: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, padding: 12, marginBottom: 8 },
 });

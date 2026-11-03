@@ -11,7 +11,7 @@ import { Runner, RunnerSnapshot } from '../../core/runner';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import CodeEditor from '../CodeEditor';
 import { Button } from '../ui';
-import { Pill } from './kit';
+import { IOBlock, Pill } from './kit';
 
 const MATCH_LABEL: Record<string, string> = {
   exact: 'la salida debe ser idéntica',
@@ -165,10 +165,12 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
                 </Text>
               </View>
             ) : (
-              <View key={x.id} style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 }}>
-                <Text style={{ color: t.textMuted, fontSize: 12, width: '100%' }}>{x.name || `Ejemplo ${i + 1}`}</Text>
-                <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO, marginRight: 14 }}>Datos: {x.inputs.length ? x.inputs.join(', ') : '(ninguno)'}</Text>
-                <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO }}>Salida: {x.expected.split('\n').join(' ⏎ ') || '(vacía)'}</Text>
+              <View key={x.id} style={{ marginBottom: 8 }}>
+                <Text style={{ color: t.text, fontSize: 12, fontWeight: '700', marginBottom: 3 }}>{x.name || `Ejemplo ${i + 1}`}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  <IOBlock label="Datos que escribe el usuario" text={x.inputs.join('\n')} empty="(ninguno)" />
+                  <IOBlock label="Salida esperada" text={x.expected} empty="(vacía)" />
+                </View>
               </View>
             ),
           )}
@@ -226,8 +228,10 @@ export default function CodeAnswer({ q, value, onChange, settings, readOnly, onR
                 <Text style={{ color: t.text, fontWeight: '600', fontSize: 13, fontFamily: x.call ? MONO : undefined }}>{x.name}</Text>
                 {!x.passed ? (
                   <>
-                    <Text style={{ color: t.textMuted, fontSize: 12, fontFamily: MONO }}>Esperado: {x.expected?.split('\n').join(' ⏎ ') || '(vacío)'}</Text>
-                    <Text style={{ color: t.textMuted, fontSize: 12, fontFamily: MONO }}>Obtenido: {x.actual?.split('\n').join(' ⏎ ') || '(vacío)'}</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                      <IOBlock label="Esperado" text={x.expected ?? ''} color={t.success} />
+                      <IOBlock label="Obtenido" text={x.actual ?? ''} color={t.danger} />
+                    </View>
                     {x.error ? <Text style={{ color: t.danger, fontSize: 12 }}>{x.error}</Text> : null}
                   </>
                 ) : null}

@@ -9,7 +9,8 @@ import type { ChoiceOption, CodeQuestion, Question } from '../../core/exam/types
 import { getProfile } from '../../core/profiles';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button, IconButton } from '../ui';
-import { Banner, Card, Field, IconName, NumberStepper, Pill, Segmented, TextField, Toggle } from '../exam/kit';
+import { Banner, Card, CodeBlock, Field, IconName, NumberStepper, Pill, Segmented, TextField, Toggle } from '../exam/kit';
+import RichText from '../exam/RichText';
 
 interface Props {
   q: Question;
@@ -30,6 +31,7 @@ export default function QuestionEditor({ q, index, count, profileId, issues, onC
   const t = useTheme();
   const info = questionTypeInfo(q.type);
   const up = (p: Partial<Question>) => onChange({ ...q, ...p } as Question);
+  const [preview, setPreview] = useState(false);
 
   return (
     <View>
@@ -56,6 +58,27 @@ export default function QuestionEditor({ q, index, count, profileId, issues, onC
       <Card>
         <Field label="Enunciado" hint="Lo que verá el alumno. Puedes marcar `código` entre comillas invertidas y bloques con ```.">
           <TextField value={q.prompt} onChangeText={(prompt) => up({ prompt })} multiline minHeight={80} placeholder="Escribe la pregunta…" />
+          <Pressable onPress={() => setPreview((v) => !v)} accessibilityRole="button" style={styles.previewToggle}>
+            <Ionicons name={preview ? 'eye-off-outline' : 'eye-outline'} size={15} color={t.accent} />
+            <Text style={{ color: t.accent, fontSize: 12, fontWeight: '800', marginLeft: 5 }}>{preview ? 'Ocultar vista del alumno' : 'Ver como lo verá el alumno'}</Text>
+          </Pressable>
+          {preview ? (
+            <View style={[styles.preview, { borderColor: t.border, backgroundColor: t.surface }]}>
+              <RichText text={q.prompt || '(sin enunciado)'} style={{ color: t.text, fontSize: 15, lineHeight: 22 }} />
+              {q.code?.trim() ? <CodeBlock code={q.code} style={{ marginTop: 8 }} /> : null}
+              {q.type === 'code' && q.starter.trim() ? (
+                <>
+                  <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '800', marginTop: 10 }}>CÓDIGO INICIAL EN SU EDITOR</Text>
+                  <CodeBlock code={q.starter} style={{ marginTop: 4 }} />
+                </>
+              ) : null}
+              {q.type === 'code' && q.tests.some((x) => !x.hidden) ? (
+                <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 8 }}>
+                  Verá {q.tests.filter((x) => !x.hidden).length} caso(s) de ejemplo{q.tests.some((x) => x.hidden) ? ` y se calificará además con ${q.tests.filter((x) => x.hidden).length} oculto(s)` : ''}.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
         </Field>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
           <Field label="Valor">
@@ -366,6 +389,8 @@ const styles = {
     row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
     mark: { width: 28, height: 28, borderWidth: BORDER, alignItems: 'center', justifyContent: 'center' },
     terminal: { borderRadius: RADIUS.md, padding: 10 },
+    previewToggle: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingVertical: 6 },
+    preview: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 12, marginTop: 2 },
     test: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginBottom: 10 },
     hiddenBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, height: 40 },
     preset: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.lg, paddingHorizontal: 10, paddingVertical: 5 },

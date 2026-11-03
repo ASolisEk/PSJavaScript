@@ -3,8 +3,26 @@
  * sistema de diseño común (components/ui.tsx); aquí se reexportan junto con
  * utilidades de formato de tiempo.
  */
+import React from 'react';
+import { View } from 'react-native';
+import { Text } from '../../ui/text';
+import { MONO, RADIUS, useTheme } from '../../ui/theme';
+
 export { Banner, BigChoice, Card, CodeBlock, Field, NumberStepper, Pill, ProgressBar, ScreenHeader, Segmented, Stat, TextField, Toggle } from '../ui';
 export type { IconName } from '../ui';
+
+/** Datos o salida de un caso de prueba, en varias líneas (como se verían en la consola). */
+export function IOBlock({ label, text, empty = '(vacío)', color }: { label: string; text: string; empty?: string; color?: string }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexGrow: 1, flexBasis: 140, minWidth: 0 }}>
+      <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '700', marginBottom: 2 }}>{label}</Text>
+      <Text selectable style={{ color: text ? color ?? t.text : t.textMuted, fontStyle: text ? 'normal' : 'italic', fontSize: 12, lineHeight: 17, fontFamily: MONO, backgroundColor: t.surface, borderRadius: RADIUS.sm, paddingHorizontal: 7, paddingVertical: 4 }}>
+        {text || empty}
+      </Text>
+    </View>
+  );
+}
 
 export function formatDuration(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));
