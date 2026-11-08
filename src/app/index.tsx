@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import IDE from '../components/IDE';
 import StudentScreen from '../components/exam/StudentScreen';
 import TeacherScreen from '../components/teacher/TeacherScreen';
+import GameScreen from '../components/game/GameScreen';
 import { AppMode, useApp } from '../store/app';
 import { hasActiveExam, useStudent } from '../store/student';
 import { useTeacher } from '../store/teacher';
@@ -27,7 +28,7 @@ export default function Home() {
       const remembered = rememberedMode();
       let next: AppMode = 'ide';
       if (readExamLink()) next = 'student';
-      else if (remembered === 'teacher' || remembered === 'ide') next = remembered;
+      else if (remembered === 'teacher' || remembered === 'ide' || remembered === 'game') next = remembered;
       else if (remembered === 'student') next = session ? 'student' : 'ide';
       else if (hasActiveExam(session)) next = 'student';
       else if (roomOpen) next = 'teacher';
@@ -77,8 +78,8 @@ export default function Home() {
 
   return (
     <>
-      <Stack.Screen options={{ title: mode === 'teacher' ? 'PSJavaScript · Maestro' : mode === 'student' ? 'PSJavaScript · Examen' : 'PSJavaScript' }} />
-      {mode === 'teacher' ? <TeacherScreen /> : mode === 'student' ? <StudentScreen /> : <IDE />}
+      <Stack.Screen options={{ title: mode === 'teacher' ? 'PSJavaScript · Maestro' : mode === 'student' ? 'PSJavaScript · Examen' : mode === 'game' ? 'PSJavaScript · Juego' : 'PSJavaScript' }} />
+      {mode === 'teacher' ? <TeacherScreen /> : mode === 'student' ? <StudentScreen /> : mode === 'game' ? <GameScreen /> : <IDE />}
     </>
   );
 }

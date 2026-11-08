@@ -161,6 +161,7 @@ function Toolbar({ compact, clip }: { compact: boolean; clip: boolean }) {
       <IconButton icon="swap-horizontal" label="Exportar" tooltip="Exportar a otros lenguajes" onPress={() => setModal('export')} showLabel={label} />
       <View style={[styles.sep, { backgroundColor: t.border }]} />
       <IconButton icon="school-outline" label="Examen" tooltip="Modo Maestro (crear y aplicar exámenes) o presentar un examen" color={t.accent} onPress={() => setModal('exam')} showLabel={label} />
+      <IconButton icon="game-controller-outline" label="Juego" tooltip="Programa un dron de granja o de minería con JavaScript" color={t.primary} onPress={() => useApp.getState().setAppMode('game')} showLabel={label} />
       <IconButton icon="settings-outline" label="Configuración y perfil" tooltip="Configuración y perfil del lenguaje" onPress={() => setModal('settings')} />
       <IconButton icon="help-circle-outline" label="Ayuda" tooltip="Ayuda y documentación del lenguaje" onPress={() => setModal('help')} />
     </ScrollView>
@@ -219,6 +220,7 @@ function MoreSheet({ onClose }: { onClose(): void }) {
     },
     { icon: 'swap-horizontal', label: 'Exportar a otros lenguajes', onPress: go(() => setModal('export')) },
     { icon: 'school-outline', label: 'Examen (maestro o alumno)', color: t.accent, onPress: go(() => setModal('exam')) },
+    { icon: 'game-controller-outline', label: 'Juego del dron', color: t.primary, onPress: go(() => useApp.getState().setAppMode('game')) },
     { icon: 'settings-outline', label: 'Configuración y perfil', onPress: go(() => setModal('settings')) },
     { icon: 'help-circle-outline', label: 'Ayuda', onPress: go(() => setModal('help')) },
     { icon: 'logo-github', label: 'Código fuente en GitHub', onPress: go(() => Linking.openURL(REPO_URL)) },
