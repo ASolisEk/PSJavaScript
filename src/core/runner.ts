@@ -105,6 +105,10 @@ export interface RunnerOptions {
    * tiempo es virtual y todo corre al instante (al calificar).
    */
   realTime?: boolean;
+  /** Funciones y valores predefinidos adicionales (el juego del dron). */
+  globals?: Record<string, any>;
+  /** Se llama en cada instrucción (el juego cuenta el tiempo con ella). */
+  onStep?: () => void;
   onUpdate?: (s: RunnerSnapshot) => void;
 }
 
@@ -130,6 +134,7 @@ export class Runner {
   private prevLine = 0;
   private eventSteps = 0;
   private waitMs = 0;
+  private waitQuiet = false;
   private waiting = false;
   private error: RuntimeErrorInfo | null = null;
   private inputs: InputValue[] = [];
@@ -213,6 +218,24 @@ export class Runner {
     this.status = 'stopped';
     this.inputRequest = null;
     this.write('system', '*** Ejecución detenida por el usuario ***');
+    this.publish();
+  }
+
+  /** Escribe en la consola desde fuera del programa (avisos del juego del dron). */
+  log(kind: 'warn' | 'info' | 'system', text: string) {
+    this.write(kind, text);
+  }
+
+  /** Termina la ejecución con un mensaje propio (por ejemplo, al completar un nivel del juego). */
+  halt(message: string) {
+    this.clearTimer();
+    this.generation++;
+    if (this.status === 'finished' || this.status === 'error' || this.status === 'stopped') return;
+    this.status = 'finished';
+    this.inputRequest = null;
+    this.notice = null;
+    this.elapsed = Date.now() - this.startedAt;
+    this.write('system', message);
     this.publish();
   }
 
@@ -316,6 +339,8 @@ export class Runner {
         profile: this.opts.profile,
         explain: this.explain,
         realTimers: !!this.opts.realTime,
+        globals: this.opts.globals,
+        onStep: this.opts.onStep,
         random: () => {
           if (this.randIdx < this.randoms.length) return this.randoms[this.randIdx++];
           const v = Math.random();
@@ -405,6 +430,7 @@ export class Runner {
     const ev = r.value;
     if (ev.type === 'wait') {
       this.waitMs = Math.min(ev.ms, MAX_WAIT_MS);
+      this.waitQuiet = !!ev.quiet;
       return 'wait';
     }
     if (ev.type === 'input') {
@@ -459,8 +485,10 @@ export class Runner {
 
   /** Espera real de un setTimeout/setInterval: avisa en la consola y sigue después. */
   private waitTimer() {
+    // el programa pudo terminar durante la acción (p. ej. el juego completó el nivel)
+    if (this.status !== 'running') return this.publish();
     this.waiting = true;
-    this.notice = `Esperando ${waitLabel(this.waitMs)} (setTimeout)…`;
+    this.notice = this.waitQuiet ? null : `Esperando ${waitLabel(this.waitMs)} (setTimeout)…`;
     this.publish();
     this.schedule(this.waitMs);
   }

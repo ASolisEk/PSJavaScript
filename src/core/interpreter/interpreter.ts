@@ -35,6 +35,8 @@ export interface InputEvent {
 export interface WaitEvent {
   type: 'wait';
   ms: number;
+  /** Pausa de animación (el juego): la consola no avisa «Esperando…». */
+  quiet?: boolean;
 }
 export type InterpEvent = StepEvent | InputEvent | WaitEvent;
 export type G<T = any> = Generator<InterpEvent, T, any>;
@@ -150,6 +152,30 @@ export interface InterpreterOptions {
    * opción el tiempo es virtual y se ejecutan al instante (al calificar, por ejemplo).
    */
   realTimers?: boolean;
+  /** Variables y funciones predefinidas adicionales (las funciones nativas pueden crearse con makeGenNative). */
+  globals?: Record<string, any>;
+  /** Se llama en cada instrucción ejecutada (el juego la usa para contar el tiempo). */
+  onStep?: () => void;
+}
+
+/**
+ * Función nativa que puede pausar la ejecución (por ejemplo, para animar una acción):
+ * el generador recibe los argumentos y puede hacer `yield { type: 'wait', ms }`.
+ */
+export function makeGenNative(name: string, gen: (args: any[]) => G): any {
+  const f = function () {
+    throw new Error(`${name}() no puede usarse dentro de una función que llama el propio JavaScript (como sort o forEach)`);
+  };
+  Object.defineProperty(f, 'name', { value: name });
+  (f as any)[GEN_NATIVE] = function* (this: Interpreter, _thisArg: any, args: any[], node: N | null): G {
+    try {
+      return yield* gen(args);
+    } catch (e) {
+      // como cualquier función predefinida: el error se puede atrapar con try/catch y señala la línea
+      throw (this as any).wrapError(e, node ?? this.currentNode);
+    }
+  };
+  return f;
 }
 
 interface Frame {
@@ -193,6 +219,8 @@ export class Interpreter {
   private timerSeq = 0;
   private virtualTime = 0;
   private realTimers = false;
+  private onStep?: () => void;
+  private extraGlobals?: Record<string, any>;
   private watchCache = new Map<string, N>();
   readonly profile: Profile;
   private io: IOHandler;
@@ -204,6 +232,8 @@ export class Interpreter {
     this.random = opts.random ?? Math.random;
     this.explainEnabled = !!opts.explain;
     this.realTimers = !!opts.realTimers;
+    this.onStep = opts.onStep;
+    this.extraGlobals = opts.globals;
     this.ast = parseProgram(source);
     this.builtins = new Scope(null, 'builtin', 'Predefinidas');
     this.global = new Scope(this.builtins, 'global', 'Global');
@@ -266,6 +296,7 @@ export class Interpreter {
   private *step(node: N, scope: Scope, phase: StepEvent['phase'] = 'stmt'): G<void> {
     if (this.watchMode) return;
     this.stepCount++;
+    this.onStep?.();
     this.currentNode = node;
     this.currentScope = scope;
     this.currentLine = node.loc.start.line;
@@ -385,6 +416,7 @@ export class Interpreter {
     def('Infinity', Infinity);
     def('NaN', NaN);
     def('undefined', undefined);
+    for (const [k, v] of Object.entries(this.extraGlobals ?? {})) def(k, v);
   }
 
   // ───────────────────────────── ejecución ─────────────────────────────

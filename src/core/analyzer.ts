@@ -93,7 +93,9 @@ function patternIds(p: N, out: N[] = []): N[] {
   return out;
 }
 
-export function analyze(code: string, profile: Profile): Diagnostic[] {
+/** `extraGlobals`: nombres predefinidos adicionales (p. ej. las funciones del dron en el juego). */
+export function analyze(code: string, profile: Profile, extraGlobals?: ReadonlySet<string>): Diagnostic[] {
+  const isBuiltin = (name: string) => BUILTIN_NAMES.has(name) || !!extraGlobals?.has(name);
   const diags: Diagnostic[] = [];
   const push = (node: N, severity: Severity, message: string, rule: string, hint?: ErrorHint) =>
     diags.push({ ...loc(node), severity, message, rule, hint });
@@ -197,7 +199,7 @@ export function analyze(code: string, profile: Profile): Diagnostic[] {
       }
       s = s.parent;
     }
-    if (BUILTIN_NAMES.has(id.name)) {
+    if (isBuiltin(id.name)) {
       if (write && id.name !== 'arguments') push(id, 'error', `'${id.name}' es predefinida y no se puede reasignar`, 'const-assign');
       return;
     }
@@ -619,7 +621,7 @@ export function analyze(code: string, profile: Profile): Diagnostic[] {
 
   // Variables no resueltas
   const implicitNames = new Set(unresolved.filter((u) => u.write && !u.read).map((u) => u.node.name));
-  const allNames = new Set<string>([...BUILTIN_NAMES]);
+  const allNames = new Set<string>([...BUILTIN_NAMES, ...(extraGlobals ?? [])]);
   for (const s of allScopes) for (const k of s.decls.keys()) allNames.add(k);
   for (const u of unresolved) {
     const name = u.node.name;
