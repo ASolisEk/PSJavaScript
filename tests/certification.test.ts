@@ -235,3 +235,14 @@ test('texto con formato: código en línea, bloques y negritas', () => {
   assert.equal(plainText('Use `x`\n\n```js\nlet a;\n```'), 'Use x\nlet a;');
   assert.deepEqual(parseRichText('texto normal'), [{ kind: 'text', parts: [{ kind: 'text', text: 'texto normal' }] }]);
 });
+
+test('repaso: temas del maestro → práctica incluida más parecida', async () => {
+  const { practiceTopicFor } = await import('../src/core/exam/review');
+  assert.equal(practiceTopicFor('Ciclos (while, do while, for)'), 'Ciclos');
+  assert.equal(practiceTopicFor('Arreglos y listas'), 'Arreglos');
+  assert.equal(practiceTopicFor('Declarar variables'), 'Variables y tipos de datos');
+  assert.equal(practiceTopicFor('Operadores aritméticos'), 'Números y operadores');
+  assert.equal(practiceTopicFor('Condicionales if/else'), 'Comparaciones y condicionales');
+  assert.equal(practiceTopicFor('Funciones recursivas'), 'Recursión');
+  assert.equal(practiceTopicFor('Historia de la computación'), null);
+});

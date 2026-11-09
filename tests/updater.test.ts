@@ -38,3 +38,16 @@ test('updater: sin instalador en la release se usa el publicado en main', async 
   assert.equal(mainBinary('electron-linux')!.assetName, 'PSJavaScript.AppImage');
   assert.equal(mainBinary('web'), null);
 });
+
+test('reporte de errores: se guardan pocos, sin repetir, y el enlace lleva la información', async () => {
+  const { recordError, recentErrors, issueUrl } = await import('../src/core/errorLog');
+  for (let i = 0; i < 30; i++) recordError(new Error(`falla ${i}`), 'prueba');
+  recordError(new Error('falla 29'), 'prueba');
+  const list = recentErrors();
+  assert.equal(list.length, 20);
+  assert.equal(list[list.length - 1].message, 'falla 29');
+  const url = issueUrl({ what: 'Se cerró el examen', version: '1.0.4', platform: 'Web', errors: list });
+  assert.ok(url.startsWith('https://github.com/ASolisEk/PSJavaScript/issues/new?'));
+  const body = decodeURIComponent(new URL(url).searchParams.get('body')!);
+  assert.ok(body.includes('Se cerró el examen') && body.includes('1.0.4') && body.includes('falla 29'));
+});

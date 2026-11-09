@@ -268,6 +268,14 @@ function normalizeQuestion(raw: any): Question | null {
     points: Math.max(0, num(raw.points, 1)),
     ...(raw.code ? { code: str(raw.code) } : {}),
     ...(typeof raw.topic === 'string' && raw.topic.trim() ? { topic: raw.topic.trim() } : {}),
+    ...(Array.isArray(raw.rubric) && raw.rubric.length
+      ? {
+          rubric: raw.rubric
+            .filter((c: any) => c && str(c.text).trim())
+            .slice(0, 20)
+            .map((c: any) => ({ id: str(c.id) || randomId('r'), text: str(c.text).trim(), points: Math.max(0, num(c.points, 1)) })),
+        }
+      : {}),
   };
   const options = (): ChoiceOption[] =>
     (Array.isArray(raw.options) ? raw.options : []).map((o: any) => ({ id: str(o?.id) || randomId('o'), text: str(o?.text), correct: bool(o?.correct, false) }));

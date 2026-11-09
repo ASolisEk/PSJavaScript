@@ -41,6 +41,8 @@ export interface GameLevel {
   intruderEvery?: number;
   /** Requisitos del código (como en los exámenes). */
   rules?: Omit<CodeRule, 'id'>[];
+  /** Requisitos que no se pueden expresar como «contiene» (p. ej. una función recursiva). */
+  requires?: { message: string; test(code: string): boolean }[];
   /** Segundos de juego para la tercera estrella. */
   timeTarget?: number;
   starter: string;
@@ -74,6 +76,30 @@ function irA(x, y) {
 `;
 
 const fillAll = (entity: EntityId | null, ground: GroundId = 'grassland', grown = true) => () => ({ ground, entity, grown });
+
+/** Funciones declaradas en el código (`function nombre(…) { … }`) con su cuerpo. */
+export function declaredFunctions(code: string): { name: string; body: string; rest: string }[] {
+  const out: { name: string; body: string; rest: string }[] = [];
+  const re = /function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(code))) {
+    let depth = 1;
+    let i = re.lastIndex;
+    for (; i < code.length && depth; i++) {
+      if (code[i] === '{') depth++;
+      else if (code[i] === '}') depth--;
+    }
+    out.push({ name: m[1], body: code.slice(re.lastIndex, i - 1), rest: code.slice(0, m.index) + code.slice(i) });
+  }
+  return out;
+}
+
+const calls = (name: string, text: string) => (text.match(new RegExp(`(^|[^\\w$.])${name.replace(/\$/g, '\\$')}\\s*\\(`, 'g')) ?? []).length;
+
+/** Declara una función propia y la usa. */
+const usesOwnFunction = (code: string) => declaredFunctions(code).some((f) => f.name !== 'irA' && calls(f.name, f.rest) >= 1);
+/** Alguna función se llama a sí misma. */
+const usesRecursion = (code: string) => declaredFunctions(code).some((f) => calls(f.name, f.body) >= 1);
 
 export const LEVELS: GameLevel[] = [
   {
@@ -346,6 +372,76 @@ export const LEVELS: GameLevel[] = [
     solution:
       GO_TO +
       '\nlet x = 0;\nwhile (true) {\n  irA(x, 0);\n  if (getEntityType() !== Entities.Grass) {\n    harvest();\n  }\n  plant(Entities.Bush);\n  const [tipo, cx, cy] = getCompanion();\n  irA(cx, cy);\n  if (getEntityType() !== Entities.Grass) {\n    harvest();\n  }\n  if (tipo === Entities.Carrot && getGroundType() !== Grounds.Soil) {\n    till();\n  }\n  if (tipo === Entities.Grass && getGroundType() === Grounds.Soil) {\n    till();\n  }\n  if (tipo !== Entities.Grass) {\n    plant(tipo);\n  }\n  irA(x, 0);\n  while (!canHarvest()) {\n  }\n  harvest();\n  x = (x + 1) % getWorldSize();\n}\n',
+  },
+  {
+    id: 'mis-funciones',
+    title: 'Tus propias funciones',
+    concept: 'Declarar y llamar funciones',
+    icon: 'construct-outline',
+    intro:
+      'Una **función** agrupa instrucciones con un nombre para usarlas cuantas veces quieras. Se declara una vez y se **llama** escribiendo su nombre con paréntesis:\n```js\nfunction cosecharFila() {\n  // instrucciones…\n}\ncosecharFila();\n```\nTambién puede recibir **parámetros**: `function avanzar(pasos) { … }`.',
+    goal: 'Junta 25 de heno.',
+    world: { size: 5, seed: 'nivel-funciones' },
+    check: (w, label) => items(w, 'hay', 25, label),
+    rules: [{ kind: 'contains', pattern: 'function', message: 'Declara una función.' }],
+    requires: [{ message: 'Llama a tu función (no basta con declararla).', test: usesOwnFunction }],
+    timeTarget: 20,
+    starter: '// Completa la función para que coseche una fila completa\nfunction cosecharFila() {\n  \n}\n\n// Llama a tu función una vez por fila (y sube a la siguiente)\n',
+    hints: [
+      'Dentro de la función: un for que se repita getWorldSize() veces, con harvest() y move(East).',
+      'Fuera de la función: otro for que llame a cosecharFila() y después haga move(North).',
+    ],
+    solution:
+      'function cosecharFila() {\n  for (let i = 0; i < getWorldSize(); i++) {\n    harvest();\n    move(East);\n  }\n}\n\nfor (let y = 0; y < getWorldSize(); y++) {\n  cosecharFila();\n  move(North);\n}\n',
+  },
+  {
+    id: 'pedido-objeto',
+    title: 'El pedido del cliente',
+    concept: 'Objetos (clave: valor) y for…in',
+    icon: 'receipt-outline',
+    intro:
+      'Un **objeto** guarda datos con nombre: cada **clave** tiene un **valor**.\n```js\nconst pedido = { [Entities.Carrot]: 4, [Entities.Bush]: 6 };\npedido[Entities.Carrot]; // 4\n```\nCon `for (const tipo in pedido)` recorres todas sus claves.',
+    goal: 'Planta exactamente lo que pide el cliente: 4 zanahorias, 6 arbustos, 3 árboles y 3 girasoles.',
+    world: { size: 4, seed: 'nivel-objetos', items: { wood: 200, hay: 200, carrot: 50 }, unlocks: { carrots: 1, trees: 1, sunflowers: 1 }, fill: fillAll(null, 'soil') },
+    check: (w) => {
+      const want: [EntityId, number][] = [
+        ['carrot', 4],
+        ['bush', 6],
+        ['tree', 3],
+        ['sunflower', 3],
+      ];
+      const ok = want.filter(([e, n]) => w.count(e) === n).length;
+      const placed = want.reduce((a, [e, n]) => a + Math.min(n, w.count(e)), 0);
+      return { done: ok === want.length, progress: `${placed} / 16 plantas como en el pedido`, ratio: placed / 16 };
+    },
+    rules: [{ kind: 'contains', pattern: 'pedido', message: 'Usa el objeto pedido.' }],
+    requires: [{ message: 'Recorre el objeto con for…in (o Object.keys / Object.entries).', test: (c) => /for\s*\(\s*(const|let|var)\s+[\w$]+\s+in\s+/.test(c) || /Object\.(keys|entries)\s*\(/.test(c) }],
+    timeTarget: 25,
+    starter:
+      '// El pedido: cuántas plantas de cada tipo quiere el cliente\nconst pedido = {\n  [Entities.Carrot]: 4,\n  [Entities.Bush]: 6,\n  [Entities.Tree]: 3,\n  [Entities.Sunflower]: 3,\n};\n\n// Recorre el pedido y planta cada tipo las veces que indica\n',
+    hints: [
+      'for (const tipo in pedido) { … } te da cada tipo; pedido[tipo] es cuántas plantar.',
+      'Después de plantar avanza con move(East); cuando completes la fila sube con move(North).',
+      'Lleva la cuenta de la columna en una variable para saber cuándo subir.',
+    ],
+    solution:
+      'const pedido = {\n  [Entities.Carrot]: 4,\n  [Entities.Bush]: 6,\n  [Entities.Tree]: 3,\n  [Entities.Sunflower]: 3,\n};\nlet x = 0;\nfor (const tipo in pedido) {\n  for (let i = 0; i < pedido[tipo]; i++) {\n    plant(tipo);\n    move(East);\n    x++;\n    if (x === getWorldSize()) {\n      x = 0;\n      move(North);\n    }\n  }\n}\n',
+  },
+  {
+    id: 'recursion',
+    title: 'Cosecha recursiva',
+    concept: 'Recursión',
+    icon: 'git-merge-outline',
+    intro:
+      'Una función **recursiva** se llama a sí misma con un problema más pequeño, hasta llegar a un **caso base** que la detiene:\n```js\nfunction cuentaAtras(n) {\n  if (n === 0) return;   // caso base\n  console.log(n);\n  cuentaAtras(n - 1);    // llamada recursiva\n}\n```',
+    goal: 'Cosecha los 6 arbustos de la primera fila (6 de madera) con una función recursiva.',
+    world: { size: 6, seed: 'nivel-recursion', fill: (x, y) => ({ ground: 'grassland', entity: y === 0 ? 'bush' : 'grass', grown: true }) },
+    check: (w, label) => items(w, 'wood', 6, label),
+    requires: [{ message: 'Usa una función que se llame a sí misma.', test: usesRecursion }],
+    timeTarget: 10,
+    starter: '// cosechar(n): cosecha n casillas hacia el Este, una por llamada\nfunction cosechar(n) {\n  // 1. caso base: si n es 0, termina\n  // 2. cosecha y avanza\n  // 3. llama a cosechar con n - 1\n}\n\ncosechar(6);\n',
+    hints: ['El caso base es if (n === 0) return;', 'Después de harvest() y move(East), llama a cosechar(n - 1).'],
+    solution: 'function cosechar(n) {\n  if (n === 0) return;\n  harvest();\n  move(East);\n  cosechar(n - 1);\n}\n\ncosechar(6);\n',
   },
   {
     id: 'granja-libre',

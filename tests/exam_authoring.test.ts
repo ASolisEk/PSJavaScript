@@ -146,3 +146,52 @@ test('captura rápida: avisa con número de línea lo que falta y conserva lo v�
 test('captura rápida: texto vacío no produce nada', () => {
   assert.deepEqual(parseQuickText('  \n\n'), { questions: [], issues: [] });
 });
+
+test('importar desde Moodle: GIFT y Aiken', async () => {
+  const { parseImportText } = await import('../src/core/exam/quickText');
+  const gift = `// comentario
+$CATEGORY: $course$/Programación/Arreglos
+
+::P1:: ¿Qué método agrega al final? {=push() ~shift() ~pop()#No: quita el último}
+
+::P2:: const permite reasignar. {F}
+
+¿Cuánto vale 7 % 3? {#1}
+
+La palabra {=let =var} declara una variable que puede cambiar.
+
+¿Cuáles son falsy? {~%50%0 ~%50%"" ~%-100%"hola"}
+
+Escribe un ensayo {}
+`;
+  const g = parseImportText(gift);
+  assert.equal(g.format, 'gift');
+  assert.deepEqual(g.questions.map((q) => q.type), ['single', 'truefalse', 'numeric', 'short', 'multiple']);
+  const [single, tf, num, short, multi] = g.questions as any[];
+  assert.equal(single.prompt, '¿Qué método agrega al final?');
+  assert.equal(single.topic, 'Arreglos');
+  assert.deepEqual(single.options.map((o: any) => [o.text, o.correct]), [['push()', true], ['shift()', false], ['pop()', false]]);
+  assert.equal(tf.answer, false);
+  assert.equal(num.answer, 1);
+  assert.equal(short.prompt, 'La palabra ____ declara una variable que puede cambiar.');
+  assert.deepEqual(short.answers, ['let', 'var']);
+  assert.deepEqual(multi.options.map((o: any) => o.correct), [true, true, false]);
+  assert.equal(g.issues.length, 1, 'el ensayo se reporta');
+
+  const aiken = `¿Qué imprime typeof 42?
+A. "string"
+B. "number"
+C) "object"
+ANSWER: B
+
+¿Qué palabra declara una constante?
+A. let
+B. const
+ANSWER: B`;
+  const a = parseImportText(aiken);
+  assert.equal(a.format, 'aiken');
+  assert.equal(a.questions.length, 2);
+  assert.deepEqual((a.questions[0] as any).options.map((o: any) => o.correct), [false, true, false]);
+  // la captura rápida sigue funcionando
+  assert.equal(parseImportText('1. Pregunta\na) uno\n*b) dos').format, 'quick');
+});

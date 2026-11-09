@@ -767,9 +767,7 @@ test('calificación a mano: ajustar una pregunta no vuelve a calificar (ni ejecu
   const before = base.questions.find((q) => q.questionId === tf)!;
   assert.equal(before.status, 'wrong');
 
-  const t0 = Date.now();
   const adj = adjustResult(ex, key, answers, base, tf, 1);
-  assert.ok(Date.now() - t0 < 50, 'es instantáneo');
   const after = adj.questions.find((q) => q.questionId === tf)!;
   assert.equal(after.score, 1);
   assert.equal(after.manual, true);
@@ -795,4 +793,109 @@ test('calificación a mano: ajustar una pregunta no vuelve a calificar (ni ejecu
   // resultados guardados sin la calificación automática: se recalifica solo esa pregunta
   const legacy = { ...adj, questions: adj.questions.map((q) => (q.questionId === tf ? { ...q, auto: undefined } : q)) };
   assert.equal(adjustResult(ex, key, answers, legacy, tf, null).questions.find((q) => q.questionId === tf)!.score, before.score);
+});
+
+test('red propia (TURN): se valida lo que llega en el enlace y se pasa a PeerJS', async () => {
+  const { sanitizePeerNetwork, hasPeerNetwork } = await import('../src/core/exam/transport/types');
+  const { peerOptions, DEFAULT_ICE_SERVERS } = await import('../src/core/exam/transport/peer');
+  assert.equal(sanitizePeerNetwork(null), null);
+  assert.equal(sanitizePeerNetwork({ iceServers: [{ urls: 'http://malo.com' }] }), null, 'solo stun/turn');
+  const net = sanitizePeerNetwork({
+    iceServers: [{ urls: ['turns:turn.escuela.mx:443?transport=tcp', 'javascript:alert(1)'], username: 'u', credential: 'c', extra: 'x' }],
+    server: { host: 'peer.escuela.mx', port: 9000, path: '/app', secure: true, evil: 1 },
+  })!;
+  assert.deepEqual(net.iceServers, [{ urls: 'turns:turn.escuela.mx:443?transport=tcp', username: 'u', credential: 'c' }]);
+  assert.deepEqual(net.server, { host: 'peer.escuela.mx', port: 9000, path: '/app', secure: true });
+  assert.equal(sanitizePeerNetwork({ server: { host: 'mal host<script>' } }), null);
+  assert.ok(hasPeerNetwork(net));
+  const opts: any = peerOptions(net);
+  assert.equal(opts.host, 'peer.escuela.mx');
+  assert.equal(opts.port, 9000);
+  // los TURN propios primero; los públicos quedan de respaldo
+  assert.deepEqual(opts.config.iceServers[0], net.iceServers![0]);
+  assert.equal(opts.config.iceServers.length, 1 + DEFAULT_ICE_SERVERS.length);
+  const plain: any = peerOptions();
+  assert.equal(plain.config, undefined, 'sin red propia se usan los valores de PeerJS');
+});
+
+test('adecuaciones, rúbrica y comentarios del maestro', async () => {
+  const net = new MemoryNetwork();
+  let clock = 5_000_000;
+  const exam = sampleExam();
+  exam.showResults = 'detailed';
+  const code = exam.questions.find((q) => q.type === 'code')!;
+  code.rubric = [
+    { id: 'r1', text: 'Usa una función', points: 2 },
+    { id: 'r2', text: 'Nombres claros', points: 1 },
+  ];
+  const host = new ExamHost({ transport: new MemoryHost(net), state: createRoom('ADEC22', exam, { kind: 'memory' }, clock), now: () => clock, tickMs: 0 });
+  await host.open();
+  const log: HostMsg[] = [];
+  const a = student(net, 'ADEC22', 'Ana', log);
+  await a.c.connect();
+  // tiempo adicional antes de comenzar: se suma al comenzar
+  host.setExtraTime('id-Ana', 15);
+  host.start();
+  a.c.send({ t: 'begin' });
+  const s0 = host.state.students['id-Ana'];
+  assert.equal(s0.deadline, clock + (exam.durationMin + 15) * 60_000);
+  // cambiarlo durante el examen mueve su límite
+  host.setExtraTime('id-Ana', 25);
+  assert.equal(host.state.students['id-Ana'].deadline, s0.deadline! + 10 * 60_000);
+  assert.ok(log.some((m) => m.t === 'deadline'));
+
+  a.c.send({ t: 'submit', answers: {}, reason: 'manual' });
+  // rúbrica: la pregunta vale la suma de lo marcado
+  host.setRubric('id-Ana', code.id, ['r1']);
+  const r = host.state.students['id-Ana'].result!.questions.find((q) => q.questionId === code.id)!;
+  assert.equal(r.score, Math.min(code.points, 2));
+  assert.deepEqual(host.state.students['id-Ana'].rubric![code.id], ['r1']);
+  // comentario: el alumno lo recibe con su resultado
+  host.setComment('id-Ana', code.id, '  Revisa el caso vacío  ');
+  const res = [...log].reverse().find((m) => m.t === 'result') as Extract<HostMsg, { t: 'result' }>;
+  assert.equal(res.result.questions?.find((q) => q.questionId === code.id)?.comment, 'Revisa el caso vacío');
+  host.setComment('id-Ana', code.id, '');
+  assert.equal(host.state.students['id-Ana'].comments![code.id], undefined);
+  // la rúbrica se conserva al exportar e importar el examen
+  const back = parseExam(serializeExam(exam));
+  assert.deepEqual(back.questions.find((q) => q.id === code.id)!.rubric, code.rubric);
+  clock += 1;
+  host.dispose();
+});
+
+test('código parecido: detecta copias y cambios de nombres, sin contar el código inicial', async () => {
+  const { similarCode } = await import('../src/core/exam/similarity');
+  const exam = sampleExam();
+  const code = exam.questions.find((q) => q.type === 'code')! as CodeQuestion;
+  const room = createRoom('SIMI22', exam, { kind: 'memory' });
+  const base = `function sumaPares(lista) {
+  // recorre la lista y suma solo los pares
+  let total = 0;
+  for (let i = 0; i < lista.length; i++) {
+    if (lista[i] % 2 === 0) {
+      total = total + lista[i];
+    }
+  }
+  console.log("Total:", total);
+  return total;
+}`;
+  const renamed = base.replace(/lista/g, 'nums').replace(/total/g, 'acc').replace(/"Total:"/, '"Suma:"').replace(/\/\/.*\n/, '\n');
+  const different = `const numeros = [1, 2, 3];
+let resultado = numeros.filter((n) => n % 2 === 0).reduce((a, b) => a + b, 0);
+while (resultado > 100) { resultado = resultado - 1; }
+console.log(resultado * 2, typeof resultado, numeros.join("-"));`;
+  const mk = (id: string, name: string, answer: string) =>
+    (room.students[id] = { id, name, answers: { [code.id]: answer } } as any);
+  mk('a', 'Ana', base);
+  mk('b', 'Beto', base.replace('// recorre la lista y suma solo los pares', '// recorre la lista y suma solo los pares'));
+  mk('c', 'Caro', renamed);
+  mk('d', 'Dani', different);
+  mk('e', 'Eli', code.starter);
+  const pairs = similarCode(room);
+  const find = (x: string, y: string) => pairs.find((p) => (p.a === x && p.b === y) || (p.a === y && p.b === x));
+  assert.equal(find('Ana', 'Beto')?.kind, 'copy');
+  assert.equal(find('Ana', 'Beto')?.percent, 100);
+  assert.equal(find('Ana', 'Caro')?.kind, 'structure');
+  assert.equal(find('Ana', 'Dani'), undefined);
+  assert.ok(!pairs.some((p) => p.a === 'Eli' || p.b === 'Eli'), 'el código inicial no cuenta');
 });

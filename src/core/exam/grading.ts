@@ -328,7 +328,7 @@ export function topicScores(questions: QuestionResult[], topicOf: (questionId: s
 }
 
 /** Lo que puede ver el alumno de su resultado. `topicOf` permite agregar el resultado por tema. */
-export function studentView(r: GradeResult, visibility: ExamConfig['showResults'], topicOf?: (questionId: string) => string | undefined): StudentResultView {
+export function studentView(r: GradeResult, visibility: ExamConfig['showResults'], topicOf?: (questionId: string) => string | undefined, comments?: Record<string, string>): StudentResultView {
   if (visibility === 'none') return { visibility };
   const head = { visibility, grade: r.grade, scale: r.scale, percent: r.percent, passed: r.passed, score: r.score, max: r.max };
   if (visibility === 'score') return head;
@@ -347,6 +347,8 @@ export function studentView(r: GradeResult, visibility: ExamConfig['showResults'
       feedback: review || !(q.type === 'single' || q.type === 'short' || q.type === 'numeric' || q.type === 'truefalse') ? q.feedback : q.status === 'correct' ? '¡Correcto!' : 'Incorrecto.',
       // los casos ocultos y la salida de «¿Qué imprime?» no se revelan (otros alumnos pueden seguir en el examen)
       tests: review ? q.tests : q.tests?.map((t) => (t.hidden || q.type === 'output' ? { id: t.id, name: t.name, hidden: t.hidden, passed: t.passed } : t)),
+      // comentario del maestro al revisar
+      ...(comments?.[q.questionId] ? { comment: comments[q.questionId] } : {}),
     })),
   };
 }

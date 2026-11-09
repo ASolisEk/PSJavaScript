@@ -1,11 +1,30 @@
 /** Enlaces para que los alumnos entren directo a una sala (?sala=CODIGO). */
 import { Platform } from 'react-native';
 import { normalizeRoomCode } from '../core/exam/random';
-import { normalizeRelayUrl, TransportSpec } from '../core/exam/transport';
+import { hasPeerNetwork, normalizeRelayUrl, PeerNetwork, sanitizePeerNetwork, TransportSpec } from '../core/exam/transport';
 
 export interface ExamLink {
   code: string;
   transport?: TransportSpec;
+}
+
+/** Configuración de red en el enlace (base64 de JSON, apta para URL). */
+export function encodeNet(net: PeerNetwork): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(net));
+  let bin = '';
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function decodeNet(text: string): PeerNetwork | null {
+  try {
+    if (text.length > 4000) return null;
+    const bin = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return sanitizePeerNetwork(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch {
+    return null;
+  }
 }
 
 /** Lee el enlace con el que se abrió la aplicación (solo web). */
@@ -17,7 +36,10 @@ export function readExamLink(): ExamLink | null {
   const via = p.get('via');
   const srv = p.get('srv');
   let transport: TransportSpec | undefined;
-  if (via === 'internet') transport = { kind: 'internet' };
+  if (via === 'internet') {
+    const net = p.get('net') ? decodeNet(p.get('net')!) : null;
+    transport = net ? { kind: 'internet', net } : { kind: 'internet' };
+  }
   else if (via === 'device') transport = { kind: 'device' };
   else if (via === 'lan') transport = { kind: 'lan', url: srv ?? '' };
   return { code, transport };
@@ -28,7 +50,7 @@ export function clearExamLink() {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return;
   const url = new URL(window.location.href);
   if (!url.searchParams.has('sala')) return;
-  ['sala', 'via', 'srv'].forEach((k) => url.searchParams.delete(k));
+  ['sala', 'via', 'srv', 'net'].forEach((k) => url.searchParams.delete(k));
   window.history.replaceState(null, '', url.toString());
 }
 
@@ -41,6 +63,8 @@ export function buildExamLink(code: string, transport: TransportSpec): string | 
   url.searchParams.set('sala', code);
   url.searchParams.set('via', transport.kind);
   if (transport.kind === 'lan' && transport.url) url.searchParams.set('srv', normalizeRelayUrl(transport.url));
+  // los alumnos usan los mismos servidores TURN y de enlace que el maestro
+  if (transport.kind === 'internet' && hasPeerNetwork(transport.net)) url.searchParams.set('net', encodeNet(transport.net));
   return url.toString();
 }
 

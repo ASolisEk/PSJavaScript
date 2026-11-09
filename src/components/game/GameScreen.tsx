@@ -9,7 +9,7 @@
  *   ejecución fija abajo.
  */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../ui/text';
@@ -18,24 +18,23 @@ import { ruleSatisfied } from '../../core/exam/grading';
 import { API_DOCS, GAME_GLOBAL_NAMES, gameGlobals, GameTheme, themed, THEMES, unlockList } from '../../core/game/api';
 import { IntruderProgram } from '../../core/game/intruder';
 import { GameLevel, getLevel, HACK_MISSIONS, LEVELS } from '../../core/game/levels';
-import { EntityId, EXPAND_SIZES, ItemId, PLANTABLE, UnlockId, World } from '../../core/game/world';
+import { EXPAND_SIZES, ItemId, PLANTABLE, World } from '../../core/game/world';
 import { Runner, RunnerSnapshot } from '../../core/runner';
 import { useApp, useProfile } from '../../store/app';
-import { GameSpeed, SPEED_MS, useGame } from '../../store/game';
-import { confirmDialog } from '../../ui/platform';
+import { SPEED_MS, useGame } from '../../store/game';
+import { confirmDialog, pickTextFile, saveTextFile } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import CodeEditor from '../CodeEditor';
 import RichText from '../exam/RichText';
 import { BackToEditorButton, Banner, Button, CodeBlock, IconButton, IconName, Pill, ProgressBar, ScreenHeader, Segmented, Tab, tint, Tooltip } from '../ui';
 import { EntitySprite, ItemIcon } from './art';
 import WorldView from './WorldView';
-
-const SPEEDS: { id: GameSpeed; label: string; icon: IconName }[] = [
-  { id: 'slow', label: 'Lento', icon: 'walk-outline' },
-  { id: 'normal', label: 'Normal', icon: 'bicycle-outline' },
-  { id: 'fast', label: 'Rápido', icon: 'car-sport-outline' },
-  { id: 'instant', label: 'Instante', icon: 'flash-outline' },
-];
+import { SpeedPicker, Stars, TrophiesModal, UnlockIcon } from './parts';
+import { actionSound, playSound } from './sound';
+import { ACHIEVEMENTS, unlockedAchievements } from '../../core/game/achievements';
+import { blankCustomLevel, CUSTOM_PREFIX, CustomLevelData, serializeCustomLevel, toGameLevel } from '../../core/game/custom';
+import { randomId } from '../../core/exam/random';
+import LevelEditor from './LevelEditor';
 
 type MissionTab = 'mission' | 'hints' | 'intruder' | 'docs';
 type Pane = 'world' | 'code' | 'mission';
@@ -67,66 +66,8 @@ interface Done {
   stars: number;
   time: number;
   rulesOk: boolean;
-}
-
-function Stars({ n, size = 14 }: { n: number; size?: number }) {
-  const t = useTheme();
-  return (
-    <Text style={{ color: t.warning, fontSize: size, letterSpacing: 1, lineHeight: size * 1.25 }} accessibilityLabel={`${n} de 3 estrellas`}>
-      {'★'.repeat(n)}
-      <Text style={{ color: t.border }}>{'★'.repeat(3 - n)}</Text>
-    </Text>
-  );
-}
-
-/** Selector de velocidad: iconos (con la etiqueta de la activa) o un solo botón que rota. */
-function SpeedPicker({ value, onChange, cycle }: { value: GameSpeed; onChange(s: GameSpeed): void; cycle?: boolean }) {
-  const t = useTheme();
-  if (cycle) {
-    const i = SPEEDS.findIndex((s) => s.id === value);
-    const s = SPEEDS[i];
-    return (
-      <Pressable
-        onPress={() => onChange(SPEEDS[(i + 1) % SPEEDS.length].id)}
-        accessibilityRole="button"
-        accessibilityLabel={`Velocidad: ${s.label}. Toca para cambiar`}
-        style={({ pressed }) => [styles.speedCycle, { borderColor: t.border, backgroundColor: pressed ? t.surfaceAlt : t.surface }]}
-      >
-        <Ionicons name={s.icon} size={16} color={t.accentDark} />
-        <Text style={{ color: t.accentDark, fontWeight: '800', fontSize: 12, marginLeft: 5 }}>{s.label}</Text>
-      </Pressable>
-    );
-  }
-  return (
-    <View style={[styles.speed, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
-      {SPEEDS.map((s) => {
-        const on = s.id === value;
-        return (
-          <Tooltip key={s.id} text={`Velocidad: ${s.label}`}>
-            <Pressable
-              onPress={() => onChange(s.id)}
-              accessibilityRole="button"
-              accessibilityLabel={`Velocidad: ${s.label}`}
-              accessibilityState={{ selected: on }}
-              style={[styles.speedOpt, { backgroundColor: on ? t.surface : 'transparent', borderColor: on ? t.accent : 'transparent' }]}
-            >
-              <Ionicons name={s.icon} size={15} color={on ? t.accentDark : t.textMuted} />
-              {on ? <Text style={{ color: t.accentDark, fontWeight: '800', fontSize: 12, marginLeft: 4 }}>{s.label}</Text> : null}
-            </Pressable>
-          </Tooltip>
-        );
-      })}
-    </View>
-  );
-}
-
-/** Dibujo de cada mejora de la granja libre. */
-function UnlockIcon({ id, theme, color }: { id: UnlockId; theme: GameTheme; color: string }) {
-  const entity: Partial<Record<UnlockId, EntityId>> = { trees: 'tree', carrots: 'carrot', pumpkins: 'pumpkin', sunflowers: 'sunflower', cactus: 'cactus', mazes: 'treasure', polyculture: 'bush' };
-  const item: Partial<Record<UnlockId, ItemId>> = { watering: 'water', fertilizer: 'fertilizer' };
-  if (entity[id]) return <EntitySprite type={entity[id]!} theme={theme} size={26} />;
-  if (item[id]) return <ItemIcon item={item[id]!} theme={theme} size={22} />;
-  return <Ionicons name={id === 'expand' ? 'expand-outline' : 'speedometer-outline'} size={20} color={color} />;
+  /** Logros que se acaban de conseguir. */
+  fresh: string[];
 }
 
 function GameInner() {
@@ -141,8 +82,15 @@ function GameInner() {
   const codeMap = useGame((s) => s.code);
   const progress = useGame((s) => s.progress);
   const fontSize = useApp((s) => s.settings.fontSize);
+  const sounds = useApp((s) => s.settings.gameSounds);
+  const soundRef = useRef(sounds);
+  useEffect(() => {
+    soundRef.current = sounds;
+  }, [sounds]);
   const profile = useProfile();
-  const level = getLevel(levelId);
+  const custom = useGame((s) => s.custom);
+  const customData = levelId.startsWith(CUSTOM_PREFIX) ? custom.find((c) => CUSTOM_PREFIX + c.id === levelId) : undefined;
+  const level = useMemo(() => (customData ? toGameLevel(customData, theme) : getLevel(levelId)), [customData, levelId, theme]);
   const names = THEMES[theme];
   const starter = themed(level.starter, theme);
   const code = codeMap[level.id] ?? starter;
@@ -162,6 +110,10 @@ function GameInner() {
   const [pane, setPane] = useState<Pane>('mission');
   const [bottomTab, setBottomTab] = useState<BottomTab>('console');
   const [showDocs, setShowDocs] = useState(false);
+  const [showTrophies, setShowTrophies] = useState(false);
+  /** Nivel que se edita en el editor (nuevo o existente). */
+  const [editing, setEditing] = useState<CustomLevelData | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [diags, setDiags] = useState<Diagnostic[]>([]);
   const runner = useRef<Runner | null>(null);
   const speedRef = useRef(speed);
@@ -252,6 +204,7 @@ function GameInner() {
       if (!c.done) {
         if (c.failed) {
           w.frozen = true;
+          if (soundRef.current) playSound('fail');
           setFailed(c.failed);
           r.halt('💥 Misión fallida');
         }
@@ -259,11 +212,14 @@ function GameInner() {
       }
       w.frozen = true;
       w.sync();
-      const rulesOk = (level.rules ?? []).every((rule) => ruleSatisfied(code, rule));
+      const rulesOk = (level.rules ?? []).every((rule) => ruleSatisfied(code, rule)) && (level.requires ?? []).every((r) => r.test(code));
       const fast = level.timeTarget ? w.time <= level.timeTarget : true;
       const stars = 1 + (rulesOk ? 1 : 0) + (rulesOk && fast ? 1 : 0);
-      setDone({ stars, time: w.time, rulesOk });
+      const before = unlockedAchievements(useGame.getState().progress);
       useGame.getState().complete(level.id, stars, w.time);
+      const fresh = unlockedAchievements(useGame.getState().progress).filter((id) => !before.includes(id));
+      setDone({ stars, time: w.time, rulesOk, fresh });
+      if (soundRef.current) playSound('win');
       r.halt(level.kind === 'hack' ? '🛡️ ¡Misión cumplida!' : '🎉 ¡Nivel completado!');
     };
     const globals = gameGlobals(w, {
@@ -272,7 +228,8 @@ function GameInner() {
       actor: level.patch ? 'intruder' : 'main',
       delay: () => SPEED_MS[speedRef.current],
       log: (text) => r.log('warn', `⚠ ${text}`),
-      onAction: () => {
+      onAction: (name, ok) => {
+        if (soundRef.current && SPEED_MS[speedRef.current] > 0) actionSound(name, ok);
         if (intruder && ++turns % (level.intruderEvery ?? 1) === 0) {
           intruder.act();
           if (intruder.error) r.log('warn', `⚠ El programa del intruso falló: ${intruder.error}`);
@@ -294,6 +251,7 @@ function GameInner() {
         setRun(snap);
         bump(w);
         if (snap.status === 'finished') checkGoal(true);
+        if (snap.status === 'error' && soundRef.current) playSound('error');
         if (snap.status === 'finished' || snap.status === 'error' || snap.status === 'stopped') saveSandbox(w);
       },
     });
@@ -323,9 +281,11 @@ function GameInner() {
   const blocking = hasBlockingErrors(diags);
   const errorCount = diags.filter((d) => d.severity === 'error').length;
   const hackMode = level.kind === 'hack';
-  const tone = hackMode ? t.danger : t.primary;
-  const list = hackMode ? HACK_MISSIONS : LEVELS;
-  const idx = list.indexOf(level);
+  const customMode = !!customData;
+  const tone = hackMode ? t.danger : customMode ? t.accent : t.primary;
+  const customLevels = useMemo(() => custom.map((c) => toGameLevel(c, theme)), [custom, theme]);
+  const list = customMode ? customLevels : hackMode ? HACK_MISSIONS : LEVELS;
+  const idx = list.findIndex((l) => l.id === level.id);
   const next = list[idx + 1];
   const unfinished = status === 'finished' && !done && !failed && !level.sandbox && !world.frozen;
   const earned = progress[level.id]?.stars ?? 0;
@@ -343,6 +303,13 @@ function GameInner() {
       color={tone}
       right={
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <IconButton icon="trophy-outline" label="Logros" tooltip={`Logros: ${unlockedAchievements(progress).length} de ${ACHIEVEMENTS.length}`} onPress={() => setShowTrophies(true)} />
+          <IconButton
+            icon={sounds ? 'volume-high-outline' : 'volume-mute-outline'}
+            label={sounds ? 'Silenciar el juego' : 'Activar sonidos'}
+            tooltip={sounds ? 'Silenciar efectos de sonido' : 'Activar efectos de sonido'}
+            onPress={() => useApp.getState().updateSettings({ gameSounds: !sounds })}
+          />
           <Segmented
             options={[
               { id: 'farm', label: wide ? 'Granja' : '🌾', icon: wide ? 'leaf-outline' : undefined },
@@ -374,9 +341,16 @@ function GameInner() {
         options={[
           { id: 'build', label: 'Construir', icon: 'hammer-outline' },
           { id: 'hack', label: 'Hackeo', icon: 'bug-outline' },
+          { id: 'custom', label: wide ? 'Mis niveles' : 'Míos', icon: 'brush-outline' },
         ]}
-        value={hackMode ? 'hack' : 'build'}
+        value={customMode ? 'custom' : hackMode ? 'hack' : 'build'}
         onChange={(m) => {
+          if (m === 'custom') {
+            // sin niveles propios todavía: se abre el editor
+            if (customLevels.length) selectLevel(customLevels[0].id);
+            else setEditing(blankCustomLevel(randomId('nivel')));
+            return;
+          }
           const target = m === 'hack' ? HACK_MISSIONS : LEVELS;
           // al cambiar de modo se abre el primero sin terminar
           selectLevel((target.find((l) => !progress[l.id]?.stars) ?? target[0]).id);
@@ -416,21 +390,41 @@ function GameInner() {
           </Pressable>
         );
       })}
+      {customMode ? (
+        <>
+          <Button label="Crear nivel" icon="add" size="sm" onPress={() => setEditing(blankCustomLevel(randomId('nivel')))} />
+          <Button
+            label="Importar"
+            icon="cloud-upload-outline"
+            size="sm"
+            kind="ghost"
+            onPress={async () => {
+              setImportError(null);
+              try {
+                const f = await pickTextFile('.json');
+                if (f) selectLevel(CUSTOM_PREFIX + useGame.getState().importCustom(f.text).id);
+              } catch (e: any) {
+                setImportError(e?.message ?? String(e));
+              }
+            }}
+          />
+        </>
+      ) : null}
     </ScrollView>
   );
 
   // ───────────────────────────── meta y misión ─────────────────────────────
 
   const starRules =
-    level.rules?.length || level.timeTarget ? (
+    level.rules?.length || level.requires?.length || level.timeTarget ? (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
         <Pill text="★ Cumplir el objetivo" color={t.warning} />
-        {level.rules?.length ? <Pill text={`★ ${level.rules.map((r) => r.message).join(' ')}`} color={t.warning} /> : null}
+        {level.rules?.length || level.requires?.length ? <Pill text={`★ ${[...(level.rules ?? []), ...(level.requires ?? [])].map((r) => r.message).join(' ')}`} color={t.warning} /> : null}
         {level.timeTarget ? <Pill text={`★ En ${level.timeTarget} s de juego o menos`} color={t.warning} /> : null}
       </View>
     ) : null;
 
-  const kicker = level.sandbox ? 'RETO LIBRE' : hackMode ? `MISIÓN ${idx + 1} DE ${HACK_MISSIONS.length} · ${(level.task ?? '').toUpperCase()}` : `NIVEL ${idx + 1} DE ${LEVELS.length - 1}`;
+  const kicker = customMode ? `NIVEL PERSONALIZADO ${idx + 1} DE ${customLevels.length}` : level.sandbox ? 'RETO LIBRE' : hackMode ? `MISIÓN ${idx + 1} DE ${HACK_MISSIONS.length} · ${(level.task ?? '').toUpperCase()}` : `NIVEL ${idx + 1} DE ${LEVELS.length - 1}`;
 
   const goalStrip = (
     <View style={[styles.goalStrip, { borderColor: hackMode ? tint(t.danger, 0.45) : t.border, backgroundColor: t.surface }]}>
@@ -495,8 +489,26 @@ function GameInner() {
       </View>
     ) : null;
 
+  const customActions = customData ? (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+      <Button label="Editar nivel" icon="create-outline" size="sm" onPress={() => setEditing(customData)} />
+      <Button label="Compartir (archivo)" icon="share-outline" size="sm" onPress={() => saveTextFile(`nivel-${customData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'dron'}.json`, serializeCustomLevel(customData), 'application/json')} />
+      <Button
+        label="Eliminar"
+        icon="trash-outline"
+        size="sm"
+        kind="ghost"
+        onPress={async () => {
+          if (await confirmDialog('¿Eliminar el nivel?', `«${customData.title}» se borrará de este dispositivo. Compártelo antes si quieres conservarlo.`, 'Eliminar')) useGame.getState().deleteCustom(customData.id);
+        }}
+      />
+    </View>
+  ) : null;
+
   const missionBody = (
     <View>
+      {customActions}
+      {importError ? <Banner icon="alert-circle" color={t.danger} text={importError} onClose={() => setImportError(null)} /> : null}
       <RichText text={themed(level.intro, theme)} style={{ color: t.text, fontSize: 14, lineHeight: 21 }} />
       {mineGlossary}
     </View>
@@ -728,6 +740,14 @@ function GameInner() {
         {here.water > 0.05 ? ` · agua ${Math.round(here.water * 100)} %` : ''}
       </Text>
       {wide ? null : meta}
+      {running && run?.line ? (
+        <View style={[styles.lineChip, { borderColor: tint(t.warning, 0.5), backgroundColor: tint(t.warning, 0.12) }]} accessibilityLabel={`Ejecutando la línea ${run.line}`}>
+          <Ionicons name="play" size={11} color={t.warning} />
+          <Text style={{ color: t.text, fontFamily: MONO, fontSize: 12, marginLeft: 4, maxWidth: 260 }} numberOfLines={1}>
+            {run.line}: {code.split('\n')[run.line - 1]?.trim()}
+          </Text>
+        </View>
+      ) : null}
       {it ? (
         <Pill
           icon={itSafe ? 'shield-checkmark' : 'warning'}
@@ -746,6 +766,14 @@ function GameInner() {
           <Text style={{ fontSize: 42, lineHeight: 50 }}>{done ? (hackMode ? '🛡️' : '🎉') : '💥'}</Text>
           <Text style={{ color: t.text, fontSize: 19, fontWeight: '900', textAlign: 'center' }}>{done ? (hackMode ? themed('¡Misión cumplida! Tu granja está a salvo', theme) : '¡Nivel completado!') : 'Misión fallida'}</Text>
           {done ? <Stars n={done.stars} size={32} /> : null}
+          {done?.fresh.length ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+              {done.fresh.map((id) => {
+                const a = ACHIEVEMENTS.find((x) => x.id === id)!;
+                return <Pill key={id} icon={a.icon as IconName} text={`¡Logro: ${a.title}!`} color={t.warning} solid />;
+              })}
+            </View>
+          ) : null}
           <Text style={{ color: t.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 }}>
             {done
               ? `${done.time.toFixed(1)} s de juego${!done.rulesOk ? ' · Para más estrellas cumple los requisitos del código' : level.timeTarget && done.time > level.timeTarget ? ` · La tercera estrella es en ${level.timeTarget} s o menos` : ''}`
@@ -874,6 +902,21 @@ function GameInner() {
     </View>
   );
 
+  const levelEditor = editing ? (
+    <LevelEditor
+      initial={editing}
+      theme={theme}
+      onClose={() => setEditing(null)}
+      onSave={(d) => {
+        useGame.getState().saveCustom(d);
+        setEditing(null);
+        // si es el nivel abierto, se vuelve a cargar con los cambios
+        if (level.id === CUSTOM_PREFIX + d.id) reset(toGameLevel(d, theme));
+        else selectLevel(CUSTOM_PREFIX + d.id);
+      }}
+    />
+  ) : null;
+
   // ───────────────────────────── distribución ─────────────────────────────
 
   if (wide) {
@@ -896,6 +939,8 @@ function GameInner() {
             {bottomPanel}
           </View>
         </View>
+      {showTrophies ? <TrophiesModal progress={progress} onClose={() => setShowTrophies(false)} /> : null}
+      {levelEditor}
       </View>
     );
   }
@@ -970,6 +1015,8 @@ function GameInner() {
         </ScrollView>
       )}
       <View style={[styles.bottomBar, { borderTopColor: t.border, backgroundColor: t.surface, paddingBottom: insets.bottom + 8 }]}>{toolbar}</View>
+      {showTrophies ? <TrophiesModal progress={progress} onClose={() => setShowTrophies(false)} /> : null}
+      {levelEditor}
     </View>
   );
 }
@@ -988,9 +1035,6 @@ const styles = StyleSheet.create({
   glossary: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginTop: 10 },
   docRow: { borderLeftWidth: 3, paddingLeft: 8, marginBottom: 8 },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, flexShrink: 0 },
-  speed: { flexDirection: 'row', borderRadius: RADIUS.md, borderWidth: BORDER, padding: 3 },
-  speedOpt: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: 8, borderRadius: 9, borderWidth: BORDER },
-  speedCycle: { flexDirection: 'row', alignItems: 'center', height: 42, paddingHorizontal: 12, borderRadius: RADIUS.md, borderWidth: BORDER },
   patchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6 },
   stage: { borderWidth: BORDER, borderRadius: RADIUS.lg, padding: 10, gap: 8, overflow: 'hidden' },
   hud: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
@@ -998,6 +1042,7 @@ const styles = StyleSheet.create({
   hudMetaText: { fontSize: 12, fontWeight: '700', marginLeft: 3, fontFamily: MONO },
   invChip: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 9, paddingVertical: 2 },
   statusLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  lineChip: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 2 },
   posChip: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 2 },
   overlay: { alignItems: 'center', justifyContent: 'center', padding: 16 },
   resultCard: { borderWidth: BORDER, borderRadius: RADIUS.lg, padding: 20, alignItems: 'center', gap: 6, maxWidth: 380, width: '100%' },

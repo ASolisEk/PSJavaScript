@@ -56,6 +56,12 @@ export interface StudentRecord {
   result: GradeResult | null;
   /** Puntos asignados a mano por el maestro (por pregunta). */
   overrides: Record<string, number>;
+  /** Tiempo adicional fijo (adecuación), en minutos, sumado a la duración del examen. */
+  extraMinutes?: number;
+  /** Comentarios del maestro por pregunta (los ve el alumno si el examen muestra resultados). */
+  comments?: Record<string, string>;
+  /** Criterios de la rúbrica que cumplió (por pregunta). */
+  rubric?: Record<string, string[]>;
 }
 
 /**

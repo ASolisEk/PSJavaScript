@@ -4,7 +4,7 @@ import React, { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
-import { ACTIVITY_LABEL, answeredCount, RoomState, StudentEventKind, studentPhase } from '../../core/exam/room';
+import { ACTIVITY_LABEL, answeredCount, normalizeName, RoomState, StudentEventKind, studentPhase } from '../../core/exam/room';
 import { runProgram } from '../../core/exam/grading';
 import { answersTxt, answerText, correctText, roomReportHtml, STATUS_LABEL } from '../../core/exam/report';
 import type { AnswerValue, PaperKey, Question, QuestionResult } from '../../core/exam/types';
@@ -13,7 +13,7 @@ import { roomKey, useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
-import { Button, Chip } from '../ui';
+import { Button, Chip, TextField } from '../ui';
 import { Card, CodeBlock, formatDuration, formatSince, IconName, NumberStepper, Pill } from '../exam/kit';
 import RichText from '../exam/RichText';
 
@@ -125,6 +125,7 @@ export default function StudentDetailModal({
             {s.result ? <Info label="Calificación" value={`${s.result.grade}/${s.result.scale} (${s.result.percent}%)`} strong /> : null}
             {!s.submittedAt && s.startedAt ? <Info label="Ahora" value={`${ACTIVITY_LABEL[s.activity]} · P${s.current + 1}`} /> : null}
           </View>
+          {live && room.exam.durationMin > 0 && room.status !== 'closed' && !s.submittedAt ? <ExtraTime roomId={key} studentId={s.id} name={s.name} minutes={s.extraMinutes ?? 0} /> : null}
           {live ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
               {s.startedAt && !s.submittedAt && s.deadline ? <Button label="+5 min" icon="time-outline" onPress={() => st.addTime(key, 5, s.id)} /> : null}
@@ -218,6 +219,8 @@ export default function StudentDetailModal({
                   answer={s.answers[q.id]}
                   paperKey={s.key}
                   r={r}
+                  comment={s.comments?.[q.id]}
+                  marks={s.rubric?.[q.id]}
                   current={!s.submittedAt && s.current === i}
                   profileId={room.exam.profileId}
                 />
@@ -299,6 +302,8 @@ const AnswerCard = memo(function AnswerCard({
   r,
   current,
   profileId,
+  comment,
+  marks,
 }: {
   roomId: string;
   q: Question;
@@ -309,6 +314,8 @@ const AnswerCard = memo(function AnswerCard({
   r?: QuestionResult;
   current: boolean;
   profileId: string;
+  comment?: string;
+  marks?: string[];
 }) {
   const t = useTheme();
   const [showRef, setShowRef] = useState(false);
@@ -432,17 +439,38 @@ const AnswerCard = memo(function AnswerCard({
       {q.type === 'output' && q.inputs.length ? <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>Datos para prompt(): {q.inputs.join(', ')}</Text> : null}
       {body}
       {r && (q.type === 'multiple' || q.type === 'order') && r.status !== 'correct' ? <RichText text={r.feedback} style={{ color: t.textMuted, fontSize: 12, marginTop: 6 }} /> : null}
-      {r ? <ScoreEditor roomId={roomId} studentId={studentId} q={q} r={r} /> : null}
+      {r ? <ScoreEditor roomId={roomId} studentId={studentId} q={q} r={r} marks={marks} /> : null}
+      {r ? <CommentBox roomId={roomId} studentId={studentId} questionId={q.id} comment={comment} /> : null}
     </Card>
   );
 });
 
 /** Ajuste de puntos: pasos, accesos rápidos (sin puntos / la mitad / completa) y volver a la automática. */
-function ScoreEditor({ roomId, studentId, q, r }: { roomId: string; studentId: string; q: Question; r: QuestionResult }) {
+function ScoreEditor({ roomId, studentId, q, r, marks }: { roomId: string; studentId: string; q: Question; r: QuestionResult; marks?: string[] }) {
   const t = useTheme();
   const set = (v: number | null) => useTeacher.getState().adjust(roomId, studentId, q.id, v);
   const half = Math.round((q.points / 2) * 2) / 2;
+  const toggle = (id: string) => {
+    const now = marks ?? [];
+    useTeacher.getState().setRubric(roomId, studentId, q.id, now.includes(id) ? now.filter((x) => x !== id) : [...now, id]);
+  };
   return (
+    <View>
+      {q.rubric?.length ? (
+        <View style={[styles.rubric, { borderTopColor: t.border }]}>
+          <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 4 }}>RÚBRICA (marca lo que cumple)</Text>
+          {q.rubric.map((c) => {
+            const on = !!marks?.includes(c.id);
+            return (
+              <Pressable key={c.id} onPress={() => toggle(c.id)} style={styles.criterion} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={`${c.text}, ${c.points} puntos`}>
+                <Ionicons name={on ? 'checkbox' : 'square-outline'} size={18} color={on ? t.success : t.textMuted} />
+                <Text style={{ color: t.text, fontSize: 13, flex: 1, marginLeft: 8 }}>{c.text}</Text>
+                <Text style={{ color: on ? t.success : t.textMuted, fontSize: 12, fontWeight: '800' }}>{c.points} pts</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     <View style={[styles.score, { borderTopColor: t.border }]}>
       <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '700' }}>Puntos:</Text>
       <NumberStepper value={r.score} onChange={set} min={0} max={q.points} step={q.points <= 2 ? 0.5 : 1} width={56} />
@@ -458,10 +486,53 @@ function ScoreEditor({ roomId, studentId, q, r }: { roomId: string; studentId: s
         <Text style={{ color: t.textMuted, fontSize: 11 }}>calificada automáticamente</Text>
       )}
     </View>
+    </View>
+  );
+}
+
+/** Comentario para el alumno en esta pregunta (se guarda al salir del campo). */
+function CommentBox({ roomId, studentId, questionId, comment }: { roomId: string; studentId: string; questionId: string; comment?: string }) {
+  const t = useTheme();
+  const [text, setText] = useState(comment ?? '');
+  const [shown, setShown] = useState(comment ?? '');
+  if ((comment ?? '') !== shown) {
+    setShown(comment ?? '');
+    setText(comment ?? '');
+  }
+  const save = () => {
+    if (text.trim() !== (comment ?? '').trim()) useTeacher.getState().setComment(roomId, studentId, questionId, text);
+  };
+  return (
+    <View style={{ marginTop: 8 }}>
+      <TextField value={text} onChangeText={setText} onBlur={save} placeholder="Comentario para el alumno (opcional): lo verá con su resultado" multiline minHeight={38} style={{ fontSize: 13 }} />
+      {comment ? <Text style={{ color: t.success, fontSize: 11, marginTop: 2 }}>✓ Comentario guardado</Text> : null}
+    </View>
+  );
+}
+
+/** Tiempo adicional del alumno (adecuación) y si se recuerda para los próximos exámenes. */
+function ExtraTime({ roomId, studentId, name, minutes }: { roomId: string; studentId: string; name: string; minutes: number }) {
+  const t = useTheme();
+  const remembered = useTeacher((s) => s.accommodations[normalizeName(name)] ?? 0);
+  return (
+    <View style={[styles.extra, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+      <Ionicons name="hourglass-outline" size={16} color={t.accent} />
+      <Text style={{ color: t.text, fontSize: 13, fontWeight: '700' }}>Tiempo adicional</Text>
+      <NumberStepper value={minutes} onChange={(v) => useTeacher.getState().setExtraTime(roomId, studentId, v)} min={0} max={180} step={5} width={52} />
+      <Text style={{ color: t.textMuted, fontSize: 12 }}>min</Text>
+      <Chip
+        label={remembered ? `Se aplica siempre (+${remembered} min)` : 'Aplicar en próximos exámenes'}
+        active={!!remembered}
+        onPress={() => useTeacher.getState().setExtraTime(roomId, studentId, minutes, !remembered)}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  rubric: { borderTopWidth: 1, marginTop: 12, paddingTop: 8 },
+  criterion: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5 },
+  extra: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, borderWidth: 1.5, borderRadius: RADIUS.md, padding: 8, marginTop: 12 },
   nav: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: BORDER },
   score: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
   event: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderBottomWidth: BORDER },

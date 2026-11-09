@@ -12,11 +12,15 @@ import { defaultRelayUrl, defaultTransport, transportLabel, transportOptions, Tr
 import type { Activity } from '../../core/exam/types';
 import { isOpenRoom, MAX_OPEN_ROOMS, roomKey, useActiveRoom, useTeacher, workingCount } from '../../store/teacher';
 import { buildExamLink } from '../../ui/examLink';
-import { confirmDialog, copyText } from '../../ui/platform';
+import { confirmDialog, copyText, saveTextFile } from '../../ui/platform';
+import { backupFileName } from '../../core/exam/report';
+import { useApp } from '../../store/app';
 import { BORDER, MONO, RADIUS, SCRIM, useTheme } from '../../ui/theme';
 import { Button, Chip, Heading } from '../ui';
 import { Banner, BigChoice, Card, Field, formatDuration, formatSince, IconName, Pill, ProgressBar, Stat, TextField, Toggle } from '../exam/kit';
 import QrCode from '../exam/QrCode';
+import { ConnectionTest, NetworkOptions } from '../exam/NetworkOptions';
+import { useNetwork } from '../../store/network';
 import StudentDetailModal, { PHASE_INFO } from './StudentDetailModal';
 
 const ACTIVITY_ICON: Record<Activity, IconName> = {
@@ -122,7 +126,21 @@ function OpenRoom() {
   const rooms = useTeacher((s) => s.rooms);
   const openRooms = rooms.filter(isOpenRoom);
   const [examId, setExamId] = useState<string | null>(editingId ?? exams[0]?.id ?? null);
-  const [spec, setSpec] = useState<TransportSpec>(() => defaultTransport());
+  const savedNet = useNetwork((s) => s.net);
+  const [spec, setSpec] = useState<TransportSpec>(() => {
+    const d = defaultTransport();
+    return d.kind === 'internet' && savedNet ? { ...d, net: savedNet } : d;
+  });
+  // los servidores propios guardados se cargan una vez (y se usan por omisión)
+  useEffect(() => {
+    useNetwork
+      .getState()
+      .hydrate()
+      .then(() => {
+        const net = useNetwork.getState().net;
+        if (net) setSpec((sp) => (sp.kind === 'internet' && !sp.net ? { ...sp, net } : sp));
+      });
+  }, []);
   const options = transportOptions();
   const exam = exams.find((e) => e.id === examId);
   const invalid = exam ? hasExamErrors(exam) : true;
@@ -170,9 +188,15 @@ function OpenRoom() {
               description={o.available ? o.description : 'No disponible en esta plataforma.'}
               selected={spec.kind === o.kind}
               disabled={!o.available}
-              onPress={() => setSpec({ kind: o.kind, url: o.kind === 'lan' ? spec.url || defaultRelayUrl() || '' : undefined })}
+              onPress={() => setSpec({ kind: o.kind, url: o.kind === 'lan' ? spec.url || defaultRelayUrl() || '' : undefined, ...(o.kind === 'internet' && savedNet ? { net: savedNet } : {}) })}
             />
           ))}
+          {spec.kind === 'internet' ? (
+            <View style={{ marginTop: 4 }}>
+              <ConnectionTest net={spec.net} />
+              <NetworkOptions value={spec.net} onChange={(net) => setSpec({ kind: 'internet', ...(net ? { net } : {}) })} />
+            </View>
+          ) : null}
           {spec.kind === 'lan' ? (
             <Field label="Dirección del servidor del aula" hint="En la computadora del maestro ejecuta «npm run sala»: te mostrará la dirección (por ejemplo 192.168.1.10:8787). Tus alumnos deben abrir esa misma dirección en su navegador.">
               <TextField value={spec.url ?? ''} onChangeText={(url) => setSpec({ kind: 'lan', url })} placeholder="192.168.1.10:8787" mono autoCapitalize="none" />
@@ -187,7 +211,12 @@ function OpenRoom() {
           icon="radio-outline"
           kind="primary"
           disabled={!exam || invalid || opening || (spec.kind === 'lan' && !spec.url?.trim())}
-          onPress={() => exam && useTeacher.getState().openRoom(exam.id, spec)}
+          onPress={() => {
+            if (!exam) return;
+            // recuerda los servidores propios para las próximas salas
+            if (spec.kind === 'internet') useNetwork.getState().setNet(spec.net ?? null);
+            useTeacher.getState().openRoom(exam.id, spec);
+          }}
           style={{ height: 50 }}
         />
       </View>
@@ -236,6 +265,7 @@ function LiveRoom({ room }: { room: RoomState }) {
   const { width } = useWindowDimensions();
   const key = roomKey(room);
   const network = useTeacher((s) => s.network[key]) ?? { online: true };
+  const backupOnClose = useApp((s) => s.settings.examBackupOnClose);
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<Sort>('name');
   const [detail, setDetail] = useState<string | null>(null);
@@ -297,6 +327,11 @@ function LiveRoom({ room }: { room: RoomState }) {
     setClosing(true);
     await useTeacher.getState().closeExam(key);
     setClosing(false);
+    // respaldo por si después se borran los datos del navegador (se puede volver a importar en «Resultados»)
+    if (useApp.getState().settings.examBackupOnClose) {
+      const closed = useTeacher.getState().rooms.find((r) => roomKey(r) === key) ?? useTeacher.getState().history.find((r) => roomKey(r) === key);
+      if (closed) saveTextFile(backupFileName(closed), JSON.stringify(closed), 'application/json');
+    }
   };
 
   return (
@@ -383,6 +418,15 @@ function LiveRoom({ room }: { room: RoomState }) {
                 <Button label="Ver concentrado" icon="bar-chart-outline" onPress={() => useTeacher.getState().viewHistory(key)} />
                 <Button label="Archivar sala" icon="archive-outline" onPress={() => useTeacher.getState().leaveRoom(key)} />
               </View>
+            ) : null}
+            {room.status !== 'closed' ? (
+              <Toggle
+                icon="save-outline"
+                label="Descargar un respaldo al cerrar"
+                description="Guarda un archivo con todos los resultados por si se borran los datos del navegador (se importa en «Resultados»)."
+                value={backupOnClose}
+                onChange={(v) => useApp.getState().updateSettings({ examBackupOnClose: v })}
+              />
             ) : null}
             {room.status !== 'closed' ? <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 10 }}>Mantén esta ventana abierta: tu equipo es el que recibe y califica los exámenes (de todas las salas abiertas).</Text> : null}
           </Card>
@@ -509,8 +553,9 @@ function StudentCard({ s, room, now, duplicate, asking, onPress }: { s: StudentR
         </View>
       ) : null}
 
-      {s.focusLost || s.pasteBlocked || s.lockdown || duplicate || asking ? (
+      {s.focusLost || s.pasteBlocked || s.lockdown || duplicate || asking || s.extraMinutes ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {s.extraMinutes ? <Pill icon="hourglass-outline" color={t.accent} text={`+${s.extraMinutes} min`} /> : null}
           {asking ? <Pill icon="hand-left-outline" color={t.warning} text="Pide continuar en otro dispositivo" /> : null}
           {duplicate ? <Pill icon="people-outline" color={t.danger} text="Nombre repetido" /> : null}
           {s.focusLost ? <Pill icon="eye-off-outline" color={t.warning} text={`Salió ${s.focusLost}× · ${formatSince(s.awayMs)}`} /> : null}

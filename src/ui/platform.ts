@@ -48,6 +48,11 @@ export async function pickTextFileNative(): Promise<{ name: string; text: string
   return { name: asset.name, text: await new File(asset.uri).text() };
 }
 
+/** Selector de archivos en cualquier plataforma (web o teléfono). */
+export async function pickTextFile(accept = '.json,.txt'): Promise<{ name: string; text: string } | null> {
+  return Platform.OS === 'web' ? pickTextFileWeb(accept) : pickTextFileNative();
+}
+
 /** Abre el selector de archivos del navegador y devuelve el texto (solo web). */
 export function pickTextFileWeb(accept = '.js,.txt,.psc'): Promise<{ name: string; text: string } | null> {
   return new Promise((resolve) => {

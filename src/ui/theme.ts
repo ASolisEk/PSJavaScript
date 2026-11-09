@@ -191,10 +191,19 @@ export const TYPE = {
   display: { fontSize: 30, fontWeight: '900', lineHeight: 36, letterSpacing: -0.6 },
 } as const;
 
+/**
+ * Alto contraste (accesibilidad): bordes, textos secundarios y deshabilitados más oscuros
+ * (o más claros en el tema oscuro) para que se lean con baja visión o pantallas con reflejo.
+ */
+const lightHC: Theme = { ...light, border: '#8a8a8a', borderStrong: '#4b4b4b', text: '#1f1f1f', textMuted: '#3f3f3f', textFaint: '#5c5c5c', gutterText: '#5c5c5c' };
+const darkHC: Theme = { ...dark, border: '#7f949e', borderStrong: '#c9d6dc', text: '#ffffff', textMuted: '#dce6ec', textFaint: '#a3b6bf', gutterText: '#a3b6bf' };
+
 export function useTheme(): Theme {
   const scheme = useColorScheme();
   const pref = useApp((s) => s.settings.theme);
+  const contrast = useApp((s) => s.settings.highContrast);
   const isDark = pref === 'system' ? scheme === 'dark' : pref === 'dark';
+  if (contrast) return isDark ? darkHC : lightHC;
   return isDark ? dark : light;
 }
 

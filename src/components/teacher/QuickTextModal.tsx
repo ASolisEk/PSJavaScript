@@ -4,7 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
-import { answerSummary, parseQuickText, QUICK_TEXT_EXAMPLE } from '../../core/exam/quickText';
+import { answerSummary, parseImportText, QUICK_TEXT_EXAMPLE } from '../../core/exam/quickText';
+import { pickTextFile } from '../../ui/platform';
 import { plainText } from '../../core/exam/richText';
 import type { Question } from '../../core/exam/types';
 import { BORDER, RADIUS, useTheme } from '../../ui/theme';
@@ -17,6 +18,7 @@ const HELP: [string, string][] = [
   ['Opciones: «a) texto» o «- texto». Marca la correcta con * al inicio: «*b) push()». Si marcas varias, el alumno elige todas.', 'radio-button-on-outline'],
   ['Sin opciones, agrega «Respuesta: …»: Verdadero / Falso, un número (3,14 ± 0,01) o un texto (varias aceptadas con |).', 'create-outline'],
   ['«Tema: Arreglos» agrupa las siguientes preguntas. «Puntos: 2» cambia el valor de una.', 'pricetag-outline'],
+  ['También puedes pegar preguntas de Moodle en formato GIFT ({=correcta ~incorrecta}, {T}, {#3}) o Aiken (A. … B. … ANSWER: B): se reconocen solas.', 'swap-horizontal-outline'],
 ];
 
 export default function QuickTextModal({ onClose, onAdd }: { onClose(): void; onAdd(questions: Question[]): void }) {
@@ -24,13 +26,24 @@ export default function QuickTextModal({ onClose, onAdd }: { onClose(): void; on
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   const [text, setText] = useState('');
-  const { questions, issues } = useMemo(() => parseQuickText(text), [text]);
+  const { questions, issues, format } = useMemo(() => parseImportText(text), [text]);
+  const formatLabel = format === 'gift' ? 'Formato GIFT (Moodle)' : format === 'aiken' ? 'Formato Aiken' : 'Captura rápida';
 
   const input = (
     <View style={{ flex: wide ? 1 : undefined }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
         <Text style={{ color: t.text, fontWeight: '800', fontSize: 14, flex: 1 }}>Escribe o pega tus preguntas</Text>
-        {text ? null : <Button label="Llenar con un ejemplo" icon="sparkles-outline" onPress={() => setText(QUICK_TEXT_EXAMPLE)} />}
+        {text ? <Pill text={formatLabel} icon="document-text-outline" color={t.accent} /> : <Button label="Llenar con un ejemplo" icon="sparkles-outline" onPress={() => setText(QUICK_TEXT_EXAMPLE)} />}
+        <Button
+          label="Desde archivo"
+          icon="folder-open-outline"
+          size="sm"
+          onPress={async () => {
+            const f = await pickTextFile('.txt,.gift,.md');
+            if (f) setText(f.text);
+          }}
+          style={{ marginLeft: 6 }}
+        />
       </View>
       <TextField value={text} onChangeText={setText} mono multiline minHeight={wide ? 360 : 220} placeholder={'1. ¿Qué método agrega al final de un arreglo?\na) shift()\n*b) push()\nc) pop()\n\n2. const permite reasignar la variable.\nRespuesta: Falso'} accessibilityLabel="Texto de las preguntas" style={wide ? { flex: 1 } : null} />
       <View style={{ marginTop: 10, gap: 4 }}>

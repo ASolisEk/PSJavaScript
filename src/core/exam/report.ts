@@ -149,6 +149,18 @@ export function answersCsv(room: RoomState): string {
   return '﻿' + lines.join('\r\n');
 }
 
+/** Nombre del respaldo de una sala («respaldo-ABC123-parcial-2-2026-11-08.json»). */
+export function backupFileName(r: RoomState): string {
+  const title = r.exam.title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
+  return `respaldo-${r.code}-${title || 'examen'}-${new Date(r.openedAt).toISOString().slice(0, 10)}.json`;
+}
+
 // ───────────────────────────── reporte en texto (TXT) ─────────────────────────────
 
 const RULE = '═'.repeat(72);
@@ -279,6 +291,20 @@ export function answersTxt(room: RoomState, studentIds?: string[]): string {
   const body = students.map((s, i) => studentTxt(room, s, rows.filter((x) => x.studentId === s.id), i + 1, students.length));
   // BOM y saltos de línea de Windows: se ven bien también en el Bloc de notas
   return '﻿' + [header.join('\n'), summary, ...body].join('\n\n\n').replace(/\n/g, '\r\n') + '\r\n';
+}
+
+/**
+ * Calificaciones para subir a otra plataforma (Moodle, Classroom, hoja de la escuela): una fila
+ * por alumno con su identificador (grupo o matrícula), calificación y porcentaje. Pensado para
+ * «Importar calificaciones» de Moodle (se empareja por la columna de matrícula o nombre).
+ */
+export function gradesCsv(room: RoomState): string {
+  const sum = summarizeRoom(room);
+  const header = ['Nombre', 'Matrícula o grupo', 'Calificación', `Escala`, 'Porcentaje', 'Puntos', 'Entregó'];
+  const rows = [...sum.rows]
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    .map((r) => [r.name, r.group, r.grade ?? '', sum.scale, r.percent ?? '', r.score === null ? '' : `${r.score}/${r.max}`, r.submitted ? 'Sí' : 'No']);
+  return '\uFEFF' + [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n');
 }
 
 // ───────────────────────────── reporte HTML ─────────────────────────────

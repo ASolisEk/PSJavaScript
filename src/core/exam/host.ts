@@ -132,6 +132,44 @@ export class ExamHost {
     }
   }
 
+  /**
+   * Tiempo adicional fijo para un alumno (adecuación). Si ya comenzó, su límite se mueve
+   * por la diferencia; si no, se suma cuando comience.
+   */
+  setExtraTime(studentId: string, minutes: number) {
+    const s = this.state.students[studentId];
+    if (!s) return;
+    const extra = Math.max(0, Math.min(600, Math.round(minutes)));
+    const diff = extra - (s.extraMinutes ?? 0);
+    if (!diff) return;
+    const running = s.startedAt && !s.submittedAt && s.deadline !== null;
+    const deadline = running ? s.deadline! + diff * 60_000 : s.deadline;
+    this.patch(studentId, { extraMinutes: extra, deadline }, { kind: 'teacher', text: extra ? `Tiempo adicional: +${extra} min` : 'Sin tiempo adicional' });
+    if (running) this.sendTo(studentId, { t: 'deadline', deadline, now: this.now() });
+  }
+
+  /** Comentario del maestro sobre una pregunta (se le envía al alumno con su resultado). */
+  setComment(studentId: string, questionId: string, text: string) {
+    const s = this.state.students[studentId];
+    if (!s) return;
+    const comments = { ...(s.comments ?? {}) };
+    const clean = text.trim().slice(0, 2000);
+    if (clean) comments[questionId] = clean;
+    else delete comments[questionId];
+    this.patch(studentId, { comments });
+    this.sendResult(studentId);
+  }
+
+  /** Criterios de la rúbrica que cumple una respuesta; los puntos son la suma de los marcados. */
+  setRubric(studentId: string, questionId: string, ids: string[]) {
+    const s = this.state.students[studentId];
+    const q = this.state.exam.questions.find((x) => x.id === questionId);
+    if (!s || !q?.rubric?.length) return;
+    const valid = q.rubric.filter((c) => ids.includes(c.id));
+    this.patch(studentId, { rubric: { ...(s.rubric ?? {}), [questionId]: valid.map((c) => c.id) } });
+    this.adjust(studentId, questionId, valid.reduce((a, c) => a + c.points, 0));
+  }
+
   /** Recoge el examen de un alumno en este momento. */
   forceSubmit(studentId: string) {
     const s = this.state.students[studentId];
@@ -150,7 +188,7 @@ export class ExamHost {
     // solo cambia esa pregunta: volver a calificar todo ejecutaría otra vez los programas
     const result = s.submittedAt ? (s.result ? adjustResult(this.state.exam, s.key, s.answers, s.result, questionId, points) : gradePaper(this.state.exam, s.key, s.answers, overrides)) : s.result;
     this.patch(studentId, { overrides, result });
-    if (result && s.submittedAt) this.sendTo(studentId, { t: 'result', result: studentView(result, this.state.exam.showResults, this.topicOf), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
+    if (result && s.submittedAt) this.sendResult(studentId);
   }
 
   /** Cierra o abre el ingreso de alumnos nuevos. */
@@ -463,8 +501,8 @@ export class ExamHost {
     const now = this.now();
     const seed = randomId('s');
     const { key } = buildPaper(this.state.exam, seed);
-    const deadline = this.state.exam.durationMin > 0 ? now + this.state.exam.durationMin * 60_000 : null;
-    this.patch(id, { key, startedAt: now, deadline, activity: 'reading', activitySince: now }, { kind: 'start', text: 'Comenzó el examen' });
+    const deadline = this.state.exam.durationMin > 0 ? now + (this.state.exam.durationMin + (s.extraMinutes ?? 0)) * 60_000 : null;
+    this.patch(id, { key, startedAt: now, deadline, activity: 'reading', activitySince: now }, { kind: 'start', text: `Comenzó el examen${s.extraMinutes ? ` (con ${s.extraMinutes} min adicionales)` : ''}` });
     this.sendPaper(id);
   }
 
@@ -488,7 +526,7 @@ export class ExamHost {
   private sendResult(id: string) {
     const s = this.state.students[id];
     if (!s?.result || !s.submittedAt) return;
-    this.sendTo(id, { t: 'result', result: studentView(s.result, this.state.exam.showResults, this.topicOf), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
+    this.sendTo(id, { t: 'result', result: studentView(s.result, this.state.exam.showResults, this.topicOf, s.comments), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
   }
 
   private peerLeft(peer: string) {

@@ -6,6 +6,9 @@ import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { CURRENT_VERSION, configureUpdater } from '../core/updater';
 import { useTheme } from '../ui/theme';
+import { useApp } from '../store/app';
+import { installErrorLog } from '../core/errorLog';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 configureUpdater({
   version: CURRENT_VERSION,
@@ -15,8 +18,24 @@ configureUpdater({
   },
 });
 
+/** Alto contraste en la web: contorno visible en el elemento con el foco del teclado. */
+function useFocusOutline() {
+  const contrast = useApp((s) => s.settings.highContrast);
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const id = 'psjs-focus-outline';
+    document.getElementById(id)?.remove();
+    if (!contrast) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = '*:focus-visible{outline:3px solid #1cb0f6 !important;outline-offset:2px !important;border-radius:6px}';
+    document.head.appendChild(style);
+  }, [contrast]);
+}
+
 function Root() {
   const t = useTheme();
+  useFocusOutline();
 
   React.useEffect(() => {
     configureUpdater({
@@ -61,10 +80,14 @@ function Root() {
   );
 }
 
+installErrorLog();
+
 export default function Layout() {
   return (
     <SafeAreaProvider>
-      <Root />
+      <ErrorBoundary>
+        <Root />
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

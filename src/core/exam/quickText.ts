@@ -14,6 +14,7 @@
  * Una línea en blanco separa las preguntas. Los bloques ```código``` se respetan.
  */
 import { createQuestion, option } from './config';
+import { looksLikeAiken, looksLikeGift, parseAiken, parseGift } from './moodle';
 import type { ChoiceOption, Question } from './types';
 
 export interface QuickTextIssue {
@@ -213,4 +214,14 @@ export function answerSummary(q: Question): string {
     default:
       return '';
   }
+}
+
+/**
+ * Importa texto en cualquiera de los formatos reconocidos: GIFT o Aiken (Moodle y otras
+ * plataformas) o la captura rápida de PSJavaScript.
+ */
+export function parseImportText(text: string): QuickTextResult & { format: 'gift' | 'aiken' | 'quick' } {
+  if (looksLikeGift(text)) return { ...parseGift(text), format: 'gift' };
+  if (looksLikeAiken(text)) return { ...parseAiken(text), format: 'aiken' };
+  return { ...parseQuickText(text), format: 'quick' };
 }

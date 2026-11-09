@@ -1,5 +1,6 @@
 /** Configuración: perfil del lenguaje, ejecución y apariencia. */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import * as Linking from 'expo-linking';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
 import { FLAG_LABELS, getProfile, PROFILES, ProfileFlags } from '../../core/profiles';
@@ -8,7 +9,8 @@ import { BORDER, RADIUS, useTheme } from '../../ui/theme';
 import { checkForUpdate, CURRENT_VERSION, forceLatest, getPlatformLabel, isNonWeb } from '../../core/updater';
 import { confirmDialog } from '../../ui/platform';
 import { COSTUMES, costumeForDate } from '../../core/holidays';
-import { Button, Chip, SectionTitle, Switch } from '../ui';
+import { Button, Chip, SectionTitle, Switch, TextField } from '../ui';
+import { AppError, issueUrl, onErrorsChange, recentErrors } from '../../core/errorLog';
 import { CHARACTER_LIST } from '../mascot/characters';
 import ModalShell from './ModalShell';
 
@@ -155,6 +157,12 @@ export default function SettingsModal() {
           <Chip label="Claro" active={settings.theme === 'light'} onPress={() => update({ theme: 'light' })} />
           <Chip label="Oscuro" active={settings.theme === 'dark'} onPress={() => update({ theme: 'dark' })} />
         </View>
+        <Row
+          label="Alto contraste"
+          hint="Bordes y textos más marcados, y un contorno visible en el elemento enfocado al navegar con el teclado (Tab)."
+          value={!!settings.highContrast}
+          onChange={(v) => update({ highContrast: v })}
+        />
         <View style={[styles.row, { borderBottomColor: t.border }]}>
           <Text style={{ color: t.text, fontSize: 14, flex: 1 }}>Tamaño de letra del editor</Text>
           {[12, 14, 16, 18, 20].map((n) => (
@@ -216,8 +224,44 @@ export default function SettingsModal() {
           </View>
           <Button label={forcing ? 'Descargando...' : 'Forzar descarga'} icon="refresh-circle-outline" disabled={forcing || checkingUpdate} onPress={handleForceLatest} />
         </View>
+
+        <SectionTitle>Ayuda</SectionTitle>
+        <ReportProblem />
       </ScrollView>
     </ModalShell>
+  );
+}
+
+/**
+ * «Reportar un problema»: muestra los errores recientes de la aplicación y abre un reporte en
+ * GitHub con el texto ya escrito. No se envía nada solo: la persona lo revisa y decide.
+ */
+function ReportProblem() {
+  const t = useTheme();
+  const [what, setWhat] = useState('');
+  const [errors, setErrors] = useState<AppError[]>(() => recentErrors());
+  useEffect(() => onErrorsChange(() => setErrors(recentErrors())), []);
+  return (
+    <View style={{ paddingVertical: 10, gap: 8 }}>
+      <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>Reportar un problema</Text>
+      <Text style={{ color: t.textMuted, fontSize: 12, lineHeight: 17 }}>
+        Se abre un reporte en GitHub con la versión, la plataforma y los errores recientes ya escritos. Revisa el texto antes de enviarlo (no incluye tus programas ni tus exámenes); nada se envía solo.
+      </Text>
+      <TextField value={what} onChangeText={setWhat} placeholder="¿Qué estabas haciendo y qué pasó?" multiline minHeight={60} />
+      {errors.length ? (
+        <Text style={{ color: t.warning, fontSize: 12 }}>
+          {errors.length} error{errors.length === 1 ? '' : 'es'} reciente{errors.length === 1 ? '' : 's'} de la aplicación: «{errors[errors.length - 1].message}»
+        </Text>
+      ) : (
+        <Text style={{ color: t.textMuted, fontSize: 12 }}>No se han registrado errores en esta sesión.</Text>
+      )}
+      <Button
+        label="Abrir reporte en GitHub"
+        icon="bug-outline"
+        onPress={() => Linking.openURL(issueUrl({ what, version: CURRENT_VERSION, platform: getPlatformLabel(), errors })).catch(() => {})}
+        style={{ alignSelf: 'flex-start' }}
+      />
+    </View>
   );
 }
 

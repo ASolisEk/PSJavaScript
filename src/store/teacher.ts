@@ -15,7 +15,7 @@ import { getCertification } from '../core/exam/certs';
 import { adjustResult, gradePaper } from '../core/exam/grading';
 import { ExamHost } from '../core/exam/host';
 import { roomCode } from '../core/exam/random';
-import { compactRoom, createRoom, RoomState, studentPhase } from '../core/exam/room';
+import { compactRoom, createRoom, normalizeName, RoomState, studentPhase } from '../core/exam/room';
 import { createHostTransport, TransportError, TransportSpec } from '../core/exam/transport';
 import type { ExamConfig } from '../core/exam/types';
 import { createVault, decryptText, defaultRandom, encryptText, isEncrypted, openVault, RandomBytes, VaultMeta } from '../core/vault';
@@ -31,6 +31,8 @@ const historyItemKey = (key: string) => `${HISTORY_INDEX_KEY}:${key}`;
 const LEGACY_ROOM_KEY = 'psjs.teacher.room.v1';
 /** Índice de las salas activas y cada sala en su propia clave. */
 const ROOMS_INDEX_KEY = 'psjs.teacher.rooms.v2';
+/** Tiempo adicional que se recuerda por alumno (adecuaciones), por nombre. */
+const ACCOM_KEY = 'psjs.teacher.accommodations.v1';
 const roomItemKey = (key: string) => `${ROOMS_INDEX_KEY}:${key}`;
 /** Datos para reconocer la contraseña del modo Maestro (si existe, todo lo demás va cifrado). */
 const LOCK_KEY = 'psjs.teacher.lock.v1';
@@ -80,6 +82,8 @@ interface TeacherState {
   viewingKey: string | null;
   /** Problema al guardar en el dispositivo (sin espacio). */
   storageWarning: string | null;
+  /** Minutos adicionales que se aplican solos a cada alumno (por nombre normalizado). */
+  accommodations: Record<string, number>;
   /** El modo Maestro tiene contraseña: lo guardado está cifrado. */
   secured: boolean;
   /** Pantalla bloqueada: hace falta la contraseña para ver o usar los exámenes. */
@@ -119,9 +123,17 @@ interface TeacherState {
   /** Solicitud de reconexión que en realidad es otro alumno con el mismo nombre. */
   admitAsNew(key: string, requestId: string): void;
   rejectReconnect(key: string, requestId: string): void;
+  /** Tiempo adicional de un alumno; `remember` lo aplica en los próximos exámenes (por su nombre). */
+  setExtraTime(key: string, studentId: string, minutes: number, remember?: boolean): void;
+  /** Comentario del maestro en una pregunta (lo ve el alumno con su resultado). */
+  setComment(key: string, studentId: string, questionId: string, text: string): void;
+  /** Criterios de la rúbrica cumplidos; la pregunta vale la suma de sus puntos. */
+  setRubric(key: string, studentId: string, questionId: string, ids: string[]): void;
   /** Quita la sala de la lista (si está cerrada, pasa al historial; si no, se descarta). */
   leaveRoom(key: string): void;
   viewHistory(key: string | null): void;
+  /** Agrega al historial una sala desde su respaldo (.json); devuelve su clave. */
+  importHistory(text: string): string;
   deleteHistory(key: string): void;
   dismissStorageWarning(): void;
 
@@ -280,6 +292,16 @@ export const useTeacher = create<TeacherState>((set, get) => {
       const byKey = new Map(changed);
       set((s) => ({ rooms: s.rooms.map((r) => byKey.get(roomKey(r)) ?? r) }));
       for (const [k] of changed) persistRoom(k);
+      // tiempo adicional recordado (adecuaciones): se aplica solo a quien entra
+      const accom = get().accommodations;
+      if (Object.keys(accom).length) {
+        for (const [k, r] of changed) {
+          for (const st of Object.values(r.students)) {
+            const extra = accom[normalizeName(st.name)];
+            if (extra && st.extraMinutes === undefined && !st.submittedAt) hosts.get(k)?.setExtraTime(st.id, extra);
+          }
+        }
+      }
     }, 250);
   };
 
@@ -357,6 +379,23 @@ export const useTeacher = create<TeacherState>((set, get) => {
     persistRoom(key, saveNow);
   };
 
+  /** Cambia un alumno de una sala sin anfitrión (cerrada antes de recargar) o del historial. */
+  const editOffline = (key: string, studentId: string, change: (room: RoomState) => RoomState | null) => {
+    const current = get().rooms.find((r) => roomKey(r) === key);
+    if (current) {
+      const updated = change(current);
+      if (!updated) return;
+      set((s) => ({ rooms: upsertRoom(s.rooms, updated) }));
+      persistRoom(key);
+      return;
+    }
+    const room = get().history.find((h) => roomKey(h) === key);
+    const updated = room && change(room);
+    if (!updated) return;
+    set((s) => ({ history: s.history.map((h) => (roomKey(h) === key ? updated : h)) }));
+    persistHistorySoon(updated);
+  };
+
   /** Ajustes del historial pendientes de guardar (al calificar a mano se agrupan los clics). */
   const historyTimers = new Map<string, any>();
   const persistHistorySoon = (room: RoomState) => {
@@ -431,7 +470,8 @@ export const useTeacher = create<TeacherState>((set, get) => {
     const legacyRoom: RoomState | null = await read(LEGACY_ROOM_KEY);
     if (legacyRoom?.code && !rooms.some((r) => roomKey(r) === roomKey(legacyRoom))) rooms.push(legacyRoom);
     const first = rooms.find(isOpenRoom) ?? rooms[0];
-    set({ exams, history: history.slice(0, MAX_HISTORY), rooms, activeKey: first ? roomKey(first) : null });
+    const accommodations = (await read(ACCOM_KEY)) ?? {};
+    set({ exams, history: history.slice(0, MAX_HISTORY), rooms, activeKey: first ? roomKey(first) : null, accommodations });
     dataLoaded = true;
     if (legacy) {
       const ok = await save(EXAMS_KEY, exams);
@@ -464,6 +504,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
     const rooms = currentRooms();
     for (const r of rooms) await save(roomItemKey(roomKey(r)), r);
     await save(ROOMS_INDEX_KEY, rooms.map(roomKey));
+    await save(ACCOM_KEY, get().accommodations);
   };
 
   return {
@@ -480,6 +521,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
     history: [],
     viewingKey: null,
     storageWarning: null,
+    accommodations: {},
     secured: false,
     locked: false,
 
@@ -522,7 +564,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
       }
       vaultKey = null;
       dataLoaded = false;
-      set({ locked: true, exams: [], history: [], rooms: [], activeKey: null, liveKeys: [], network: {}, editingId: null, viewingKey: null, tab: 'library' });
+      set({ locked: true, exams: [], history: [], rooms: [], activeKey: null, liveKeys: [], network: {}, accommodations: {}, editingId: null, viewingKey: null, tab: 'library' });
     },
 
     async checkPassword(password) {
@@ -569,7 +611,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
       vaultMeta = null;
       vaultKey = null;
       dataLoaded = true;
-      set({ exams: [], history: [], rooms: [], activeKey: null, liveKeys: [], network: {}, editingId: null, viewingKey: null, tab: 'library', secured: false, locked: false });
+      set({ exams: [], history: [], rooms: [], activeKey: null, liveKeys: [], network: {}, accommodations: {}, editingId: null, viewingKey: null, tab: 'library', secured: false, locked: false });
     },
 
     setTab(tab) {
@@ -720,6 +762,50 @@ export const useTeacher = create<TeacherState>((set, get) => {
     rejectReconnect(key, requestId) {
       withHost(key, (h) => h.rejectReconnect(requestId));
     },
+    setExtraTime(key, studentId, minutes, remember) {
+      const h = hosts.get(key);
+      const st = (h?.state ?? get().rooms.find((r) => roomKey(r) === key))?.students[studentId];
+      if (h) withHost(key, (x) => x.setExtraTime(studentId, minutes));
+      if (remember !== undefined && st) {
+        const accommodations = { ...get().accommodations };
+        if (remember && minutes > 0) accommodations[normalizeName(st.name)] = minutes;
+        else delete accommodations[normalizeName(st.name)];
+        set({ accommodations });
+        save(ACCOM_KEY, accommodations);
+      }
+    },
+    setComment(key, studentId, questionId, text) {
+      const h = hosts.get(key);
+      if (h) {
+        h.setComment(studentId, questionId, text);
+        sync(key, false);
+        return;
+      }
+      editOffline(key, studentId, (room) => {
+        const st = room.students[studentId];
+        if (!st) return null;
+        const comments = { ...(st.comments ?? {}) };
+        if (text.trim()) comments[questionId] = text.trim().slice(0, 2000);
+        else delete comments[questionId];
+        return { ...room, students: { ...room.students, [studentId]: { ...st, comments } } };
+      });
+    },
+    setRubric(key, studentId, questionId, ids) {
+      const h = hosts.get(key);
+      if (h) {
+        h.setRubric(studentId, questionId, ids);
+        sync(key, false);
+        return;
+      }
+      editOffline(key, studentId, (room) => {
+        const q = room.exam.questions.find((x) => x.id === questionId);
+        const st = room.students[studentId];
+        if (!q?.rubric?.length || !st) return null;
+        const valid = q.rubric.filter((c) => ids.includes(c.id));
+        const marked: RoomState = { ...room, students: { ...room.students, [studentId]: { ...st, rubric: { ...(st.rubric ?? {}), [questionId]: valid.map((c) => c.id) } } } };
+        return regrade(marked, studentId, questionId, valid.reduce((a, c) => a + c.points, 0)) ?? marked;
+      });
+    },
 
     leaveRoom(key) {
       const h = hosts.get(key);
@@ -756,6 +842,27 @@ export const useTeacher = create<TeacherState>((set, get) => {
 
     viewHistory(viewingKey) {
       set({ viewingKey, tab: 'results' });
+    },
+
+    importHistory(text) {
+      let raw: any;
+      try {
+        raw = JSON.parse(text.replace(/^\uFEFF/, ''));
+      } catch {
+        throw new Error('El archivo no es un respaldo válido (JSON).');
+      }
+      if (!raw || typeof raw.code !== 'string' || typeof raw.openedAt !== 'number' || !raw.exam?.questions || typeof raw.students !== 'object') {
+        throw new Error('El archivo no parece un respaldo de una sala de PSJavaScript.');
+      }
+      // una sala restaurada no queda «abierta»: se guarda cerrada en el historial
+      const room = compactRoom({ ...(raw as RoomState), status: 'closed', closedAt: raw.closedAt ?? Date.now(), transport: raw.transport ?? { kind: 'device' }, notices: raw.notices ?? [] });
+      const key = roomKey(room);
+      if (get().rooms.some((r) => roomKey(r) === key)) throw new Error('Esa sala sigue abierta en este equipo.');
+      const kept = [room, ...get().history.filter((h) => roomKey(h) !== key)];
+      for (const old of kept.slice(MAX_HISTORY)) AsyncStorage.removeItem(historyItemKey(roomKey(old))).catch(() => {});
+      set({ history: kept.slice(0, MAX_HISTORY), viewingKey: key, tab: 'results' });
+      persistHistory(room);
+      return key;
     },
 
     deleteHistory(key) {

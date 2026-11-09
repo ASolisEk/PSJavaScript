@@ -4,7 +4,7 @@
  * equipos; los mensajes del examen viajan directo entre ellos.
  */
 import type { DataConnection, Peer as PeerType, PeerOptions } from 'peerjs';
-import { ClientTransport, HostTransport, TransportError } from './types';
+import { ClientTransport, HostTransport, IceServer, PeerNetwork, TransportError } from './types';
 
 const hostPeerId = (code: string) => `psjavascript-sala-${code.toLowerCase()}`;
 
@@ -18,16 +18,27 @@ function PeerClass(): typeof PeerType {
   return require('peerjs').Peer;
 }
 
+/** Los mismos que usa PeerJS por omisión (STUN de Google y TURN público de PeerJS). */
+export const DEFAULT_ICE_SERVERS: IceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
+];
+
 /**
- * Opciones de PeerJS. Por omisión se usa el servidor de enlace público; una
- * escuela puede usar el suyo definiendo window.__PSJS_PEER__ = { host, port, path, secure }.
+ * Opciones de PeerJS. Por omisión se usa el servidor de enlace público; la sala puede traer
+ * servidores TURN y de enlace propios (`net`) y una escuela también puede definir
+ * window.__PSJS_PEER__ = { host, port, path, secure }.
  */
-function peerOptions(): PeerOptions {
+export function peerOptions(net?: PeerNetwork): PeerOptions {
   const custom = (globalThis as any).__PSJS_PEER__;
-  return { debug: 0, ...(custom && typeof custom === 'object' ? custom : {}) };
+  const opts: PeerOptions = { debug: 0, ...(custom && typeof custom === 'object' ? custom : {}) };
+  if (net?.server?.host) Object.assign(opts, { host: net.server.host, port: net.server.port ?? (net.server.secure === false ? 80 : 443), path: net.server.path ?? '/', secure: net.server.secure ?? true });
+  // los TURN propios van primero (los públicos quedan de respaldo)
+  if (net?.iceServers?.length) opts.config = { iceServers: [...net.iceServers, ...DEFAULT_ICE_SERVERS] };
+  return opts;
 }
 
-function describe(err: any): string {
+export function describePeerError(err: any): string {
   switch (err?.type) {
     case 'unavailable-id':
       return 'Ese código de sala ya está en uso. Intenta de nuevo.';
@@ -62,10 +73,12 @@ export class PeerHost implements HostTransport {
   private conns = new Map<string, DataConnection>();
   private closed = false;
 
+  constructor(private net?: PeerNetwork) {}
+
   async open(code: string) {
     if (!peerAvailable()) throw new TransportError('Esta plataforma no permite salas por Internet. Usa la conexión por red local.');
     const Peer = PeerClass();
-    const peer = new Peer(hostPeerId(code), peerOptions());
+    const peer = new Peer(hostPeerId(code), peerOptions(this.net));
     this.peer = peer;
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => {
@@ -79,7 +92,7 @@ export class PeerHost implements HostTransport {
       peer.once('error', (err) => {
         clearTimeout(t);
         peer.destroy();
-        reject(new TransportError(describe(err)));
+        reject(new TransportError(describePeerError(err)));
       });
     });
     peer.on('connection', (conn) => this.accept(conn));
@@ -96,7 +109,7 @@ export class PeerHost implements HostTransport {
     });
     peer.on('error', (err) => {
       if (err.type === 'peer-unavailable') return;
-      this.onStatus?.(false, describe(err));
+      this.onStatus?.(false, describePeerError(err));
     });
     // por si el aviso de desconexión no llega (equipo suspendido, red que cambió)
     this.watchdog = setInterval(() => {
@@ -160,10 +173,12 @@ export class PeerClient implements ClientTransport {
   private conn: DataConnection | null = null;
   private closed = false;
 
+  constructor(private net?: PeerNetwork) {}
+
   async connect(code: string) {
     if (!peerAvailable()) throw new TransportError('Esta plataforma no permite salas por Internet. Usa la conexión por red local.');
     const Peer = PeerClass();
-    const peer = new Peer(peerOptions());
+    const peer = new Peer(peerOptions(this.net));
     this.peer = peer;
     const conn = await new Promise<DataConnection>((resolve, reject) => {
       let done = false;
@@ -174,8 +189,11 @@ export class PeerClient implements ClientTransport {
         peer.destroy();
         reject(e);
       };
-      const t = setTimeout(() => fail(new TransportError('No se pudo entrar a la sala (tiempo agotado). Revisa el código y tu conexión a Internet.')), 25_000);
-      peer.on('error', (err) => fail(new TransportError(describe(err))));
+      const t = setTimeout(
+        () => fail(new TransportError('No se pudo entrar a la sala (tiempo agotado). Revisa el código y tu conexión a Internet. Si la red de la escuela bloquea la conexión, pide a tu maestro usar «Red del aula» o un servidor TURN.')),
+        25_000,
+      );
+      peer.on('error', (err) => fail(new TransportError(describePeerError(err))));
       peer.once('open', () => {
         const c = peer.connect(hostPeerId(code), { reliable: true });
         c.once('open', () => {
@@ -184,7 +202,7 @@ export class PeerClient implements ClientTransport {
           clearTimeout(t);
           resolve(c);
         });
-        c.on('error', (err) => fail(new TransportError(describe(err))));
+        c.on('error', (err) => fail(new TransportError(describePeerError(err))));
       });
     });
     this.conn = conn;

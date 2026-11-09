@@ -56,6 +56,17 @@ interface QuestionBase {
   code?: string;
   /** Tema o módulo (p. ej. "Arreglos"); permite elegir preguntas por tema y ver resultados por tema. */
   topic?: string;
+  /**
+   * Rúbrica para calificar a mano (sobre todo en programación): criterios con sus puntos.
+   * Al revisar, el maestro marca los que se cumplen y la pregunta vale la suma.
+   */
+  rubric?: RubricCriterion[];
+}
+
+export interface RubricCriterion {
+  id: string;
+  text: string;
+  points: number;
 }
 
 export interface SingleQuestion extends QuestionBase {
@@ -273,7 +284,7 @@ export interface StudentResultView {
   passed?: boolean;
   score?: number;
   max?: number;
-  questions?: { questionId: string; status: QuestionStatus; score: number; max: number; feedback: string; tests?: TestResult[] }[];
+  questions?: { questionId: string; status: QuestionStatus; score: number; max: number; feedback: string; tests?: TestResult[]; comment?: string }[];
   /** Resultado por tema (si las preguntas tienen tema). */
   topics?: TopicScore[];
 }

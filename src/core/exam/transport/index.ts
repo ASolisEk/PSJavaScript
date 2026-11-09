@@ -59,7 +59,7 @@ function relayUrl(spec: TransportSpec): string {
 export function createHostTransport(spec: TransportSpec): HostTransport {
   switch (spec.kind) {
     case 'internet':
-      return new PeerHost();
+      return new PeerHost(spec.net);
     case 'lan':
       return new RelayHost(relayUrl(spec));
     case 'device':
@@ -73,7 +73,7 @@ export function createHostTransport(spec: TransportSpec): HostTransport {
 export function createClientTransport(spec: TransportSpec): ClientTransport {
   switch (spec.kind) {
     case 'internet':
-      return new PeerClient();
+      return new PeerClient(spec.net);
     case 'lan':
       return new RelayClient(relayUrl(spec));
     case 'device':
@@ -85,7 +85,7 @@ export function createClientTransport(spec: TransportSpec): ClientTransport {
 }
 
 export function transportLabel(spec: TransportSpec): string {
-  if (spec.kind === 'internet') return 'Internet';
+  if (spec.kind === 'internet') return spec.net?.iceServers?.length || spec.net?.server ? 'Internet (servidores propios)' : 'Internet';
   if (spec.kind === 'lan') return `Red del aula (${normalizeRelayUrl(spec.url ?? '')})`;
   if (spec.kind === 'device') return 'Este dispositivo';
   if (spec.kind === 'practice') return 'Práctica individual';

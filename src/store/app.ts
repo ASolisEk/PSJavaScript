@@ -46,6 +46,12 @@ export interface Settings {
   mascotCharacter: 'gato' | 'capibara' | 'ajolote';
   /** Teléfono en vertical: panel bajo el código abierto o no y parte del alto que ocupa el código. */
   mobilePane: { open: boolean; share: number };
+  /** Modo Maestro: al cerrar un examen se descarga un respaldo (por si se borran los datos del navegador). */
+  examBackupOnClose: boolean;
+  /** Alto contraste: bordes y textos más marcados. */
+  highContrast: boolean;
+  /** Juego del dron: efectos de sonido. */
+  gameSounds: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -64,6 +70,9 @@ const DEFAULT_SETTINGS: Settings = {
   mascotCostume: 'auto',
   mascotCharacter: 'gato',
   mobilePane: { open: true, share: 0.6 },
+  examBackupOnClose: true,
+  highContrast: false,
+  gameSounds: true,
 };
 
 /** Reparto móvil guardado, corregido si viene de una versión anterior o incompleto. */

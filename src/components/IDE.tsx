@@ -19,7 +19,7 @@ import SettingsModal from './modals/SettingsModal';
 import UpdateModal from './modals/UpdateModal';
 import ExamChooserModal from './exam/ExamChooserModal';
 import { isOpenRoom, roomKey, useTeacher } from '../store/teacher';
-import { checkForUpdate, isNonWeb, detectDesktopEnvironment } from '../core/updater';
+import { checkForUpdate, isNonWeb, detectDesktopEnvironment, releaseDownloadUrls } from '../core/updater';
 import ConsolePanel, { InputBar } from './panels/ConsolePanel';
 import DesktopPanel from './panels/DesktopPanel';
 import DiagramPanel from './panels/DiagramPanel';
@@ -600,14 +600,14 @@ const DOWNLOADS: Download[] = [
 ];
 
 /** Enlace de descarga (solo web). Con poco ancho muestra solo el logo; el nombre queda en el tooltip. */
-function DownloadLink({ item, showLabel }: { item: Download; showLabel: boolean }) {
+function DownloadLink({ item, showLabel, href }: { item: Download; showLabel: boolean; href?: string }) {
   const t = useTheme();
   const [hover, setHover] = useState(false);
   const color = t.dark ? item.dark : item.color;
   const title = `Descargar para ${item.label}`;
   return (
     <a
-      href={item.file}
+      href={href ?? item.file}
       download={item.file}
       title={title}
       aria-label={title}
@@ -624,8 +624,23 @@ function DownloadLink({ item, showLabel }: { item: Download; showLabel: boolean 
   );
 }
 
+/** Enlaces de GitHub Releases de los instaladores (si ya se publicaron ahí). */
+function useReleaseUrls(): Record<string, string> {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    let alive = true;
+    releaseDownloadUrls(DOWNLOADS.map((d) => d.file)).then((u) => alive && setUrls(u));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return urls;
+}
+
 export default function IDE() {
   const t = useTheme();
+  const releaseUrls = useReleaseUrls();
   const insets = useSafeAreaInsets();
   const { width, wide, phone, split } = useLayout();
   const hydrated = useApp((s) => s.hydrated);
@@ -776,7 +791,7 @@ export default function IDE() {
           {Platform.OS === 'web' && width >= 700 && (
             <>
               {DOWNLOADS.map((d) => (
-                <DownloadLink key={d.file} item={d} showLabel={width >= 1100} />
+                <DownloadLink key={d.file} item={d} showLabel={width >= 1100} href={releaseUrls[d.file]} />
               ))}
             </>
           )}

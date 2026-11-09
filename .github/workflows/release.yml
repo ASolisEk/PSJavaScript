@@ -1,0 +1,78 @@
+name: Instaladores
+
+# Al publicar una etiqueta de versión (v1.0.5) se compilan los instaladores en cada sistema
+# y se suben a GitHub Releases. Los botones de descarga y el actualizador los usan solos.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  escritorio:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac
+            file: public/PSJavaScript.dmg
+          - os: windows-latest
+            target: --win
+            file: public/PSJavaScript-Setup.exe
+          - os: ubuntu-latest
+            target: --linux
+            file: public/PSJavaScript.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Compilar
+        run: node scripts/build-desktop.js ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          path: ${{ matrix.file }}
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - name: Compilar APK
+        run: node scripts/build-android.js --apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: public/PSJavaScript.apk
+          if-no-files-found: error
+
+  publicar:
+    needs: [escritorio, android]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: instaladores
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: instaladores/*
+          fail_on_unmatched_files: false

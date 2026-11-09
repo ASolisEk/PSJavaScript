@@ -1,11 +1,12 @@
 /** Modo Maestro: diseñar exámenes, aplicarlos en una sala y revisar resultados. */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../../store/app';
 import { AUTO_LOCK_MS, isOpenRoom, roomKey, TeacherTab, useTeacher, workingCount } from '../../store/teacher';
 import { BORDER, useTheme } from '../../ui/theme';
-import { BackToEditorButton, Button, Tab, useIsPhone } from '../ui';
+import { BackToEditorButton, Button, IconButton, Tab, useIsPhone } from '../ui';
+import GuideModal from '../exam/GuideModal';
 import { Banner, ScreenHeader } from '../exam/kit';
 import BuilderTab from './BuilderTab';
 import LibraryTab from './LibraryTab';
@@ -23,6 +24,7 @@ export default function TeacherScreen() {
   const secured = useTeacher((s) => s.secured);
   const locked = useTeacher((s) => s.locked);
   const lastActivity = useRef(0);
+  const [guide, setGuide] = useState(false);
   // insignia de «Sala en vivo»: «!» si alguna sala quedó sin reabrir; si no, cuántos resuelven en todas
   const roomBadge = useTeacher((s): number | string | undefined => {
     const open = s.rooms.filter(isOpenRoom);
@@ -84,6 +86,7 @@ export default function TeacherScreen() {
           color={t.accent}
           right={
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <IconButton icon="help-circle-outline" label="Guía rápida" tooltip="Guía rápida: abrir sala, reconectar y calificar" onPress={() => setGuide(true)} />
               {secured && !locked ? <Button label={phone ? '' : 'Bloquear'} icon="lock-closed-outline" kind="ghost" onPress={() => useTeacher.getState().lock()} /> : null}
               <BackToEditorButton onPress={leave} />
             </View>
@@ -124,6 +127,7 @@ export default function TeacherScreen() {
           )}
         </View>
       </View>
+      {guide ? <GuideModal who="teacher" onClose={() => setGuide(false)} /> : null}
     </KeyboardAvoidingView>
   );
 }

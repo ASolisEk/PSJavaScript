@@ -5,7 +5,8 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
 import { codeRule, codeTest, ExamIssue, MATCH_MODES, option, questionTypeInfo } from '../../core/exam/config';
 import { expectedFromSolution, gradeQuestion, runProgram } from '../../core/exam/grading';
-import type { ChoiceOption, CodeQuestion, Question } from '../../core/exam/types';
+import type { ChoiceOption, CodeQuestion, Question, RubricCriterion } from '../../core/exam/types';
+import { randomId } from '../../core/exam/random';
 import { getProfile } from '../../core/profiles';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button, IconButton } from '../ui';
@@ -96,7 +97,51 @@ export default function QuestionEditor({ q, index, count, profileId, issues, onC
       </Card>
 
       <TypeEditor q={q} up={up} profileId={profileId} />
+      <RubricEditor q={q} up={up} />
     </View>
+  );
+}
+
+/**
+ * Rúbrica (opcional): criterios con puntos para calificar a mano. Útil sobre todo en
+ * programación (p. ej. «usa un ciclo», «nombres claros», «maneja el caso vacío»).
+ */
+function RubricEditor({ q, up }: { q: Question; up(p: Partial<Question>): void }) {
+  const t = useTheme();
+  const list = q.rubric ?? [];
+  const [open, setOpen] = useState(list.length > 0);
+  const set = (next: RubricCriterion[]) => up({ rubric: next.length ? next : undefined });
+  const total = list.reduce((a, c) => a + c.points, 0);
+  return (
+    <Card>
+      <Pressable onPress={() => setOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center' }} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <Ionicons name="list-circle-outline" size={18} color={t.accent} />
+        <Text style={{ color: t.text, fontWeight: '800', marginLeft: 6, flex: 1 }}>Rúbrica para revisar a mano {list.length ? `(${list.length})` : '(opcional)'}</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={t.textMuted} />
+      </Pressable>
+      {open ? (
+        <View style={{ marginTop: 8 }}>
+          <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 8, lineHeight: 17 }}>
+            Al revisar, marcas los criterios que cumple la respuesta y la pregunta vale la suma de sus puntos. Mientras no la revises, se queda con la calificación automática.
+          </Text>
+          {list.map((c, i) => (
+            <View key={c.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <TextField value={c.text} onChangeText={(text) => set(list.map((x, j) => (j === i ? { ...x, text } : x)))} placeholder="Ej. Usa un ciclo para recorrer el arreglo" style={{ flex: 1 }} />
+              <NumberStepper value={c.points} onChange={(points) => set(list.map((x, j) => (j === i ? { ...x, points } : x)))} min={0} max={100} step={0.5} width={52} />
+              <IconButton icon="close" label="Quitar criterio" onPress={() => set(list.filter((_, j) => j !== i))} />
+            </View>
+          ))}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Button label="Agregar criterio" icon="add" size="sm" onPress={() => set([...list, { id: randomId('r'), text: '', points: 1 }])} disabled={list.length >= 20} />
+            {list.length ? (
+              <Text style={{ color: total === q.points ? t.success : t.warning, fontSize: 12, fontWeight: '700' }}>
+                Suma: {total} de {q.points} puntos{total === q.points ? ' ✓' : ' (conviene que coincida con el valor de la pregunta)'}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 

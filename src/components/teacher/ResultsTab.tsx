@@ -6,15 +6,17 @@ import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
 import { plainText } from '../../core/exam/richText';
 import type { RoomState } from '../../core/exam/room';
-import { answersCsv, answersTxt, correctText, roomReportHtml } from '../../core/exam/report';
-import { summarizeRoom, summaryCsv } from '../../core/exam/summary';
+import { answersCsv, answersTxt, backupFileName, correctText, gradesCsv, roomReportHtml } from '../../core/exam/report';
+import { RoomSummary, summarizeRoom, summaryCsv } from '../../core/exam/summary';
 import { roomKey, useResultsRoom, useTeacher } from '../../store/teacher';
-import { confirmDialog, saveTextFile } from '../../ui/platform';
+import { confirmDialog, pickTextFile, saveTextFile } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button, Empty, Heading } from '../ui';
 import { Banner, Card, CodeBlock, IconName, Pill, ProgressBar, Stat } from '../exam/kit';
 import RichText from '../exam/RichText';
 import StudentDetailModal from './StudentDetailModal';
+import ModalShell from '../modals/ModalShell';
+import { similarCode, SimilarPair } from '../../core/exam/similarity';
 
 const slug = (s: string) =>
   s
@@ -32,6 +34,7 @@ export default function ResultsTab() {
   const rooms = useTeacher((s) => s.rooms);
   const liveKeys = useTeacher((s) => s.liveKeys);
   const shownKey = room ? roomKey(room) : null;
+  const [importError, setImportError] = useState<string | null>(null);
   // salas actuales primero (una misma clave puede estar archivada y seguir en la lista un instante)
   const currentKeys = new Set(rooms.map(roomKey));
   const archived = history.filter((h) => !currentKeys.has(roomKey(h)));
@@ -55,8 +58,26 @@ export default function ResultsTab() {
         </>
       ) : null}
 
-      <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', marginTop: 18, marginBottom: 8 }}>Exámenes aplicados</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 18, marginBottom: 8 }}>
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', flex: 1 }}>Exámenes aplicados</Text>
+        <Button
+          label="Importar respaldo"
+          icon="cloud-upload-outline"
+          size="sm"
+          onPress={async () => {
+            setImportError(null);
+            try {
+              const f = await pickTextFile('.json');
+              if (f) useTeacher.getState().importHistory(f.text);
+            } catch (e: any) {
+              setImportError(e?.message ?? String(e));
+            }
+          }}
+        />
+      </View>
+      {importError ? <Banner icon="alert-circle" color={t.danger} text={importError} onClose={() => setImportError(null)} /> : null}
       {archived.length === 0 ? <Text style={{ color: t.textMuted, fontSize: 13 }}>Cuando cierres y archives una sala aparecerá aquí.</Text> : null}
+      {archived.length + rooms.filter((r) => r.status === 'closed').length >= 2 ? <Trends rooms={[...rooms.filter((r) => r.status === 'closed'), ...archived]} /> : null}
       {archived.map((h) => (
         <HistoryRow key={roomKey(h)} r={h} active={shownKey === roomKey(h)} onPress={() => useTeacher.getState().viewHistory(roomKey(h))} onDelete={async () => {
           if (await confirmDialog('¿Borrar del historial?', `Se borrarán los resultados de «${h.exam.title}» (${new Date(h.openedAt).toLocaleDateString()}).`, 'Borrar')) useTeacher.getState().deleteHistory(roomKey(h));
@@ -139,8 +160,9 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
           <Button label="Preguntas y respuestas (TXT)" icon="document-outline" kind="primary" onPress={() => saveTextFile(`preguntas-y-respuestas-${slug(sum.title)}-${sum.code}.txt`, answersTxt(room), 'text/plain')} />
           <Button label="Concentrado (CSV)" icon="grid-outline" onPress={() => saveTextFile(`concentrado-${slug(sum.title)}.csv`, summaryCsv(sum), 'text/csv')} />
           <Button label="Respuestas (CSV)" icon="list-outline" onPress={() => saveTextFile(`respuestas-${slug(sum.title)}.csv`, answersCsv(room), 'text/csv')} />
+          <Button label="Calificaciones para Moodle/Classroom (CSV)" icon="school-outline" onPress={() => saveTextFile(`calificaciones-${slug(sum.title)}-${sum.code}.csv`, gradesCsv(room), 'text/csv')} />
           <Button label="Reporte detallado (HTML)" icon="document-text-outline" onPress={() => saveTextFile(`reporte-${slug(sum.title)}.html`, roomReportHtml(room), 'text/html')} />
-          <Button label="Respaldo (JSON)" icon="download-outline" onPress={() => saveTextFile(`sala-${sum.code}-${slug(sum.title)}.json`, JSON.stringify(room, null, 2), 'application/json')} />
+          <Button label="Respaldo (JSON)" icon="download-outline" onPress={() => saveTextFile(backupFileName(room), JSON.stringify(room), 'application/json')} />
         </View>
       </Card>
       {room.status !== 'closed' ? <Banner icon="information-circle-outline" color={t.info} text="El examen sigue en curso: estos resultados son provisionales." /> : null}
@@ -236,6 +258,8 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
         </Card>
       </View>
 
+      <SimilarCard room={room} />
+
       <Card>
         <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 10 }}>Calificaciones por alumno</Text>
         <ScrollView horizontal>
@@ -285,6 +309,131 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
 
 const COLS = [190, 90, 64, 64, 80, 84, 60, 96, 56, 130];
 
+/**
+ * Comparación entre exámenes aplicados: promedio y aprobados de cada uno (en orden de fecha)
+ * y cómo va el grupo en cada tema que se repite.
+ */
+function Trends({ rooms }: { rooms: RoomState[] }) {
+  const t = useTheme();
+  const [open, setOpen] = useState(false);
+  const sums: RoomSummary[] = useMemo(() => (open ? [...rooms].sort((a, b) => a.openedAt - b.openedAt).slice(-12).map((r) => summarizeRoom(r)) : []), [rooms, open]);
+  const topics = useMemo(() => {
+    const map = new Map<string, { at: number; pct: number }[]>();
+    for (const s of sums) for (const x of s.topics) map.set(x.topic, [...(map.get(x.topic) ?? []), { at: s.openedAt, pct: x.avgPercent }]);
+    return [...map].filter(([, v]) => v.length >= 2).map(([topic, v]) => ({ topic, v, delta: Math.round(v[v.length - 1].pct - v[0].pct) }));
+  }, [sums]);
+  return (
+    <Card>
+      <Pressable onPress={() => setOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center' }} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <Ionicons name="trending-up-outline" size={17} color={t.accent} />
+        <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginLeft: 6, flex: 1 }}>Comparar exámenes ({rooms.length})</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={t.textMuted} />
+      </Pressable>
+      {open ? (
+        <View style={{ marginTop: 10 }}>
+          {sums.map((s) => {
+            const pct = s.average === null ? 0 : (s.average / s.scale) * 100;
+            return (
+              <View key={`${s.code}${s.openedAt}`} style={{ marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', marginBottom: 3 }}>
+                  <Text style={{ color: t.text, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                    <Text style={{ color: t.textMuted }}>{new Date(s.openedAt).toLocaleDateString()} · </Text>
+                    {s.title}
+                  </Text>
+                  <Text style={{ color: t.text, fontSize: 12, fontWeight: '800' }}>
+                    {s.average ?? '—'}/{s.scale} · {s.passRate === null ? '—' : `${s.passRate} % aprobó`}
+                  </Text>
+                </View>
+                <ProgressBar value={pct / 100} color={pct >= s.passPercent ? t.success : t.warning} />
+              </View>
+            );
+          })}
+          {topics.length ? (
+            <View style={{ marginTop: 8 }}>
+              <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 6 }}>TEMAS QUE SE REPITEN (aciertos del grupo en cada examen)</Text>
+              {topics.map((x) => (
+                <View key={x.topic} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
+                  <Text style={{ color: t.text, fontSize: 13, width: 160 }} numberOfLines={1}>
+                    {x.topic}
+                  </Text>
+                  {x.v.map((p, i) => (
+                    <Pill key={i} text={`${p.pct}%`} color={p.pct >= 70 ? t.success : p.pct >= 50 ? t.warning : t.danger} />
+                  ))}
+                  <Text style={{ color: x.delta > 0 ? t.success : x.delta < 0 ? t.danger : t.textMuted, fontSize: 12, fontWeight: '800' }}>
+                    {x.delta > 0 ? `▲ +${x.delta}` : x.delta < 0 ? `▼ ${x.delta}` : '='}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+/** Respuestas de programación muy parecidas entre alumnos (para revisar posibles copias). */
+function SimilarCard({ room }: { room: RoomState }) {
+  const t = useTheme();
+  const pairs = useMemo(() => similarCode(room), [room]);
+  const [shown, setShown] = useState<SimilarPair | null>(null);
+  if (!room.exam.questions.some((q) => q.type === 'code')) return null;
+  return (
+    <Card accent={pairs.length ? t.warning : undefined}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+        <Ionicons name="git-compare-outline" size={17} color={pairs.length ? t.warning : t.textMuted} />
+        <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginLeft: 6, flex: 1 }}>Código parecido entre alumnos</Text>
+        {pairs.length ? <Pill text={`${pairs.length} pareja${pairs.length === 1 ? '' : 's'}`} color={t.warning} /> : null}
+      </View>
+      <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 8, lineHeight: 17 }}>
+        Compara las respuestas de programación sin contar el código inicial. Es una alerta para revisar, no una prueba: en ejercicios cortos dos soluciones correctas pueden parecerse.
+      </Text>
+      {pairs.length ? (
+        pairs.slice(0, 30).map((p, i) => (
+          <Pressable key={i} onPress={() => setShown(p)} style={({ pressed }) => [styles.simRow, { borderColor: t.border, backgroundColor: pressed ? t.surfaceAlt : t.surface }]} accessibilityRole="button">
+            <Text style={{ color: t.text, fontWeight: '800', width: 40 }}>P{p.index}</Text>
+            <Text style={{ color: t.text, flex: 1 }} numberOfLines={1}>
+              {p.a} <Text style={{ color: t.textMuted }}>y</Text> {p.b}
+            </Text>
+            <Pill text={p.kind === 'copy' ? `${p.percent} % igual` : `misma estructura (${p.structure} %)`} color={p.kind === 'copy' ? t.danger : t.warning} />
+            <Ionicons name="chevron-forward" size={15} color={t.textMuted} />
+          </Pressable>
+        ))
+      ) : (
+        <Text style={{ color: t.success, fontSize: 13 }}>✓ No se encontraron respuestas sospechosamente parecidas.</Text>
+      )}
+      {shown ? <CompareModal room={room} pair={shown} onClose={() => setShown(null)} /> : null}
+    </Card>
+  );
+}
+
+function CompareModal({ room, pair, onClose }: { room: RoomState; pair: SimilarPair; onClose(): void }) {
+  const t = useTheme();
+  const q = room.exam.questions.find((x) => x.id === pair.questionId);
+  const codeOf = (id: string) => String(room.students[id]?.answers[pair.questionId] ?? '');
+  return (
+    <ModalShell title={`P${pair.index}: ${pair.a} y ${pair.b}`} onClose={onClose} wide>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        {q ? <RichText text={q.prompt} style={{ color: t.textMuted, fontSize: 13, marginBottom: 10 }} /> : null}
+        <Text style={{ color: t.text, fontSize: 13, marginBottom: 10 }}>
+          {pair.percent} % del texto en común · {pair.structure} % de la estructura en común (sin contar nombres ni valores)
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          {[
+            [pair.a, pair.aId],
+            [pair.b, pair.bId],
+          ].map(([name, id]) => (
+            <View key={id} style={{ flex: 1, minWidth: 280 }}>
+              <Text style={{ color: t.text, fontWeight: '800', marginBottom: 4 }}>{name}</Text>
+              <CodeBlock code={codeOf(id)} />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </ModalShell>
+  );
+}
+
 /** Primer resultado calificado de una pregunta (trae la salida real de «¿Qué imprime?»). */
 function firstResult(room: RoomState, id: string) {
   for (const s of Object.values(room.students)) {
@@ -295,6 +444,7 @@ function firstResult(room: RoomState, id: string) {
 }
 
 const styles = StyleSheet.create({
+  simRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1.5, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 6 },
   head: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 },
   cols: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

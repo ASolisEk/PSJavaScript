@@ -82,7 +82,8 @@ export interface GameApiOptions {
   /** Avisos del dron para la consola. */
   log(text: string): void;
   /** Después de cada acción (para revisar si se cumplió el objetivo). */
-  onAction?(): void;
+  /** Después de cada acción del dron (`name`: move, harvest, plant…; `ok`: si hizo algo). */
+  onAction?(name: string, ok: boolean): void;
   /** A quién controla el programa: tu dron (por defecto) o el dron intruso hackeado. */
   actor?: 'main' | 'intruder';
 }
@@ -160,7 +161,7 @@ export function gameGlobals(world: World, opts: GameApiOptions): Record<string, 
     makeGenNative(name, function* (args): Generator<InterpEvent, any, any> {
       const result = as(() => run(args));
       flush();
-      opts.onAction?.();
+      opts.onAction?.(name, result !== false);
       const ms = opts.delay();
       if (ms > 0) yield { type: 'wait', ms, quiet: true };
       return result;

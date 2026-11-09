@@ -34,17 +34,16 @@ test('setTimeout/setInterval: en el editor esperan su tiempo de verdad', async (
 });
 
 test('setTimeout/setInterval: al calificar y en paso a paso no se espera', async () => {
-  const t0 = Date.now();
+  // las dos son síncronas: si terminan, no esperaron (una espera real necesitaría temporizadores).
+  // No se mide el tiempo: con el equipo ocupado una medición así fallaba sin motivo.
   const res: any = runToEnd(COUNTDOWN, std, []);
-  assert.ok(Date.now() - t0 < 200);
   assert.ok(JSON.stringify(res).includes('¡Despegue!'));
 
   const r = new Runner({ code: COUNTDOWN, profile: std, realTime: true });
-  const t1 = Date.now();
   r.start('step');
   while (!['finished', 'error'].includes(r.getStatus())) r.stepOnce();
-  assert.ok(Date.now() - t1 < 200);
   assert.ok(r.snapshot().output.some((o) => o.text === '¡Despegue!'));
+  assert.ok(!r.snapshot().notice?.startsWith('Esperando'), 'no avisó que esperaba');
 });
 
 test('setTimeout: detener durante la espera', async () => {

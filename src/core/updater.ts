@@ -197,6 +197,37 @@ export function findBestAsset(
   return assets.find((a: any) => targetPattern.test(a?.name || ''));
 }
 
+/**
+ * Enlaces de descarga para los botones de la página web: si la última versión publicada en
+ * GitHub Releases trae los instaladores, se usan esos; si no, los de la carpeta public/.
+ * Así se puede dejar de guardar los instaladores en el repositorio sin romper las descargas.
+ */
+export async function releaseDownloadUrls(files: string[]): Promise<Record<string, string>> {
+  const KEY = 'psjs.release-assets';
+  try {
+    const cached = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(KEY) : null;
+    if (cached) return JSON.parse(cached);
+  } catch {
+    /* sin almacenamiento */
+  }
+  const out: Record<string, string> = {};
+  try {
+    const res = await fetch(GITHUB_API_LATEST, { headers: { Accept: 'application/vnd.github+json' } });
+    if (res.ok) {
+      const data = await res.json();
+      for (const a of Array.isArray(data?.assets) ? data.assets : []) if (files.includes(a?.name) && a.browser_download_url) out[a.name] = a.browser_download_url;
+    }
+  } catch {
+    /* sin red: se usan los de public/ */
+  }
+  try {
+    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(KEY, JSON.stringify(out));
+  } catch {
+    /* sin almacenamiento */
+  }
+  return out;
+}
+
 /** Resuelve el asset adecuado a descargar según la plataforma */
 /** Instaladores que se publican en la carpeta public/ de la rama main (los de la página web). */
 const MAIN_BINARIES: Partial<Record<PlatformType, string>> = {
