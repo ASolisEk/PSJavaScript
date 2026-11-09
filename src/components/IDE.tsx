@@ -19,7 +19,7 @@ import SettingsModal from './modals/SettingsModal';
 import UpdateModal from './modals/UpdateModal';
 import ExamChooserModal from './exam/ExamChooserModal';
 import { isOpenRoom, roomKey, useTeacher } from '../store/teacher';
-import { checkForUpdate, isNonWeb, detectDesktopEnvironment, releaseDownloadUrls } from '../core/updater';
+import { checkForUpdate, isNonWeb, detectDesktopEnvironment, latestDownloadUrl, releaseDownloadUrls } from '../core/updater';
 import ConsolePanel, { InputBar } from './panels/ConsolePanel';
 import DesktopPanel from './panels/DesktopPanel';
 import DiagramPanel from './panels/DiagramPanel';
@@ -587,7 +587,7 @@ function FloatingDebugWidget() {
 }
 
 /**
- * Instaladores que se publican junto a la versión web (carpeta public/). El logo y el
+ * Instaladores de la última versión en GitHub Releases. El logo y el
  * nombre usan el color característico de cada sistema; `dark` es la variante legible
  * sobre el tema oscuro (en claro, amarillo y verde se oscurecen para tener contraste).
  */
@@ -607,7 +607,7 @@ function DownloadLink({ item, showLabel, href }: { item: Download; showLabel: bo
   const title = `Descargar para ${item.label}`;
   return (
     <a
-      href={href ?? item.file}
+      href={href ?? latestDownloadUrl(item.file)}
       download={item.file}
       title={title}
       aria-label={title}

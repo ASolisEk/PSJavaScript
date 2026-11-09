@@ -198,9 +198,8 @@ export function findBestAsset(
 }
 
 /**
- * Enlaces de descarga para los botones de la página web: si la última versión publicada en
- * GitHub Releases trae los instaladores, se usan esos; si no, los de la carpeta public/.
- * Así se puede dejar de guardar los instaladores en el repositorio sin romper las descargas.
+ * Enlaces de descarga para los botones de la página web: los instaladores de la última
+ * versión publicada en GitHub Releases (ya no se guardan en el repositorio).
  */
 export async function releaseDownloadUrls(files: string[]): Promise<Record<string, string>> {
   const KEY = 'psjs.release-assets';
@@ -229,7 +228,7 @@ export async function releaseDownloadUrls(files: string[]): Promise<Record<strin
 }
 
 /** Resuelve el asset adecuado a descargar según la plataforma */
-/** Instaladores que se publican en la carpeta public/ de la rama main (los de la página web). */
+/** Nombres de los instaladores que se publican en cada versión de GitHub Releases. */
 const MAIN_BINARIES: Partial<Record<PlatformType, string>> = {
   android: 'PSJavaScript.apk',
   'electron-win': 'PSJavaScript-Setup.exe',
@@ -237,12 +236,16 @@ const MAIN_BINARIES: Partial<Record<PlatformType, string>> = {
   'electron-linux': 'PSJavaScript.AppImage',
 };
 
-/** Enlace directo al instalador más reciente de la rama main (null si la plataforma no tiene). */
-export function mainBinary(platform: PlatformType, version?: string): { downloadUrl: string; assetName: string } | null {
+/** Enlace directo al instalador de la última versión publicada (null si la plataforma no tiene). */
+export function mainBinary(platform: PlatformType, _version?: string): { downloadUrl: string; assetName: string } | null {
   const file = MAIN_BINARIES[platform];
   if (!file) return null;
-  // el parámetro evita que una caché intermedia entregue un instalador anterior
-  return { downloadUrl: `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/public/${file}?v=${encodeURIComponent(version ?? String(Date.now()))}`, assetName: file };
+  return { downloadUrl: latestDownloadUrl(file), assetName: file };
+}
+
+/** Descarga directa del archivo en la última versión de GitHub Releases. */
+export function latestDownloadUrl(file: string): string {
+  return `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/latest/download/${file}`;
 }
 
 function resolveDownloadAsset(platform: PlatformType, assets: any[] = [], version?: string): { downloadUrl: string; assetName: string } {
@@ -250,7 +253,7 @@ function resolveDownloadAsset(platform: PlatformType, assets: any[] = [], versio
   if (found) {
     return { downloadUrl: found.browser_download_url, assetName: found.name };
   }
-  // sin instalador en la release: el que está publicado en main (antes se abría la página de releases)
+  // sin instalador en la respuesta: la descarga directa de la última versión publicada
   const main = mainBinary(platform, version);
   if (main) return main;
 
@@ -401,7 +404,7 @@ export async function forceLatest(): Promise<{ kind: 'reload' } | { kind: 'downl
   const res = await checkForUpdate({ allowWebCheck: true });
   const binary = mainBinary(platform, res.latestVersion);
   let release = res.release;
-  // si la release no trae un archivo para esta plataforma, se usa el de main
+  // si la respuesta no trae el archivo de esta plataforma, se usa la descarga directa de la última versión
   if (!release || (release.downloadUrl === GITHUB_RELEASES_URL && binary)) {
     if (!binary) return { kind: 'error', error: 'No hay un instalador para esta plataforma. Descárgalo desde la página del proyecto.' };
     release = {

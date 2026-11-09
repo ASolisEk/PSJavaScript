@@ -1,0 +1,41 @@
+# coturn para PSJavaScript. Cambia todo lo marcado con «CAMBIA».
+
+# Puertos: 3478 (UDP/TCP) y 443 con TLS («turns:»), que suele pasar los firewalls escolares.
+listening-port=3478
+tls-listening-port=443
+# Puertos que se usan para retransmitir (ábrelos en el firewall, UDP)
+min-port=49152
+max-port=65535
+
+# CAMBIA: IP pública del servidor y su nombre
+external-ip=203.0.113.10
+realm=turn.escuela.mx
+server-name=turn.escuela.mx
+
+# Certificado TLS (por ejemplo de Let's Encrypt) para turns:
+cert=/etc/coturn/certs/fullchain.pem
+pkey=/etc/coturn/certs/privkey.pem
+
+# Usuario y contraseña fijos. OJO: viajan en el enlace de la sala, así que los alumnos
+# pueden verlos: usa una cuenta solo para esto y cámbiala de vez en cuando.
+lt-cred-mech
+user=psjavascript:CAMBIA-ESTA-CONTRASEÑA
+
+# Límites para que nadie abuse del servidor
+user-quota=60
+total-quota=600
+max-bps=1000000
+stale-nonce=600
+
+# Seguridad: no retransmitir hacia redes privadas ni direcciones especiales
+no-multicast-peers
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+no-cli
+fingerprint
+log-file=stdout

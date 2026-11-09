@@ -51,4 +51,14 @@ AGENTS.md
 
 # Large package archives (>100MB)
 *.tar.gz
-*.zip
+*.zip
+# servidor TURN: configuración y certificados reales
+scripts/turn/turnserver.conf
+scripts/turn/certs/
+
+# instaladores: se publican en GitHub Releases (npm run release / workflow «Instaladores»)
+public/*.apk
+public/*.aab
+public/*.dmg
+public/*.exe
+public/*.AppImage

@@ -134,7 +134,7 @@ Se agrega igual que el de freeCodeCamp (**Mis exámenes → Agregar simulacro y 
 
 El equipo del maestro es el anfitrión: recibe, guarda y califica. Hay tres formas de conectarse:
 
-- **Por Internet** (recomendado, sin instalar nada): WebRTC directo entre cada alumno y el maestro con [PeerJS](https://peerjs.com/); el servidor público de PeerJS solo los presenta. Funciona desde GitHub Pages y la versión de escritorio. **Probar conexión** revisa el servidor de enlace, STUN y TURN antes de clase. Si la red de la escuela bloquea las conexiones directas, en «Servidores propios (TURN)» se configura un TURN (p. ej. `turns:turn.escuela.mx:443` con coturn) y, opcionalmente, un servidor de enlace propio: la configuración viaja en el enlace y el QR de la sala. También se puede definir `window.__PSJS_PEER__ = { host, port, path, secure }`.
+- **Por Internet** (recomendado, sin instalar nada): WebRTC directo entre cada alumno y el maestro con [PeerJS](https://peerjs.com/); el servidor público de PeerJS solo los presenta. Funciona desde GitHub Pages y la versión de escritorio. **Probar conexión** revisa el servidor de enlace, STUN y TURN antes de clase. Si la red de la escuela bloquea las conexiones directas, en «Servidores propios (TURN)» se configura un TURN (p. ej. `turns:turn.escuela.mx:443` con coturn) y, opcionalmente, un servidor de enlace propio: la configuración viaja en el enlace y el QR de la sala. También se puede definir `window.__PSJS_PEER__ = { host, port, path, secure }`. Cómo conseguir o montar un TURN (coturn con Docker): [docs/TURN.md](docs/TURN.md).
 - **Red del aula** (sin Internet): en la computadora del maestro
   ```bash
   npm run export:web   # una vez, genera dist/
@@ -234,7 +234,7 @@ Los comandos copian automáticamente el instalador a la carpeta `public/` y rege
 
 ## Publicación multiplataforma
 
-- **Instaladores en GitHub Releases**: al publicar una etiqueta (`git tag v1.0.5 && git push origin v1.0.5`) el workflow «Instaladores» compila macOS, Windows, GNU/Linux y Android y los sube a la versión. Para subir los que ya están en `public/`: `npm run release` (requiere `gh auth login`; `npm run release -- --dry-run` solo muestra lo que haría). Los botones de descarga de la página y el actualizador usan solos los de la última versión publicada (si no hay, los de `public/`), así que después se pueden quitar los instaladores del repositorio.
+- **Instaladores en GitHub Releases**: al publicar una etiqueta (`git tag v1.0.5 && git push origin v1.0.5`) el workflow «Instaladores» compila macOS, Windows, GNU/Linux y Android y los sube a la versión. Para subir los que ya están en `public/`: `npm run release` (requiere `gh auth login`; `npm run release -- --dry-run` solo muestra lo que haría). Los instaladores **ya no se guardan en el repositorio** (`public/*.apk`, `.dmg`, `.exe` y `.AppImage` están en `.gitignore`): los botones de descarga de la página y el actualizador usan los de la última versión publicada.
 
 - **Web**: `npm run export:web` genera `dist/`, publicable en cualquier hosting estático.
 - **Escritorio**: Usa `npm run build:desktop` para generar el empaquetado para GNU/Linux (`.AppImage` / `.deb`), macOS (`.dmg`) o Windows (`.exe`) automáticamente empleando Electron y `electron-builder`.

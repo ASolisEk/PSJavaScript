@@ -1,0 +1,15 @@
+# Servidor TURN (coturn) para las salas «Por Internet» de PSJavaScript.
+# Guía completa: docs/TURN.md
+#
+#   1. Copia turnserver.conf.ejemplo a turnserver.conf y cambia dominio, IP y contraseña.
+#   2. Coloca el certificado TLS en ./certs (fullchain.pem y privkey.pem).
+#   3. docker compose up -d
+services:
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    # la red del equipo: TURN necesita muchos puertos UDP para retransmitir
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./certs:/etc/coturn/certs:ro
