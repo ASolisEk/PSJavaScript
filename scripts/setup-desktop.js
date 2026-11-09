@@ -47,6 +47,8 @@ const packageJson = {
   build: {
     appId: 'com.psjavascript.desktop',
     productName: 'PSJavaScript',
+    // la publicación la hace el workflow «Instaladores»; electron-builder no debe intentarlo en CI
+    publish: null,
     directories: {
       output: 'out'
     },

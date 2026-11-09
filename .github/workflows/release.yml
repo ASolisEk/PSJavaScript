@@ -36,6 +36,9 @@ jobs:
       - run: npm ci
       - name: Compilar
         run: node scripts/build-desktop.js ${{ matrix.target }}
+        env:
+          # sin certificado de firma: se generan instaladores sin firmar
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}
