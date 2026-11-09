@@ -3,10 +3,10 @@
  * alumnos, les entrega su examen, sigue su avance y califica.
  */
 import { ALWAYS_LOCKED, asClientMsg, ClientMsg, HostMsg, PROTOCOL_VERSION, RoomInfo, SubmitReason } from './protocol';
-import { gradePaper, studentView } from './grading';
+import { adjustResult, gradePaper, studentView } from './grading';
 import { buildPaper } from './paper';
 import { randomId } from './random';
-import { RoomState, StudentEvent, StudentRecord } from './room';
+import { normalizeName, ReconnectRequest, RoomState, StudentEvent, StudentRecord } from './room';
 import type { HostTransport } from './transport/types';
 import type { Answers } from './types';
 import { questionsPerStudent } from './config';
@@ -40,6 +40,8 @@ export function restrictionsOf(state: RoomState): string[] {
 export class ExamHost {
   state: RoomState;
   private peers = new Map<string, string>();
+  /** Conexiones que esperan a que el maestro autorice su reconexión (conexión → solicitud). */
+  private waiting = new Map<string, string>();
   private timer: any = null;
   private now: () => number;
   private disposed = false;
@@ -145,7 +147,8 @@ export class ExamHost {
     const overrides = { ...s.overrides };
     if (points === null) delete overrides[questionId];
     else overrides[questionId] = points;
-    const result = s.submittedAt ? gradePaper(this.state.exam, s.key, s.answers, overrides) : s.result;
+    // solo cambia esa pregunta: volver a calificar todo ejecutaría otra vez los programas
+    const result = s.submittedAt ? (s.result ? adjustResult(this.state.exam, s.key, s.answers, s.result, questionId, points) : gradePaper(this.state.exam, s.key, s.answers, overrides)) : s.result;
     this.patch(studentId, { overrides, result });
     if (result && s.submittedAt) this.sendTo(studentId, { t: 'result', result: studentView(result, this.state.exam.showResults, this.topicOf), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
   }
@@ -192,6 +195,11 @@ export class ExamHost {
 
   private handle(peer: string, msg: ClientMsg) {
     if (msg.t === 'hello') return this.hello(peer, msg);
+    // quien espera autorización solo recibe el latido (para no darse por desconectado)
+    if (this.waiting.has(peer)) {
+      if (msg.t === 'ping') this.opts.transport.send(peer, { t: 'pong', now: this.now() } satisfies HostMsg);
+      return;
+    }
     const id = this.peers.get(peer);
     const s = id ? this.state.students[id] : undefined;
     if (!s) return;
@@ -269,6 +277,23 @@ export class ExamHost {
       this.opts.transport.send(peer, { t: 'rejected', reason: 'Ya hay un alumno con esa identidad en la sala.' } satisfies HostMsg);
       return;
     }
+    if (!s) {
+      // ¿vuelve alguien que ya comenzó, pero desde otro dispositivo o sin su sesión?
+      const pending = (this.state.requests ?? []).find((r) => r.id === msg.studentId);
+      if (pending) {
+        if (pending.token !== msg.token) {
+          this.opts.transport.send(peer, { t: 'rejected', reason: 'Ya hay un alumno con esa identidad en la sala.' } satisfies HostMsg);
+          return;
+        }
+        return this.wait(peer, pending);
+      }
+      const target = this.sameStudent(msg.name, msg.group ?? '');
+      if (target) {
+        // si no había comenzado ni está conectado, no hay avance que proteger: sigue con su lugar
+        if (!target.startedAt && !target.connected && this.state.status !== 'closed') return this.transfer(target.id, { id: msg.studentId, token: msg.token, name: msg.name, group: msg.group ?? '', targetId: target.id, at: now }, peer, 'Volvió a entrar a la sala');
+        if (target.startedAt) return this.request(peer, { id: msg.studentId, token: msg.token, name: msg.name.trim().slice(0, 80) || 'Alumno', group: (msg.group ?? '').trim().slice(0, 40), targetId: target.id, at: now });
+      }
+    }
     if (!s && this.state.status === 'closed') {
       this.opts.transport.send(peer, { t: 'rejected', reason: 'El examen ya fue cerrado por el maestro.' } satisfies HostMsg);
       return;
@@ -282,42 +307,152 @@ export class ExamHost {
     if (s?.peer && s.peer !== peer) this.peers.delete(s.peer);
     this.peers.set(peer, msg.studentId);
     if (!s) {
-      s = {
-        id: msg.studentId,
-        token: msg.token,
-        name,
-        group,
-        peer,
-        connected: true,
-        lastSeen: now,
-        joinedAt: now,
-        startedAt: null,
-        deadline: null,
-        submittedAt: null,
-        submitReason: null,
-        key: null,
-        answers: {},
-        current: 0,
-        activity: 'reading',
-        activitySince: now,
-        focused: true,
-        focusLost: 0,
-        awayMs: 0,
-        pasteBlocked: 0,
-        runs: 0,
-        tests: 0,
-        events: [{ at: now, kind: 'join', text: 'Entró a la sala' }],
-        result: null,
-        overrides: {},
-      };
+      s = this.newStudent(msg.studentId, msg.token, name, group, peer, now);
       this.set({ ...this.state, students: { ...this.state.students, [s.id]: s } });
     } else {
       this.patch(s.id, { peer, connected: true, lastSeen: now, name, group }, { kind: 'reconnect', text: 'Se volvió a conectar' });
     }
-    s = this.state.students[msg.studentId];
-    this.sendTo(s.id, { t: 'welcome', now, room: this.roomInfo(), started: !!s.startedAt, submitted: !!s.submittedAt });
-    if (s.submittedAt) this.sendResult(s.id);
-    else if (s.startedAt) this.sendPaper(s.id);
+    this.welcome(msg.studentId);
+  }
+
+  /**
+   * Alumno de la sala con el mismo nombre (y grupo, si ambos lo escribieron). Si hay varios,
+   * se prefiere quien ya comenzó (tiene avance que proteger), luego quien está desconectado
+   * y, al final, el que entró más recientemente.
+   */
+  private sameStudent(name: string, group: string): StudentRecord | null {
+    const n = normalizeName(name);
+    const g = normalizeName(group);
+    if (!n) return null;
+    const matches = Object.values(this.state.students).filter((s) => normalizeName(s.name) === n && (!g || !s.group || normalizeName(s.group) === g));
+    const rank = (s: StudentRecord) => (s.startedAt ? 2 : 0) + (s.connected ? 0 : 1);
+    matches.sort((a, b) => rank(b) - rank(a) || b.joinedAt - a.joinedAt);
+    return matches[0] ?? null;
+  }
+
+  /** Registra (o actualiza) la solicitud de reconexión y avisa al alumno que espere. */
+  private request(peer: string, req: ReconnectRequest) {
+    // una sola solicitud por alumno de la sala: la más reciente reemplaza a las anteriores
+    const old = (this.state.requests ?? []).filter((r) => r.targetId === req.targetId && r.id !== req.id);
+    for (const r of old) this.tellRequest(r.id, { t: 'rejected', reason: 'Se recibió otra solicitud para continuar este examen.' });
+    const requests = [...(this.state.requests ?? []).filter((r) => r.targetId !== req.targetId), req];
+    const target = this.state.students[req.targetId];
+    this.set({ ...this.state, requests });
+    if (target) this.patch(target.id, {}, { kind: 'reconnect', text: `Pidió continuar su examen desde otro dispositivo${req.name !== target.name ? ` (como «${req.name}»)` : ''}` });
+    this.wait(peer, req);
+  }
+
+  private wait(peer: string, req: ReconnectRequest) {
+    for (const [p, id] of this.waiting) if (id === req.id && p !== peer) this.waiting.delete(p);
+    this.waiting.set(peer, req.id);
+    this.opts.transport.send(peer, { t: 'pending', reason: 'Ya habías comenzado este examen. Tu maestro debe autorizar que lo continúes en este dispositivo; espera un momento.' } satisfies HostMsg);
+  }
+
+  private peerOfRequest(id: string): string | null {
+    for (const [p, r] of this.waiting) if (r === id) return p;
+    return null;
+  }
+
+  private tellRequest(id: string, msg: HostMsg) {
+    const p = this.peerOfRequest(id);
+    if (!p) return;
+    this.waiting.delete(p);
+    this.opts.transport.send(p, msg);
+  }
+
+  /**
+   * Pasa el examen de un alumno a su nueva identidad (otro dispositivo): conserva sus
+   * respuestas, tiempo y bitácora, y desconecta el dispositivo anterior si seguía conectado.
+   */
+  private transfer(targetId: string, req: ReconnectRequest, peer: string | null, text: string) {
+    const old = this.state.students[targetId];
+    if (!old) return;
+    const now = this.now();
+    if (old.peer) {
+      if (old.connected) this.opts.transport.send(old.peer, { t: 'rejected', reason: 'Tu examen continúa en otro dispositivo.' } satisfies HostMsg);
+      this.peers.delete(old.peer);
+    }
+    if (peer) {
+      this.waiting.delete(peer);
+      this.peers.set(peer, req.id);
+    }
+    const events = [...old.events, { at: now, kind: 'reconnect' as const, text }].slice(-MAX_EVENTS);
+    const moved: StudentRecord = { ...old, id: req.id, token: req.token, peer, connected: !!peer, lastSeen: now, events };
+    const students = { ...this.state.students };
+    delete students[targetId];
+    students[req.id] = moved;
+    this.set({ ...this.state, students, requests: (this.state.requests ?? []).filter((r) => r.id !== req.id) });
+    if (peer) this.welcome(req.id);
+  }
+
+  /** El maestro confirma que es la misma persona: sigue su examen en el dispositivo nuevo. */
+  approveReconnect(requestId: string) {
+    const req = this.state.requests?.find((r) => r.id === requestId);
+    if (!req) return;
+    if (!this.state.students[req.targetId]) return this.rejectReconnect(requestId, 'Tu registro ya no está en la sala. Avísale a tu maestro.');
+    this.transfer(req.targetId, req, this.peerOfRequest(requestId), 'Continuó su examen en otro dispositivo (lo autorizó el maestro)');
+  }
+
+  /** El maestro indica que es otro alumno (con el mismo nombre): entra como alumno nuevo. */
+  admitAsNew(requestId: string) {
+    const req = this.state.requests?.find((r) => r.id === requestId);
+    if (!req) return;
+    const peer = this.peerOfRequest(requestId);
+    const now = this.now();
+    const s = this.newStudent(req.id, req.token, req.name, req.group, peer, now);
+    if (peer) {
+      this.waiting.delete(peer);
+      this.peers.set(peer, req.id);
+    }
+    this.set({ ...this.state, students: { ...this.state.students, [s.id]: s }, requests: (this.state.requests ?? []).filter((r) => r.id !== requestId) });
+    if (peer) this.welcome(s.id);
+  }
+
+  /** El maestro no autoriza la reconexión. */
+  rejectReconnect(requestId: string, reason = 'Tu maestro no autorizó que continúes el examen en este dispositivo.') {
+    if (!this.state.requests?.some((r) => r.id === requestId)) return;
+    this.tellRequest(requestId, { t: 'rejected', reason });
+    this.set({ ...this.state, requests: (this.state.requests ?? []).filter((r) => r.id !== requestId) });
+  }
+
+  private newStudent(id: string, token: string, name: string, group: string, peer: string | null, now: number): StudentRecord {
+    return {
+      id,
+      token,
+      name: name.trim().slice(0, 80) || 'Alumno',
+      group: group.trim().slice(0, 40),
+      peer,
+      connected: !!peer,
+      lastSeen: now,
+      joinedAt: now,
+      startedAt: null,
+      deadline: null,
+      submittedAt: null,
+      submitReason: null,
+      key: null,
+      answers: {},
+      current: 0,
+      activity: 'reading',
+      activitySince: now,
+      focused: true,
+      focusLost: 0,
+      awayMs: 0,
+      pasteBlocked: 0,
+      runs: 0,
+      tests: 0,
+      events: [{ at: now, kind: 'join', text: 'Entró a la sala' }],
+      result: null,
+      overrides: {},
+    };
+  }
+
+  /** Saludo al (re)conectarse: datos de la sala y, si ya comenzó, su examen o su resultado. */
+  private welcome(id: string) {
+    const s = this.state.students[id];
+    if (!s) return;
+    this.sendTo(id, { t: 'welcome', now: this.now(), room: this.roomInfo(), started: !!s.startedAt, submitted: !!s.submittedAt });
+    if (s.submittedAt) this.sendResult(id);
+    else if (s.startedAt) this.sendPaper(id);
   }
 
   private begin(id: string) {
@@ -357,6 +492,8 @@ export class ExamHost {
   }
 
   private peerLeft(peer: string) {
+    // la solicitud sigue pendiente: al reconectarse vuelve a esperar
+    this.waiting.delete(peer);
     const id = this.peers.get(peer);
     this.peers.delete(peer);
     const s = id ? this.state.students[id] : undefined;

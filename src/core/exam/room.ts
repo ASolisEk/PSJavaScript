@@ -58,6 +58,22 @@ export interface StudentRecord {
   overrides: Record<string, number>;
 }
 
+/**
+ * Alguien entró con el nombre de un alumno que ya había comenzado, pero desde otro
+ * dispositivo o sin su sesión (se le cerró la página, borró los datos, cambió de equipo…).
+ * El maestro decide si es la misma persona y puede seguir su examen.
+ */
+export interface ReconnectRequest {
+  /** Identidad nueva con la que se conectó. */
+  id: string;
+  token: string;
+  name: string;
+  group: string;
+  /** Alumno de la sala que dice ser. */
+  targetId: string;
+  at: number;
+}
+
 export interface RoomState {
   code: string;
   transport: TransportSpec;
@@ -70,6 +86,18 @@ export interface RoomState {
   notices: { at: number; text: string }[];
   /** Ya no se aceptan alumnos nuevos (los que están pueden reconectarse). */
   locked?: boolean;
+  /** Solicitudes para seguir un examen desde otro dispositivo (las autoriza el maestro). */
+  requests?: ReconnectRequest[];
+}
+
+/** Nombre comparable: sin acentos, mayúsculas ni espacios de más. */
+export function normalizeName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export type StudentPhase = 'lobby' | 'ready' | 'working' | 'submitted';
@@ -121,5 +149,5 @@ export function compactRoom(room: RoomState, maxEvents = 40): RoomState {
   // de un banco grande (p. ej. el simulacro de certificación) solo se guardan las preguntas que le tocaron a alguien
   const used = new Set(Object.values(room.students).flatMap((s) => s.key?.questionIds ?? []));
   const exam = used.size && used.size < room.exam.questions.length ? { ...room.exam, questions: room.exam.questions.filter((q) => used.has(q.id)) } : room.exam;
-  return { ...room, exam, students };
+  return { ...room, exam, students, requests: [] };
 }

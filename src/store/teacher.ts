@@ -1,6 +1,10 @@
 /**
- * Estado del modo Maestro: biblioteca de exámenes, sala activa (anfitrión)
+ * Estado del modo Maestro: biblioteca de exámenes, salas activas (anfitrión)
  * e historial de exámenes aplicados. Todo se guarda en el dispositivo.
+ *
+ * Se pueden tener varias salas abiertas al mismo tiempo (por ejemplo, un examen
+ * distinto para cada grupo): cada una tiene su propio código, su propia conexión
+ * y se guarda por separado.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ExpoCrypto from 'expo-crypto';
@@ -8,10 +12,10 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { cloneExam, createExam, parseExam, sampleExam } from '../core/exam/config';
 import { getCertification } from '../core/exam/certs';
-import { gradePaper } from '../core/exam/grading';
+import { adjustResult, gradePaper } from '../core/exam/grading';
 import { ExamHost } from '../core/exam/host';
 import { roomCode } from '../core/exam/random';
-import { compactRoom, createRoom, RoomState } from '../core/exam/room';
+import { compactRoom, createRoom, RoomState, studentPhase } from '../core/exam/room';
 import { createHostTransport, TransportError, TransportSpec } from '../core/exam/transport';
 import type { ExamConfig } from '../core/exam/types';
 import { createVault, decryptText, defaultRandom, encryptText, isEncrypted, openVault, RandomBytes, VaultMeta } from '../core/vault';
@@ -23,7 +27,11 @@ const LEGACY_KEY = 'psjs.teacher.v1';
 const EXAMS_KEY = 'psjs.teacher.exams.v2';
 const HISTORY_INDEX_KEY = 'psjs.teacher.history.v2';
 const historyItemKey = (key: string) => `${HISTORY_INDEX_KEY}:${key}`;
-const ROOM_KEY = 'psjs.teacher.room.v1';
+/** Versión anterior: una sola sala activa (se migra al abrir). */
+const LEGACY_ROOM_KEY = 'psjs.teacher.room.v1';
+/** Índice de las salas activas y cada sala en su propia clave. */
+const ROOMS_INDEX_KEY = 'psjs.teacher.rooms.v2';
+const roomItemKey = (key: string) => `${ROOMS_INDEX_KEY}:${key}`;
 /** Datos para reconocer la contraseña del modo Maestro (si existe, todo lo demás va cifrado). */
 const LOCK_KEY = 'psjs.teacher.lock.v1';
 const TEACHER_PREFIX = 'psjs.teacher.';
@@ -31,7 +39,9 @@ const TEACHER_PREFIX = 'psjs.teacher.';
 export const AUTO_LOCK_MS = 10 * 60_000;
 const random: RandomBytes = Platform.OS === 'web' ? defaultRandom : (n) => ExpoCrypto.getRandomBytes(n);
 const MAX_HISTORY = 30;
-/** Cada cuánto se guarda la sala activa mientras cambia (la interfaz se actualiza más seguido). */
+/** Salas abiertas a la vez (cada una mantiene su conexión y la recibe este equipo). */
+export const MAX_OPEN_ROOMS = 8;
+/** Cada cuánto se guardan las salas activas mientras cambian (la interfaz se actualiza más seguido). */
 const ROOM_SAVE_MS = 2000;
 
 /** Guarda sin lanzar errores; devuelve false si no se pudo (p. ej. sin espacio). */
@@ -44,20 +54,29 @@ async function safeSet(key: string, value: string): Promise<boolean> {
   }
 }
 
+export interface NetworkState {
+  online: boolean;
+  detail?: string;
+}
+
 interface TeacherState {
   hydrated: boolean;
   exams: ExamConfig[];
   editingId: string | null;
   tab: TeacherTab;
-  room: RoomState | null;
-  /** La sala está abierta y aceptando alumnos en este momento. */
-  live: boolean;
-  network: { online: boolean; detail?: string };
+  /** Salas actuales (abiertas, o cerradas que aún no se archivan), la más reciente primero. */
+  rooms: RoomState[];
+  /** Sala que se muestra en «Sala en vivo» (ver roomKey); null = abrir una sala nueva. */
+  activeKey: string | null;
+  /** Salas cuyo anfitrión está funcionando (aceptando alumnos) en este momento. */
+  liveKeys: string[];
+  /** Conexión de cada sala con la red. */
+  network: Record<string, NetworkState>;
   opening: boolean;
   openError: string | null;
-  /** Exámenes aplicados (salas cerradas). */
+  /** Exámenes aplicados (salas archivadas). */
   history: RoomState[];
-  /** Sala del historial que se está consultando en «Resultados» (ver roomKey). */
+  /** Sala que se consulta en «Resultados» (actual o del historial); null = la sala activa. */
   viewingKey: string | null;
   /** Problema al guardar en el dispositivo (sin espacio). */
   storageWarning: string | null;
@@ -74,30 +93,41 @@ interface TeacherState {
   deleteExam(id: string): void;
   duplicateExam(id: string): void;
   importExam(text: string): ExamConfig;
-  /** Agrega el simulacro de la certificación JavaScript de freeCodeCamp y su copia de práctica. */
   /** Agrega el simulacro y la copia de práctica de una certificación incluida. */
   addCertification(id: string): ExamConfig[];
 
+  /** Muestra una sala en «Sala en vivo» (null = formulario para abrir otra). */
+  selectRoom(key: string | null): void;
+  /** Abre una sala nueva (las que ya están abiertas siguen funcionando). */
   openRoom(examId: string, transport: TransportSpec): Promise<boolean>;
-  reopenRoom(): Promise<boolean>;
-  startExam(): void;
-  closeExam(): Promise<void>;
-  notice(text: string): void;
-  addTime(minutes: number, studentId?: string): void;
-  forceSubmit(studentId: string): void;
-  adjust(studentId: string, questionId: string, points: number | null): void;
-  removeStudent(studentId: string): void;
-  setLocked(locked: boolean): void;
-  reopenStudent(studentId: string, minutes?: number): void;
-  /** Sale de la sala (si está cerrada pasa al historial). */
-  leaveRoom(): void;
+  /** Vuelve a abrir una sala que quedó sin cerrar (p. ej. al recargar). */
+  reopenRoom(key: string): Promise<boolean>;
+  /** Vuelve a abrir todas las salas sin cerrar. */
+  reopenAll(): Promise<void>;
+  startExam(key: string): void;
+  closeExam(key: string): Promise<void>;
+  notice(key: string, text: string): void;
+  addTime(key: string, minutes: number, studentId?: string): void;
+  forceSubmit(key: string, studentId: string): void;
+  /** Ajusta a mano los puntos de una pregunta (en una sala actual o del historial). */
+  adjust(key: string, studentId: string, questionId: string, points: number | null): void;
+  removeStudent(key: string, studentId: string): void;
+  setLocked(key: string, locked: boolean): void;
+  reopenStudent(key: string, studentId: string, minutes?: number): void;
+  /** Solicitud para seguir un examen en otro dispositivo: es la misma persona. */
+  approveReconnect(key: string, requestId: string): void;
+  /** Solicitud de reconexión que en realidad es otro alumno con el mismo nombre. */
+  admitAsNew(key: string, requestId: string): void;
+  rejectReconnect(key: string, requestId: string): void;
+  /** Quita la sala de la lista (si está cerrada, pasa al historial; si no, se descarta). */
+  leaveRoom(key: string): void;
   viewHistory(key: string | null): void;
   deleteHistory(key: string): void;
   dismissStorageWarning(): void;
 
   /** Abre el modo Maestro con la contraseña; false si es incorrecta. */
   unlock(password: string): Promise<boolean>;
-  /** Bloquea (si hay una sala en vivo sigue funcionando, solo se oculta). */
+  /** Bloquea (si hay salas en vivo siguen funcionando, solo se ocultan). */
   lock(): Promise<void>;
   /** ¿Es la contraseña actual? */
   checkPassword(password: string): Promise<boolean>;
@@ -109,19 +139,29 @@ interface TeacherState {
   forgetAll(): Promise<void>;
 }
 
-/** Identificador de una sala del historial. */
+/** Identificador de una sala (actual o del historial). */
 export const roomKey = (r: Pick<RoomState, 'code' | 'openedAt'>) => `${r.code}@${r.openedAt}`;
 
-let host: ExamHost | null = null;
+/** La sala sigue abierta (en espera o en curso). */
+export const isOpenRoom = (r: RoomState) => r.status !== 'closed';
+
+/** Alumnos que están resolviendo el examen en una sala. */
+export const workingCount = (r: RoomState) => Object.values(r.students).filter((x) => studentPhase(x, r) === 'working').length;
+
+/** Anfitrión de cada sala abierta en este equipo (por roomKey). */
+const hosts = new Map<string, ExamHost>();
 let roomTimer: any = null;
-let pendingRoom: RoomState | null = null;
+/** Cambios de las salas que aún no llegan a la interfaz. */
+const pendingRooms = new Map<string, RoomState>();
+/** Salas que cambiaron y faltan por guardar. */
+const dirtyRooms = new Set<string>();
 let examsTimer: any = null;
 let saveRoomTimer: any = null;
 let lastRoomSave = 0;
 /** Clave de cifrado (solo en memoria, mientras el modo Maestro está abierto). */
 let vaultKey: Uint8Array | null = null;
 let vaultMeta: VaultMeta | null = null;
-/** Exámenes, historial y sala ya están en memoria (se descargan al bloquear). */
+/** Exámenes, historial y salas ya están en memoria (se descargan al bloquear). */
 let dataLoaded = false;
 /** Escrituras del historial en curso (se esperan antes de bloquear o cambiar la contraseña). */
 let historyChain: Promise<void> = Promise.resolve();
@@ -144,6 +184,23 @@ function unpack(raw: string | null): any {
 async function save(key: string, value: unknown): Promise<boolean> {
   const text = pack(value);
   return text === null ? true : safeSet(key, text);
+}
+
+/** Reemplaza (o agrega al principio) una sala en la lista. */
+function upsertRoom(rooms: RoomState[], room: RoomState): RoomState[] {
+  const key = roomKey(room);
+  return rooms.some((r) => roomKey(r) === key) ? rooms.map((r) => (roomKey(r) === key ? room : r)) : [room, ...rooms];
+}
+
+/** Ajusta a mano los puntos de una pregunta de un alumno (sin volver a calificar todo su examen). */
+function regrade(room: RoomState, studentId: string, questionId: string, points: number | null): RoomState | null {
+  const st = room.students[studentId];
+  if (!st?.key || !st.submittedAt) return null;
+  const overrides = { ...st.overrides };
+  if (points === null) delete overrides[questionId];
+  else overrides[questionId] = points;
+  const result = st.result ? adjustResult(room.exam, st.key, st.answers, st.result, questionId, points) : gradePaper(room.exam, st.key, st.answers, overrides);
+  return { ...room, students: { ...room.students, [studentId]: { ...st, overrides, result } } };
 }
 
 export const useTeacher = create<TeacherState>((set, get) => {
@@ -186,46 +243,61 @@ export const useTeacher = create<TeacherState>((set, get) => {
     if (!(await save(HISTORY_INDEX_KEY, history.map(roomKey)))) set({ storageWarning: NO_SPACE });
   };
 
-  const writeRoom = (room: RoomState | null) => {
+  /** Salas actuales con el estado más reciente de cada anfitrión. */
+  const currentRooms = () => get().rooms.map((r) => hosts.get(roomKey(r))?.state ?? r);
+
+  /** Escribe las salas que cambiaron y el índice. */
+  const writeRooms = () => {
     clearTimeout(saveRoomTimer);
     saveRoomTimer = null;
     lastRoomSave = Date.now();
-    if (room) save(ROOM_KEY, room).then((ok) => ok || set({ storageWarning: NO_SPACE }));
-    else AsyncStorage.removeItem(ROOM_KEY).catch(() => {});
+    const rooms = currentRooms();
+    for (const r of rooms) {
+      if (dirtyRooms.has(roomKey(r))) save(roomItemKey(roomKey(r)), r).then((ok) => ok || set({ storageWarning: NO_SPACE }));
+    }
+    dirtyRooms.clear();
+    save(ROOMS_INDEX_KEY, rooms.map(roomKey)).then((ok) => ok || set({ storageWarning: NO_SPACE }));
   };
 
-  /** La sala activa cambia muy seguido: se guarda a lo más cada ROOM_SAVE_MS. */
-  const persistRoom = (room: RoomState | null, now = false) => {
-    if (now || !room) return writeRoom(room);
+  /** Las salas cambian muy seguido: se guardan a lo más cada ROOM_SAVE_MS. */
+  const persistRoom = (key: string, now = false) => {
+    dirtyRooms.add(key);
+    if (now) return writeRooms();
     if (saveRoomTimer) return;
     const wait = Math.max(0, ROOM_SAVE_MS - (Date.now() - lastRoomSave));
-    saveRoomTimer = setTimeout(() => writeRoom(host?.state ?? get().room), wait);
+    saveRoomTimer = setTimeout(writeRooms, wait);
   };
 
-  /** El anfitrión cambia muy seguido (avance de cada alumno): se agrupan las actualizaciones. */
+  /** Los anfitriones cambian muy seguido (avance de cada alumno): se agrupan las actualizaciones. */
   const onRoomChange = (room: RoomState) => {
-    pendingRoom = room;
+    pendingRooms.set(roomKey(room), room);
     if (roomTimer) return;
     roomTimer = setTimeout(() => {
       roomTimer = null;
-      const r = pendingRoom;
-      pendingRoom = null;
-      if (!r || !host) return;
-      set({ room: r });
-      persistRoom(r);
+      const changed = [...pendingRooms.entries()].filter(([k]) => hosts.has(k));
+      pendingRooms.clear();
+      if (!changed.length) return;
+      const byKey = new Map(changed);
+      set((s) => ({ rooms: s.rooms.map((r) => byKey.get(roomKey(r)) ?? r) }));
+      for (const [k] of changed) persistRoom(k);
     }, 250);
   };
 
   // al cerrar o recargar la pestaña se guarda lo último
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('pagehide', () => {
-      if (host) writeRoom(host.state);
+      flushHistorySoon();
+      if (!hosts.size && !saveRoomTimer) return;
+      for (const k of hosts.keys()) dirtyRooms.add(k);
+      writeRooms();
     });
   }
 
-  const startHost = async (room: RoomState): Promise<boolean> => {
-    host?.dispose();
-    host = null;
+  /** Abre el anfitrión de una sala. `focus`: muestra la sala en «Sala en vivo». */
+  const startHost = async (room: RoomState, focus = true): Promise<boolean> => {
+    const key = roomKey(room);
+    hosts.get(key)?.dispose();
+    hosts.delete(key);
     set({ opening: true, openError: null });
     let transport;
     try {
@@ -238,7 +310,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
       transport,
       state: room,
       onChange: onRoomChange,
-      onNetwork: (online, detail) => set({ network: { online, detail } }),
+      onNetwork: (online, detail) => set((s) => ({ network: { ...s.network, [key]: { online, detail } } })),
     });
     try {
       await h.open();
@@ -247,22 +319,78 @@ export const useTeacher = create<TeacherState>((set, get) => {
       set({ opening: false, openError: e instanceof TransportError ? e.message : `No se pudo abrir la sala: ${e?.message ?? e}` });
       return false;
     }
-    host = h;
-    set({ room: h.state, live: true, opening: false, network: { online: true }, tab: 'room' });
-    persistRoom(h.state, true);
+    hosts.set(key, h);
+    set((s) => ({
+      rooms: upsertRoom(s.rooms, h.state),
+      liveKeys: s.liveKeys.includes(key) ? s.liveKeys : [...s.liveKeys, key],
+      network: { ...s.network, [key]: { online: true } },
+      opening: false,
+      ...(focus ? { tab: 'room' as const, activeKey: key } : {}),
+    }));
+    persistRoom(key, true);
     return true;
   };
 
-  const sync = () => {
-    if (!host) return;
-    clearTimeout(roomTimer);
-    roomTimer = null;
-    pendingRoom = null;
-    set({ room: host.state });
-    persistRoom(host.state, true);
+  /**
+   * Reabre una sala con su mismo código. Si el servidor todavía lo tiene «en uso» (la
+   * conexión anterior no se ha liberado, puede tardar hasta un minuto), se reintenta solo
+   * para que los alumnos puedan reconectarse sin que el maestro tenga que hacer nada.
+   */
+  const reopenWithRetry = async (room: RoomState, focus: boolean): Promise<boolean> => {
+    const key = roomKey(room);
+    for (let i = 0; i < 12; i++) {
+      if (await startHost(get().rooms.find((r) => roomKey(r) === key) ?? room, focus)) return true;
+      if (!/en uso/.test(get().openError ?? '') || !get().rooms.some((r) => roomKey(r) === key)) return false;
+      set({ openError: `El código ${room.code} todavía está ocupado por la conexión anterior. Reintentando para que tus alumnos puedan volver (${i + 1}/12)…`, opening: true });
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    set({ opening: false, openError: `No se pudo recuperar el código ${room.code}. Presiona «Reabrir sala» en un momento.` });
+    return false;
   };
 
-  /** Lee exámenes, historial y sala del dispositivo (descifrando si hay contraseña). */
+  /** Lleva a la interfaz el estado actual de un anfitrión y lo guarda. */
+  const sync = (key: string, saveNow = true) => {
+    const h = hosts.get(key);
+    if (!h) return;
+    pendingRooms.delete(key);
+    set((s) => ({ rooms: upsertRoom(s.rooms, h.state) }));
+    persistRoom(key, saveNow);
+  };
+
+  /** Ajustes del historial pendientes de guardar (al calificar a mano se agrupan los clics). */
+  const historyTimers = new Map<string, any>();
+  const persistHistorySoon = (room: RoomState) => {
+    const key = roomKey(room);
+    clearTimeout(historyTimers.get(key));
+    historyTimers.set(
+      key,
+      setTimeout(() => {
+        historyTimers.delete(key);
+        const latest = get().history.find((h) => roomKey(h) === key);
+        if (latest) persistHistory(latest);
+      }, 800),
+    );
+  };
+
+  /** Guarda ya los ajustes del historial que esperaban (antes de bloquear o al cerrar la pestaña). */
+  const flushHistorySoon = () => {
+    for (const [key, timer] of historyTimers) {
+      clearTimeout(timer);
+      historyTimers.delete(key);
+      const latest = get().history.find((h) => roomKey(h) === key);
+      if (latest) persistHistory(latest);
+    }
+  };
+
+  /** Acción del maestro sobre el anfitrión de una sala. */
+  const withHost = (key: string, fn: (h: ExamHost) => void) => {
+    const h = hosts.get(key);
+    if (!h) return;
+    fn(h);
+    sync(key);
+  };
+
+  /** Lee exámenes, historial y salas del dispositivo (descifrando si hay contraseña). */
   const loadAll = async () => {
     const read = async (key: string) => {
       try {
@@ -293,12 +421,26 @@ export const useTeacher = create<TeacherState>((set, get) => {
         /* se omite */
       }
     }
-    set({ exams, history: history.slice(0, MAX_HISTORY), room: await read(ROOM_KEY) });
+    // salas activas (y la sala única de la versión anterior)
+    const rooms: RoomState[] = [];
+    const roomIndex: string[] = (await read(ROOMS_INDEX_KEY)) ?? [];
+    for (const k of roomIndex) {
+      const r = await read(roomItemKey(k));
+      if (r?.code) rooms.push(r);
+    }
+    const legacyRoom: RoomState | null = await read(LEGACY_ROOM_KEY);
+    if (legacyRoom?.code && !rooms.some((r) => roomKey(r) === roomKey(legacyRoom))) rooms.push(legacyRoom);
+    const first = rooms.find(isOpenRoom) ?? rooms[0];
+    set({ exams, history: history.slice(0, MAX_HISTORY), rooms, activeKey: first ? roomKey(first) : null });
     dataLoaded = true;
     if (legacy) {
       const ok = await save(EXAMS_KEY, exams);
       for (const h of get().history) await persistHistory(h);
       if (ok) await AsyncStorage.removeItem(LEGACY_KEY).catch(() => {});
+    }
+    if (legacyRoom) {
+      for (const r of rooms) await save(roomItemKey(roomKey(r)), r);
+      if (await save(ROOMS_INDEX_KEY, rooms.map(roomKey))) await AsyncStorage.removeItem(LEGACY_ROOM_KEY).catch(() => {});
     }
   };
 
@@ -309,7 +451,8 @@ export const useTeacher = create<TeacherState>((set, get) => {
       examsTimer = null;
       await save(EXAMS_KEY, get().exams);
     }
-    if (saveRoomTimer) writeRoom(host?.state ?? get().room);
+    if (saveRoomTimer) writeRooms();
+    flushHistorySoon();
     await historyChain;
   };
 
@@ -318,8 +461,9 @@ export const useTeacher = create<TeacherState>((set, get) => {
     await save(EXAMS_KEY, get().exams);
     for (const h of get().history) await save(historyItemKey(roomKey(h)), h);
     await save(HISTORY_INDEX_KEY, get().history.map(roomKey));
-    const room = host?.state ?? get().room;
-    if (room) await save(ROOM_KEY, room);
+    const rooms = currentRooms();
+    for (const r of rooms) await save(roomItemKey(roomKey(r)), r);
+    await save(ROOMS_INDEX_KEY, rooms.map(roomKey));
   };
 
   return {
@@ -327,9 +471,10 @@ export const useTeacher = create<TeacherState>((set, get) => {
     exams: [],
     editingId: null,
     tab: 'library',
-    room: null,
-    live: false,
-    network: { online: true },
+    rooms: [],
+    activeKey: null,
+    liveKeys: [],
+    network: {},
     opening: false,
     openError: null,
     history: [],
@@ -360,25 +505,24 @@ export const useTeacher = create<TeacherState>((set, get) => {
       const key = await openVault(password, vaultMeta);
       if (!key) return false;
       vaultKey = key;
-      // con la sala en vivo los datos siguen en memoria (solo estaba oculta)
+      // con salas en vivo los datos siguen en memoria (solo estaban ocultos)
       if (!dataLoaded) await loadAll();
       set({ locked: false });
-      // la sala que estaba abierta al recargar vuelve a recibir alumnos
-      const room = get().room;
-      if (room && room.status !== 'closed' && !host) get().reopenRoom();
+      // las salas que estaban abiertas al recargar vuelven a recibir alumnos
+      get().reopenAll();
       return true;
     },
 
     async lock() {
       if (!vaultMeta) return;
       await flush();
-      if (host) {
+      if (hosts.size) {
         set({ locked: true });
         return;
       }
       vaultKey = null;
       dataLoaded = false;
-      set({ locked: true, exams: [], history: [], room: null, editingId: null, viewingKey: null, tab: 'library' });
+      set({ locked: true, exams: [], history: [], rooms: [], activeKey: null, liveKeys: [], network: {}, editingId: null, viewingKey: null, tab: 'library' });
     },
 
     async checkPassword(password) {
@@ -408,8 +552,10 @@ export const useTeacher = create<TeacherState>((set, get) => {
     },
 
     async forgetAll() {
-      host?.dispose();
-      host = null;
+      for (const h of hosts.values()) h.dispose();
+      hosts.clear();
+      pendingRooms.clear();
+      dirtyRooms.clear();
       clearTimeout(examsTimer);
       clearTimeout(saveRoomTimer);
       examsTimer = saveRoomTimer = null;
@@ -423,7 +569,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
       vaultMeta = null;
       vaultKey = null;
       dataLoaded = true;
-      set({ exams: [], history: [], room: null, live: false, editingId: null, viewingKey: null, tab: 'library', secured: false, locked: false });
+      set({ exams: [], history: [], rooms: [], activeKey: null, liveKeys: [], network: {}, editingId: null, viewingKey: null, tab: 'library', secured: false, locked: false });
     },
 
     setTab(tab) {
@@ -476,17 +622,22 @@ export const useTeacher = create<TeacherState>((set, get) => {
       return list;
     },
 
+    selectRoom(key) {
+      set({ activeKey: key, tab: 'room', openError: null });
+    },
+
     async openRoom(examId, transport) {
       const exam = get().exams.find((x) => x.id === examId);
       if (!exam) return false;
-      if (get().room && get().room!.status !== 'closed') {
-        set({ openError: 'Ya hay una sala abierta. Ciérrala antes de abrir otra.' });
+      if (get().rooms.filter(isOpenRoom).length >= MAX_OPEN_ROOMS) {
+        set({ openError: `Ya tienes ${MAX_OPEN_ROOMS} salas abiertas. Cierra alguna antes de abrir otra.` });
         return false;
       }
-      if (get().room) get().leaveRoom();
       // si el código ya existe (muy raro) se intenta con otro
       for (let i = 0; i < 3; i++) {
-        const room = createRoom(roomCode(), JSON.parse(JSON.stringify(exam)), transport);
+        let code = roomCode();
+        while (get().rooms.some((r) => r.code === code)) code = roomCode();
+        const room = createRoom(code, JSON.parse(JSON.stringify(exam)), transport);
         const ok = await startHost(room);
         if (ok) return true;
         if (!/en uso/.test(get().openError ?? '')) return false;
@@ -494,83 +645,113 @@ export const useTeacher = create<TeacherState>((set, get) => {
       return false;
     },
 
-    async reopenRoom() {
-      const room = get().room;
+    async reopenRoom(key) {
+      const room = get().rooms.find((r) => roomKey(r) === key);
       if (!room) return false;
-      return startHost(room);
+      return reopenWithRetry(room, true);
     },
 
-    startExam() {
-      host?.start();
-      sync();
+    async reopenAll() {
+      for (const room of get().rooms) {
+        if (isOpenRoom(room) && !hosts.has(roomKey(room))) await reopenWithRetry(room, false);
+      }
     },
 
-    async closeExam() {
-      if (!host) return;
-      await host.close();
-      sync();
-      set({ viewingKey: null, tab: 'results' });
+    startExam(key) {
+      withHost(key, (h) => h.start());
     },
 
-    notice(text) {
-      host?.notice(text);
-      sync();
+    async closeExam(key) {
+      const h = hosts.get(key);
+      if (!h) return;
+      await h.close();
+      sync(key);
+      set({ viewingKey: key, tab: 'results' });
     },
-    addTime(minutes, studentId) {
-      host?.addTime(minutes, studentId);
-      sync();
+
+    notice(key, text) {
+      withHost(key, (h) => h.notice(text));
     },
-    forceSubmit(studentId) {
-      host?.forceSubmit(studentId);
-      sync();
+    addTime(key, minutes, studentId) {
+      withHost(key, (h) => h.addTime(minutes, studentId));
     },
-    adjust(studentId, questionId, points) {
-      const key = get().viewingKey;
-      if (host && (!key || key === roomKey(host.state))) {
-        host.adjust(studentId, questionId, points);
-        sync();
+    forceSubmit(key, studentId) {
+      withHost(key, (h) => h.forceSubmit(studentId));
+    },
+    adjust(key, studentId, questionId, points) {
+      const h = hosts.get(key);
+      if (h) {
+        // la interfaz se actualiza ya; se guarda en el dispositivo poco después (agrupando clics)
+        h.adjust(studentId, questionId, points);
+        sync(key, false);
         return;
       }
-      // examen del historial: se recalcula aquí mismo
+      // sala actual sin anfitrión (cerrada antes de recargar): se recalcula aquí mismo
+      const current = get().rooms.find((r) => roomKey(r) === key);
+      if (current) {
+        const updated = regrade(current, studentId, questionId, points);
+        if (!updated) return;
+        set((s) => ({ rooms: upsertRoom(s.rooms, updated) }));
+        persistRoom(key);
+        return;
+      }
+      // examen del historial
       const room = get().history.find((h) => roomKey(h) === key);
-      const st = room?.students[studentId];
-      if (!room || !st?.key || !st.submittedAt) return;
-      const overrides = { ...st.overrides };
-      if (points === null) delete overrides[questionId];
-      else overrides[questionId] = points;
-      const result = gradePaper(room.exam, st.key, st.answers, overrides);
-      const updated: RoomState = { ...room, students: { ...room.students, [studentId]: { ...st, overrides, result } } };
+      const updated = room && regrade(room, studentId, questionId, points);
+      if (!updated) return;
       set((s) => ({ history: s.history.map((h) => (roomKey(h) === key ? updated : h)) }));
-      persistHistory(updated);
+      persistHistorySoon(updated);
     },
-    removeStudent(studentId) {
-      host?.remove(studentId);
-      sync();
+    removeStudent(key, studentId) {
+      withHost(key, (h) => h.remove(studentId));
     },
-    setLocked(locked) {
-      host?.setLocked(locked);
-      sync();
+    setLocked(key, locked) {
+      withHost(key, (h) => h.setLocked(locked));
     },
-    reopenStudent(studentId, minutes) {
-      host?.reopen(studentId, minutes);
-      sync();
+    reopenStudent(key, studentId, minutes) {
+      withHost(key, (h) => h.reopen(studentId, minutes));
+    },
+    approveReconnect(key, requestId) {
+      withHost(key, (h) => h.approveReconnect(requestId));
+    },
+    admitAsNew(key, requestId) {
+      withHost(key, (h) => h.admitAsNew(requestId));
+    },
+    rejectReconnect(key, requestId) {
+      withHost(key, (h) => h.rejectReconnect(requestId));
     },
 
-    leaveRoom() {
-      const room = host?.state ?? get().room;
-      host?.dispose();
-      host = null;
-      clearTimeout(roomTimer);
-      roomTimer = null;
+    leaveRoom(key) {
+      const h = hosts.get(key);
+      const room = h?.state ?? get().rooms.find((r) => roomKey(r) === key);
+      h?.dispose();
+      hosts.delete(key);
+      pendingRooms.delete(key);
+      dirtyRooms.delete(key);
       if (room && room.status === 'closed') {
         const compact = compactRoom(room);
-        const kept = [compact, ...get().history.filter((h) => roomKey(h) !== roomKey(room))];
+        const kept = [compact, ...get().history.filter((x) => roomKey(x) !== key)];
         for (const old of kept.slice(MAX_HISTORY)) AsyncStorage.removeItem(historyItemKey(roomKey(old))).catch(() => {});
-        set((s) => ({ history: kept.slice(0, MAX_HISTORY), viewingKey: s.tab === 'results' ? roomKey(room) : s.viewingKey }));
+        set({ history: kept.slice(0, MAX_HISTORY) });
         persistHistory(compact);
       }
-      set({ room: null, live: false, openError: null });
-      persistRoom(null);
+      set((s) => {
+        const rooms = s.rooms.filter((r) => roomKey(r) !== key);
+        const network = { ...s.network };
+        delete network[key];
+        const next = rooms.find(isOpenRoom) ?? rooms[0];
+        return {
+          rooms,
+          network,
+          liveKeys: s.liveKeys.filter((k) => k !== key),
+          activeKey: s.activeKey === key ? (next ? roomKey(next) : null) : s.activeKey,
+          // si se archivó, los resultados siguen visibles desde el historial con la misma clave
+          viewingKey: s.viewingKey === key && !(room && room.status === 'closed') ? null : s.viewingKey,
+          openError: null,
+        };
+      });
+      AsyncStorage.removeItem(roomItemKey(key)).catch(() => {});
+      writeRooms();
     },
 
     viewHistory(viewingKey) {
@@ -589,11 +770,21 @@ export const useTeacher = create<TeacherState>((set, get) => {
   };
 });
 
-/** Sala que se muestra en «Resultados»: la del historial elegida o la actual. */
+/** Sala que se muestra en «Sala en vivo». */
+export function useActiveRoom(): RoomState | null {
+  return useTeacher((s) => (s.activeKey ? s.rooms.find((r) => roomKey(r) === s.activeKey) ?? null : null));
+}
+
+/** Sala que se muestra en «Resultados»: la elegida (actual o del historial) o la sala activa. */
 export function useResultsRoom(): RoomState | null {
-  const room = useTeacher((s) => s.room);
-  const history = useTeacher((s) => s.history);
-  const key = useTeacher((s) => s.viewingKey);
-  if (key) return history.find((h) => roomKey(h) === key) ?? null;
-  return room;
+  return useTeacher((s) => {
+    const key = s.viewingKey ?? s.activeKey;
+    if (!key) return s.rooms[0] ?? null;
+    return s.rooms.find((r) => roomKey(r) === key) ?? s.history.find((h) => roomKey(h) === key) ?? null;
+  });
+}
+
+/** Cuántas salas abiertas están recibiendo alumnos en este equipo. */
+export function useLiveRoomCount(): number {
+  return useTeacher((s) => s.rooms.filter((r) => isOpenRoom(r) && s.liveKeys.includes(roomKey(r))).length);
 }

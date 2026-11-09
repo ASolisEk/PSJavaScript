@@ -4,10 +4,12 @@
  * sus respuestas.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 import { ClientNetStatus, ExamClient, StudentIdentity } from '../core/exam/client';
 import type { ClientEventKind, HostMsg, RoomInfo, SubmitReason } from '../core/exam/protocol';
 import { randomId } from '../core/exam/random';
+import { normalizeName } from '../core/exam/room';
 import { createClientTransport, TransportSpec } from '../core/exam/transport';
 import { forgetStudent } from '../ui/examLink';
 import { practiceExam } from '../core/exam/certs';
@@ -15,6 +17,38 @@ import { resumePractice, startPractice, stopPractice } from './practice';
 import type { Activity, AnswerValue, Answers, Paper, StudentResultView } from '../core/exam/types';
 
 const KEY = 'psjs.student.v1';
+/**
+ * Identidad usada en cada sala (por código). Si el alumno sale o se borra su sesión y
+ * vuelve a entrar con el mismo nombre en este dispositivo, el maestro lo reconoce y
+ * continúa su examen sin pedir autorización.
+ */
+const IDS_KEY = 'psjs.student.ids.v1';
+const MAX_IDS = 20;
+
+type RememberedIds = Record<string, { identity: StudentIdentity; at: number }>;
+
+async function rememberedIdentity(code: string, name: string): Promise<StudentIdentity | null> {
+  try {
+    const all: RememberedIds = JSON.parse((await AsyncStorage.getItem(IDS_KEY)) ?? '{}');
+    const hit = all[code];
+    return hit && normalizeName(hit.identity.name) === normalizeName(name) ? hit.identity : null;
+  } catch {
+    return null;
+  }
+}
+
+async function rememberIdentity(code: string, identity: StudentIdentity) {
+  try {
+    const all: RememberedIds = JSON.parse((await AsyncStorage.getItem(IDS_KEY)) ?? '{}');
+    all[code] = { identity, at: Date.now() };
+    const kept = Object.entries(all)
+      .sort((a, b) => b[1].at - a[1].at)
+      .slice(0, MAX_IDS);
+    await AsyncStorage.setItem(IDS_KEY, JSON.stringify(Object.fromEntries(kept)));
+  } catch {
+    /* sin almacenamiento: solo se pierde la comodidad */
+  }
+}
 
 export type StudentPhase = 'lobby' | 'ready' | 'exam' | 'submitted' | 'rejected';
 
@@ -37,6 +71,8 @@ export interface StudentSession {
   submitting: boolean;
   notices: { at: number; text: string }[];
   rejectedReason: string | null;
+  /** Espera a que el maestro autorice continuar el examen en este dispositivo. */
+  pendingApproval?: string | null;
   roomClosed: boolean;
   /** Tamaño de letra elegido por el alumno para el examen. */
   fontSize?: number;
@@ -127,6 +163,7 @@ export const useStudent = create<StudentState>((set, get) => {
         const reopened = !m.submitted && m.started && s.phase === 'submitted';
         patch({
           room: m.room,
+          pendingApproval: null,
           roomClosed: m.room.status === 'closed',
           phase: m.submitted ? 'submitted' : m.started ? (reopened ? 'exam' : s.phase) : m.room.status === 'running' ? 'ready' : 'lobby',
           ...(reopened ? { result: null, submittedAt: null, submitReason: null, submitting: false } : {}),
@@ -168,8 +205,11 @@ export const useStudent = create<StudentState>((set, get) => {
       case 'result':
         patch({ result: m.result, submittedAt: m.submittedAt, submitReason: m.reason, phase: 'submitted', submitting: false });
         break;
+      case 'pending':
+        patch({ pendingApproval: m.reason });
+        break;
       case 'rejected':
-        patch({ phase: 'rejected', rejectedReason: m.reason });
+        patch({ phase: 'rejected', rejectedReason: m.reason, pendingApproval: null });
         client?.dispose();
         client = null;
         break;
@@ -237,13 +277,16 @@ export const useStudent = create<StudentState>((set, get) => {
     async join({ code, name, group, transport }) {
       set({ joining: true, joinError: null });
       const prev = get().session;
-      const same = prev && prev.code === code && prev.identity.name === name && prev.phase !== 'rejected';
+      // la misma sesión (aunque escriba el nombre con otras mayúsculas o acentos)
+      const same = prev && prev.code === code && normalizeName(prev.identity.name) === normalizeName(name) && prev.phase !== 'rejected';
+      // o la identidad que ya usó en esta sala desde este dispositivo
+      const known = same ? null : await rememberedIdentity(code, name);
       const session: StudentSession = same
         ? { ...prev!, transport }
         : {
             code,
             transport,
-            identity: { studentId: randomId('al'), token: randomId('tk') + randomId(), name, group },
+            identity: known ?? { studentId: randomId('al'), token: randomId('tk') + randomId(), name, group },
             phase: 'lobby',
             room: null,
             paper: null,
@@ -270,6 +313,7 @@ export const useStudent = create<StudentState>((set, get) => {
         return false;
       }
       persist();
+      if (transport.kind !== 'practice') rememberIdentity(code, session.identity);
       set({ joining: false });
       return true;
     },
@@ -376,6 +420,25 @@ export const useStudent = create<StudentState>((set, get) => {
     },
   };
 });
+
+// al volver la red o la aplicación al frente se revisa la conexión de inmediato
+// (sin esto, tras suspenderse el teléfono se esperaba al siguiente latido)
+const wake = () => client?.wake();
+if (Platform.OS === 'web') {
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('online', wake);
+    window.addEventListener('focus', wake);
+  }
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') wake();
+    });
+  }
+} else {
+  AppState.addEventListener('change', (st) => {
+    if (st === 'active') wake();
+  });
+}
 
 /** Milisegundos desde la última interacción del alumno. */
 export function idleMs(): number {

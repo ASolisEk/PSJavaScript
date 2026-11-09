@@ -163,7 +163,7 @@ function ExamCard({ e }: { e: ExamConfig }) {
           kind="primary"
           disabled={bad}
           onPress={() => {
-            useTeacher.setState({ editingId: e.id, tab: 'room', openError: null });
+            useTeacher.setState({ editingId: e.id, tab: 'room', activeKey: null, openError: null });
           }}
         />
         <Button label="Exportar" icon="download-outline" onPress={() => saveTextFile(examFileName(e), serializeExam(e), 'application/json')} />

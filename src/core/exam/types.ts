@@ -249,6 +249,8 @@ export interface QuestionResult {
   rules?: { message: string; passed: boolean }[];
   /** Puntos ajustados a mano por el maestro. */
   manual?: boolean;
+  /** Calificación automática original (para volver a ella sin calificar de nuevo). */
+  auto?: { score: number; status: QuestionStatus };
 }
 
 export interface GradeResult {

@@ -18,7 +18,7 @@ import InsertModal from './modals/InsertModal';
 import SettingsModal from './modals/SettingsModal';
 import UpdateModal from './modals/UpdateModal';
 import ExamChooserModal from './exam/ExamChooserModal';
-import { useTeacher } from '../store/teacher';
+import { isOpenRoom, roomKey, useTeacher } from '../store/teacher';
 import { checkForUpdate, isNonWeb, detectDesktopEnvironment } from '../core/updater';
 import ConsolePanel, { InputBar } from './panels/ConsolePanel';
 import DesktopPanel from './panels/DesktopPanel';
@@ -443,16 +443,20 @@ function StatusBar() {
 /** Aviso en el encabezado cuando el maestro tiene una sala abierta y está en el editor. */
 function LiveRoomPill() {
   const t = useTheme();
-  const room = useTeacher((s) => (s.live && s.room && s.room.status !== 'closed' ? s.room : null));
-  if (!room) return null;
+  // con una sala se muestra su código; con varias, cuántas hay
+  const label = useTeacher((s) => {
+    const live = s.rooms.filter((r) => isOpenRoom(r) && s.liveKeys.includes(roomKey(r)));
+    return live.length === 0 ? null : live.length === 1 ? `Sala ${live[0].code}` : `${live.length} salas`;
+  });
+  if (!label) return null;
   return (
     <Pressable
       onPress={() => useApp.getState().setAppMode('teacher')}
-      accessibilityLabel="Volver a la sala del examen"
+      accessibilityLabel="Volver a las salas de examen"
       style={({ pressed }) => [styles.repoLink, { borderColor: t.accent, backgroundColor: pressed ? t.surfaceAlt : t.accentSoft }]}
     >
       <Ionicons name="radio-outline" size={15} color={t.accentDark} />
-      <Text style={[styles.navLabel, { color: t.accentDark, marginLeft: 5 }]}>Sala {room.code}</Text>
+      <Text style={[styles.navLabel, { color: t.accentDark, marginLeft: 5 }]}>{label}</Text>
     </Pressable>
   );
 }

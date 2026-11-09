@@ -7,7 +7,7 @@ import TeacherScreen from '../components/teacher/TeacherScreen';
 import GameScreen from '../components/game/GameScreen';
 import { AppMode, useApp } from '../store/app';
 import { hasActiveExam, useStudent } from '../store/student';
-import { useTeacher } from '../store/teacher';
+import { isOpenRoom, useLiveRoomCount, useTeacher } from '../store/teacher';
 import { readExamLink, rememberedMode } from '../ui/examLink';
 
 export default function Home() {
@@ -23,7 +23,7 @@ export default function Home() {
       if (cancelled) return;
       const { setAppMode } = useApp.getState();
       const teacher = useTeacher.getState();
-      const roomOpen = !!teacher.room && teacher.room.status !== 'closed';
+      const roomOpen = teacher.rooms.some(isOpenRoom);
       // el modo de esta pestaña tiene prioridad (maestro y alumno pueden compartir navegador al probar)
       const remembered = rememberedMode();
       let next: AppMode = 'ide';
@@ -32,9 +32,9 @@ export default function Home() {
       else if (remembered === 'student') next = session ? 'student' : 'ide';
       else if (hasActiveExam(session)) next = 'student';
       else if (roomOpen) next = 'teacher';
-      // la sala del maestro sigue funcionando aunque esté en el editor
+      // las salas del maestro siguen funcionando aunque esté en el editor
       if (roomOpen && next !== 'student') {
-        teacher.reopenRoom();
+        teacher.reopenAll();
         if (next === 'teacher') teacher.setTab('room');
       }
       if (next !== 'ide') setAppMode(next);
@@ -45,7 +45,7 @@ export default function Home() {
   }, []);
 
   // el maestro no debe cerrar la pestaña mientras su sala recibe exámenes (aunque esté en el editor)
-  const roomLive = useTeacher((s) => s.live && !!s.room && s.room.status !== 'closed');
+  const roomLive = useLiveRoomCount() > 0;
   useEffect(() => {
     if (Platform.OS !== 'web' || !roomLive) return;
     const h = (e: BeforeUnloadEvent) => {

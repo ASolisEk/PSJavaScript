@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createExam, sampleExam } from '../src/core/exam/config';
 import { gradePaper } from '../src/core/exam/grading';
 import { buildPaper } from '../src/core/exam/paper';
-import { answerRows, answersCsv, answerText, correctText, roomReportHtml } from '../src/core/exam/report';
+import { answerRows, answersCsv, answersTxt, answerText, correctText, roomReportHtml } from '../src/core/exam/report';
 import { createRoom, RoomState, StudentRecord } from '../src/core/exam/room';
 import type { Answers, ExamConfig, Question } from '../src/core/exam/types';
 
@@ -128,4 +128,45 @@ test('reporte: CSV de respuestas y HTML imprimible', () => {
   // reporte de un solo alumno
   const one = roomReportHtml(room, ['id-Ana']);
   assert.ok(one.includes('Ana') && !one.includes('Beto'));
+});
+
+test('reporte: preguntas y respuestas en texto plano (TXT)', () => {
+  const room = createRoom('ABC234', exam(), { kind: 'memory' } as RoomState['transport']);
+  const ana = student(room, 'Ana', perfect);
+  student(room, 'Beto', () => undefined, false);
+  const txt = answersTxt(room);
+  // se abre bien en el Bloc de notas: BOM y saltos de línea de Windows
+  assert.ok(txt.startsWith('\ufeff'));
+  assert.ok(!/[^\r]\n/.test(txt));
+  const text = txt.slice(1).replace(/\r\n/g, '\n');
+  assert.ok(text.includes(`EXAMEN: ${room.exam.title}`));
+  assert.ok(text.includes('Sala ABC234'));
+  assert.ok(text.includes('RESUMEN'));
+  assert.ok(text.includes('ALUMNO 1 DE 2: Ana · Grupo 3A'));
+  assert.ok(text.includes('ALUMNO 2 DE 2: Beto'));
+  assert.ok(text.includes('Sin calificar (no ha entregado)'));
+  // aún no se cierra la sala: se avisa que es provisional
+  assert.ok(text.includes('resultados son provisionales'));
+
+  // cada pregunta de Ana con su enunciado, su respuesta y la correcta
+  const anaPart = text.slice(text.indexOf('ALUMNO 1 DE 2'), text.indexOf('ALUMNO 2 DE 2'));
+  assert.equal((anaPart.match(/^PREGUNTA \d+ · /gm) ?? []).length, 9);
+  const short = room.exam.questions.find((q) => q.type === 'short')!;
+  assert.ok(anaPart.includes('Respuesta del alumno:') && anaPart.includes('Respuesta correcta:'));
+  assert.ok(anaPart.includes(`    ${ana.answers[short.id]}`));
+  // opción múltiple: marca lo que eligió y la correcta
+  const single = room.exam.questions.find((q) => q.type === 'single')!;
+  const right = single.options.find((o) => o.correct)!;
+  assert.ok(anaPart.includes(`[x]`) && anaPart.includes('(correcta, eligió)'));
+  assert.ok(anaPart.includes(right.text.replace(/`/g, '')) || anaPart.includes(right.text));
+  // programación: código del alumno, casos y solución de referencia
+  assert.ok(anaPart.includes('Código del alumno:'));
+  assert.ok(anaPart.includes('Casos de prueba y requisitos'));
+  assert.ok(anaPart.includes('Solución de referencia:'));
+  // ordenar: el orden del alumno y el correcto, numerados
+  assert.ok(anaPart.includes('Orden del alumno:') && anaPart.includes('Orden correcto:'));
+
+  // un solo alumno
+  const one = answersTxt(room, ['id-Ana']);
+  assert.ok(one.includes('ALUMNO 1 DE 1: Ana') && !one.includes('Beto'));
 });

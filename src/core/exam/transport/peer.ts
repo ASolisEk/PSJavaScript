@@ -83,18 +83,45 @@ export class PeerHost implements HostTransport {
       });
     });
     peer.on('connection', (conn) => this.accept(conn));
+    // sin el servidor de enlace, los alumnos que se desconecten no pueden volver a entrar:
+    // se reintenta hasta recuperarlo (cada vez con más espera, sin pasar de 15 s)
     peer.on('disconnected', () => {
       if (this.closed || peer.destroyed) return;
-      this.onStatus?.(false, 'Se perdió la conexión con el servidor de enlace. Los alumnos ya conectados siguen en la sala; reintentando…');
-      setTimeout(() => {
-        if (!this.closed && !peer.destroyed && peer.disconnected) peer.reconnect();
-      }, 2000);
+      this.onStatus?.(false, 'Se perdió la conexión con el servidor de enlace. Los alumnos ya conectados siguen en la sala; los que se desconecten podrán volver cuando se recupere. Reintentando…');
+      this.scheduleReconnect();
     });
-    peer.on('open', () => this.onStatus?.(true));
+    peer.on('open', () => {
+      this.failures = 0;
+      this.onStatus?.(true);
+    });
     peer.on('error', (err) => {
       if (err.type === 'peer-unavailable') return;
       this.onStatus?.(false, describe(err));
     });
+    // por si el aviso de desconexión no llega (equipo suspendido, red que cambió)
+    this.watchdog = setInterval(() => {
+      if (!this.closed && !peer.destroyed && peer.disconnected && !this.retry) this.scheduleReconnect();
+    }, 10_000);
+  }
+
+  private failures = 0;
+  private retry: any = null;
+  private watchdog: any = null;
+
+  private scheduleReconnect() {
+    if (this.retry || this.closed) return;
+    const wait = Math.min(15_000, 1000 * 2 ** Math.min(this.failures, 4));
+    this.failures++;
+    this.retry = setTimeout(() => {
+      this.retry = null;
+      const peer = this.peer;
+      if (this.closed || !peer || peer.destroyed || !peer.disconnected) return;
+      try {
+        peer.reconnect();
+      } catch {
+        this.scheduleReconnect();
+      }
+    }, wait);
   }
 
   private accept(conn: DataConnection) {
@@ -117,6 +144,8 @@ export class PeerHost implements HostTransport {
 
   close() {
     this.closed = true;
+    clearTimeout(this.retry);
+    clearInterval(this.watchdog);
     for (const c of this.conns.values()) c.close();
     this.conns.clear();
     this.peer?.destroy();

@@ -5,7 +5,7 @@
  */
 import { questionTypeInfo } from './config';
 import { parseRichText, plainText } from './richText';
-import type { RoomState, StudentRecord } from './room';
+import { answeredCount, RoomState, StudentRecord } from './room';
 import { summarizeRoom } from './summary';
 import type { AnswerValue, PaperKey, Question, QuestionResult, QuestionStatus, TestResult } from './types';
 
@@ -149,9 +149,141 @@ export function answersCsv(room: RoomState): string {
   return '﻿' + lines.join('\r\n');
 }
 
+// ───────────────────────────── reporte en texto (TXT) ─────────────────────────────
+
+const RULE = '═'.repeat(72);
+const THIN = '─'.repeat(72);
+/** Sangría para bloques de varias líneas. */
+const indent = (text: string, pad = '    ') =>
+  text
+    .replace(/\s+$/, '')
+    .split('\n')
+    .map((l) => (l.trim() ? pad + l : ''))
+    .join('\n');
+
+/** Enunciado en texto: párrafos tal cual y bloques de código con sangría. */
+function promptTxt(src: string): string {
+  return parseRichText(src)
+    .map((b) => (b.kind === 'code' ? indent(b.code, '      ') : '  ' + b.parts.map((p) => (p.kind === 'code' ? `\`${p.text}\`` : p.text)).join('')))
+    .join('\n');
+}
+
+/** Opciones con lo que eligió el alumno ([x]) y las correctas (✓). */
+function optionsTxt(q: Extract<Question, { type: 'single' | 'multiple' }>, a: AnswerValue | undefined): string {
+  const chosen = new Set(Array.isArray(a) ? a : a ? [String(a)] : []);
+  return q.options
+    .filter((o) => o.text.trim())
+    .map((o, i) => {
+      const mine = chosen.has(o.id);
+      const tags = [o.correct ? 'correcta' : '', mine ? 'eligió' : ''].filter(Boolean).join(', ');
+      return `    ${mine ? '[x]' : '[ ]'} ${String.fromCharCode(97 + i)}) ${plainText(o.text)}${o.correct ? '  ✓' : ''}${tags ? `  (${tags})` : ''}`;
+    })
+    .join('\n');
+}
+
+function testsTxt(r?: QuestionResult): string {
+  const out: string[] = [];
+  for (const x of r?.tests ?? []) {
+    out.push(`    ${x.passed ? '✓' : '✗'} ${x.name}${x.hidden ? ' (oculto)' : ''}`);
+    const data = (x.inputs ?? []).join(', ') || x.call || '';
+    if (data) out.push(`        Datos: ${data}`);
+    if (!x.passed) {
+      if (x.expected !== undefined) out.push(`        Esperado: ${x.expected.replace(/\n/g, ' ⏎ ')}`);
+      out.push(`        Obtuvo:   ${(x.error ?? x.actual ?? '').replace(/\n/g, ' ⏎ ') || '(sin salida)'}`);
+    }
+  }
+  for (const x of r?.rules ?? []) out.push(`    ${x.passed ? '✓' : '✗'} Requisito: ${x.message}`);
+  return out.join('\n');
+}
+
+function questionTxt(row: AnswerRow, s: StudentRecord): string {
+  const q = row.question;
+  const res = row.result;
+  const points = res ? `${res.score}/${res.max} pts${res.manual ? ' (ajustada por el maestro)' : ''}` : `${q.points} pts`;
+  const lines = [`PREGUNTA ${row.position} · ${questionTypeInfo(q.type).label}${q.topic ? ` · Tema: ${q.topic}` : ''} · ${points} · ${row.status.toUpperCase()}`, '', promptTxt(q.prompt)];
+  if (q.code?.trim()) lines.push('', '  Código:', indent(q.code, '      '));
+  if (q.type === 'output' && q.inputs.length) lines.push('', `  Datos para prompt(): ${q.inputs.join(', ')}`);
+  lines.push('');
+  if (q.type === 'single' || q.type === 'multiple') {
+    lines.push('  Opciones ([x] = eligió el alumno, ✓ = correcta):', optionsTxt(q, s.answers[q.id]));
+    if (!row.answer) lines.push('  (El alumno no eligió ninguna opción)');
+  } else if (q.type === 'order') {
+    const mine = orderedLines(q, s.answers[q.id], s.key);
+    lines.push('  Orden del alumno:', mine.length ? mine.map((l, i) => `    ${i + 1}. ${l}`).join('\n') : '    (sin responder)');
+    lines.push('', '  Orden correcto:', q.lines.map((l, i) => `    ${i + 1}. ${l}`).join('\n'));
+  } else if (q.type === 'code') {
+    const untouched = !row.answer.trim() || row.answer.trim() === q.starter.trim();
+    lines.push(`  Código del alumno${untouched && row.answer.trim() ? ' (sin cambios: es el código inicial)' : ''}:`, row.answer.trim() ? indent(row.answer, '      ') : '    (sin responder)');
+    const tests = testsTxt(res);
+    if (tests) lines.push('', `  Casos de prueba y requisitos${testsSummary(res) ? ` (${testsSummary(res).split('\n')[0]})` : ''}:`, tests);
+    lines.push('', '  Solución de referencia:', indent(q.solution, '      '));
+  } else {
+    const block = (text: string) => (text.includes('\n') || q.type === 'output' ? indent(text, '      ') : `    ${text}`);
+    lines.push('  Respuesta del alumno:', row.answer ? block(row.answer) : '    (sin responder)');
+    lines.push('  Respuesta correcta:', row.correct ? block(row.correct) : '    —');
+  }
+  const feedback = res ? plainText(res.feedback).trim() : '';
+  if (feedback) lines.push('', feedback.includes('\n') ? `  Retroalimentación:\n${indent(feedback)}` : `  Retroalimentación: ${feedback}`);
+  return lines.join('\n');
+}
+
+function studentTxt(room: RoomState, s: StudentRecord, rows: AnswerRow[], n: number, total: number): string {
+  const r = s.result;
+  const facts = [
+    `Calificación: ${r ? `${r.grade}/${r.scale} (${r.percent} %) · ${r.passed ? 'APROBADO' : 'NO APROBADO'}` : 'Sin calificar (no ha entregado)'}`,
+    `Puntos: ${r ? `${r.score}/${r.max}` : '—'} · Respondidas: ${answeredCount(s, room)}/${rows.length}`,
+    `Comenzó: ${s.startedAt ? fmtTime(s.startedAt) : '—'} · Entregó: ${s.submittedAt ? fmtTime(s.submittedAt) : '—'} · Tardó: ${s.startedAt && s.submittedAt ? fmtMin(s.submittedAt - s.startedAt) : '—'}`,
+    `Salidas de la ventana: ${s.focusLost ? `${s.focusLost} (${fmtMin(s.awayMs)} fuera)` : 0} · Intentos de pegar: ${s.pasteBlocked} · Incidentes de bloqueo: ${s.lockdown ?? 0}`,
+    `Ejecuciones: ${s.runs} · Pruebas con ejemplos: ${s.tests}`,
+  ];
+  const head = [RULE, `ALUMNO ${n} DE ${total}: ${s.name}${s.group ? ` · Grupo ${s.group}` : ''}`, ...facts, RULE].join('\n');
+  const body = rows.length ? rows.map((x) => questionTxt(x, s)).join(`\n\n${THIN}\n\n`) : '(Aún no comienza el examen: no tiene preguntas asignadas.)';
+  return `${head}\n\n${body}`;
+}
+
+/**
+ * Preguntas y respuestas en texto plano (se abre en cualquier editor o el Bloc de notas):
+ * datos de la sala, resumen por alumno y, de cada alumno, cada pregunta que le tocó con el
+ * enunciado, su respuesta, la respuesta correcta, los puntos y los casos de prueba.
+ */
+export function answersTxt(room: RoomState, studentIds?: string[]): string {
+  const sum = summarizeRoom(room);
+  const students = Object.values(room.students)
+    .filter((s) => !studentIds || studentIds.includes(s.id))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  const rows = answerRows(room, students);
+  const date = new Date(room.openedAt);
+  const header = [
+    RULE,
+    `EXAMEN: ${room.exam.title}`,
+    `Sala ${room.code} · ${date.toLocaleDateString('es-MX')} ${fmtTime(room.openedAt)} · escala ${room.exam.scale}, aprueba con ${room.exam.passPercent} %`,
+    `Alumnos: ${sum.students} (${sum.submitted} entregaron) · Promedio: ${sum.average === null ? '—' : `${sum.average}/${sum.scale}`} · Aprobados: ${sum.passRate === null ? '—' : `${sum.passRate} %`} · Tiempo promedio: ${sum.avgMinutes === null ? '—' : `${sum.avgMinutes} min`}`,
+    room.status !== 'closed' ? 'AVISO: el examen seguía en curso al exportar; los resultados son provisionales.' : '',
+    `Exportado: ${new Date().toLocaleString('es-MX')}`,
+    RULE,
+  ].filter(Boolean);
+  const pad = (v: unknown, w: number) => {
+    const s = String(v ?? '—');
+    return s.length >= w ? s.slice(0, w - 1) + '…' : s + ' '.repeat(w - s.length);
+  };
+  const summary = students.length
+    ? [
+        'RESUMEN',
+        `  ${pad('#', 4)}${pad('Alumno', 30)}${pad('Grupo', 10)}${pad('Calif.', 9)}${pad('%', 6)}${pad('Respondidas', 13)}Tiempo`,
+        ...sum.rows
+          .filter((x) => students.some((s) => s.id === x.id))
+          .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+          .map((x, i) => `  ${pad(i + 1, 4)}${pad(x.name, 30)}${pad(x.group || '—', 10)}${pad(x.grade ?? '—', 9)}${pad(x.percent ?? '—', 6)}${pad(`${x.answered}/${x.questions}`, 13)}${x.minutes === null ? '—' : `${x.minutes} min`}`),
+      ].join('\n')
+    : 'Aún no hay alumnos en esta sala.';
+  const body = students.map((s, i) => studentTxt(room, s, rows.filter((x) => x.studentId === s.id), i + 1, students.length));
+  // BOM y saltos de línea de Windows: se ven bien también en el Bloc de notas
+  return '﻿' + [header.join('\n'), summary, ...body].join('\n\n\n').replace(/\n/g, '\r\n') + '\r\n';
+}
+
 // ───────────────────────────── reporte HTML ─────────────────────────────
 
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const esc =(s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Enunciado con formato (`código`, **negritas**, bloques ```) en HTML. */
 function richHtml(src: string): string {

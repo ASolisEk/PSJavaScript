@@ -1,13 +1,16 @@
-/** Sala en vivo: abrir la sala, compartir el código y seguir a cada alumno. */
+/**
+ * Salas en vivo: abrir salas (varias a la vez), compartir el código y seguir a
+ * cada alumno. Arriba se elige qué sala se ve.
+ */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '../../ui/text';
 import { hasExamErrors, questionsPerStudent, questionTypeInfo } from '../../core/exam/config';
-import { ACTIVITY_LABEL, answeredCount, RoomState, StudentRecord, studentPhase } from '../../core/exam/room';
+import { ACTIVITY_LABEL, answeredCount, ReconnectRequest, RoomState, StudentRecord, studentPhase } from '../../core/exam/room';
 import { defaultRelayUrl, defaultTransport, transportLabel, transportOptions, TransportSpec } from '../../core/exam/transport';
 import type { Activity } from '../../core/exam/types';
-import { useTeacher } from '../../store/teacher';
+import { isOpenRoom, MAX_OPEN_ROOMS, roomKey, useActiveRoom, useTeacher, workingCount } from '../../store/teacher';
 import { buildExamLink } from '../../ui/examLink';
 import { confirmDialog, copyText } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, SCRIM, useTheme } from '../../ui/theme';
@@ -28,11 +31,84 @@ const ACTIVITY_ICON: Record<Activity, IconName> = {
 };
 
 export default function RoomTab() {
-  const room = useTeacher((s) => s.room);
-  const live = useTeacher((s) => s.live);
-  if (!room) return <OpenRoom />;
-  if (!live && room.status !== 'closed') return <ResumeRoom room={room} />;
-  return <LiveRoom room={room} />;
+  const rooms = useTeacher((s) => s.rooms);
+  const liveKeys = useTeacher((s) => s.liveKeys);
+  const room = useActiveRoom();
+  const key = room ? roomKey(room) : null;
+  const live = !!key && liveKeys.includes(key);
+  return (
+    <View style={{ flex: 1 }}>
+      {rooms.length ? <RoomSwitcher rooms={rooms} activeKey={key} liveKeys={liveKeys} /> : null}
+      <View style={{ flex: 1 }}>{!room ? <OpenRoom /> : !live && room.status !== 'closed' ? <ResumeRoom room={room} /> : <LiveRoom key={key!} room={room} />}</View>
+    </View>
+  );
+}
+
+/** Pestañas con las salas actuales (cada una con su estado) y el botón para abrir otra. */
+function RoomSwitcher({ rooms, activeKey, liveKeys }: { rooms: RoomState[]; activeKey: string | null; liveKeys: string[] }) {
+  const t = useTheme();
+  const openCount = rooms.filter(isOpenRoom).length;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.switcher, { borderBottomColor: t.border, backgroundColor: t.surfaceAlt }]} contentContainerStyle={styles.switcherRow}>
+      {rooms.map((r) => {
+        const k = roomKey(r);
+        const on = k === activeKey;
+        const live = liveKeys.includes(k);
+        const status = !isOpenRoom(r)
+          ? { color: t.textMuted, label: 'Cerrada' }
+          : !live
+            ? { color: t.warning, label: 'Sin reabrir' }
+            : r.status === 'running'
+              ? { color: t.success, label: 'En curso' }
+              : { color: t.info, label: 'En espera' };
+        const n = Object.keys(r.students).length;
+        const w = workingCount(r);
+        const asks = r.requests?.length ?? 0;
+        return (
+          <Pressable
+            key={k}
+            onPress={() => useTeacher.getState().selectRoom(k)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={`Sala ${r.code}: ${r.exam.title}, ${status.label}, ${n} alumnos`}
+            style={({ pressed }) => [styles.roomChip, { borderColor: on ? t.accent : t.border, backgroundColor: on || pressed ? t.surface : 'transparent' }]}
+          >
+            <View style={[styles.liveDot, { backgroundColor: status.color, marginRight: 8 }]} />
+            <View style={{ maxWidth: 210 }}>
+              <Text style={{ color: t.text, fontWeight: '800', fontSize: 13 }} numberOfLines={1}>
+                {r.exam.title}
+              </Text>
+              <Text style={{ color: t.textMuted, fontSize: 11 }} numberOfLines={1}>
+                <Text style={{ fontFamily: MONO, fontWeight: '800', color: on ? t.accentDark : t.text }}>{r.code}</Text> · {status.label} · {n} alumno{n === 1 ? '' : 's'}
+                {w ? ` · ${w} resolviendo` : ''}
+              </Text>
+            </View>
+            {asks ? (
+              <View style={[styles.askBadge, { backgroundColor: t.warning }]} accessibilityLabel={`${asks} solicitud(es) de reconexión`}>
+                <Ionicons name="hand-left" size={11} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900', marginLeft: 3 }}>{asks}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        );
+      })}
+      <Pressable
+        onPress={() => useTeacher.getState().selectRoom(null)}
+        disabled={openCount >= MAX_OPEN_ROOMS}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: activeKey === null }}
+        accessibilityLabel="Abrir otra sala"
+        style={({ pressed }) => [
+          styles.roomChip,
+          styles.newRoom,
+          { borderColor: activeKey === null ? t.primary : t.borderStrong, backgroundColor: activeKey === null || pressed ? t.surface : 'transparent', opacity: openCount >= MAX_OPEN_ROOMS ? 0.5 : 1 },
+        ]}
+      >
+        <Ionicons name="add-circle-outline" size={18} color={t.primary} />
+        <Text style={{ color: t.primary, fontWeight: '800', fontSize: 13, marginLeft: 6 }}>Nueva sala</Text>
+      </Pressable>
+    </ScrollView>
+  );
 }
 
 // ───────────────────────────── abrir sala ─────────────────────────────
@@ -43,6 +119,8 @@ function OpenRoom() {
   const editingId = useTeacher((s) => s.editingId);
   const opening = useTeacher((s) => s.opening);
   const error = useTeacher((s) => s.openError);
+  const rooms = useTeacher((s) => s.rooms);
+  const openRooms = rooms.filter(isOpenRoom);
   const [examId, setExamId] = useState<string | null>(editingId ?? exams[0]?.id ?? null);
   const [spec, setSpec] = useState<TransportSpec>(() => defaultTransport());
   const options = transportOptions();
@@ -54,18 +132,26 @@ function OpenRoom() {
       <View style={{ width: '100%', maxWidth: 760 }}>
         <Heading style={{ marginBottom: 4 }}>Aplicar un examen</Heading>
         <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 16 }}>Abre una sala, comparte el código con tus alumnos y sigue su avance en tiempo real.</Text>
+        {openRooms.length ? (
+          <Banner
+            icon="layers-outline"
+            color={t.info}
+            text={`Tienes ${openRooms.length} sala${openRooms.length === 1 ? '' : 's'} abierta${openRooms.length === 1 ? '' : 's'} y seguirá${openRooms.length === 1 ? '' : 'n'} funcionando. La nueva sala tendrá su propio código: puedes aplicar otro examen (o el mismo a otro grupo) al mismo tiempo.`}
+          />
+        ) : null}
 
         <Card>
           <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 10 }}>1. Elige el examen</Text>
           {exams.length === 0 ? <Text style={{ color: t.textMuted }}>Aún no tienes exámenes. Crea uno en «Mis exámenes».</Text> : null}
           {exams.map((e) => {
             const bad = hasExamErrors(e);
+            const inUse = openRooms.filter((r) => r.exam.id === e.id).map((r) => r.code);
             return (
               <BigChoice
                 key={e.id}
                 icon="document-text-outline"
                 title={e.title}
-                description={`${questionsPerStudent(e)} preguntas por alumno · ${e.durationMin ? `${e.durationMin} min` : 'sin límite'}${bad ? ' · tiene errores por corregir' : ''}`}
+                description={`${questionsPerStudent(e)} preguntas por alumno · ${e.durationMin ? `${e.durationMin} min` : 'sin límite'}${bad ? ' · tiene errores por corregir' : ''}${inUse.length ? ` · ya se aplica en la sala ${inUse.join(', ')}` : ''}`}
                 selected={e.id === examId}
                 color={bad ? t.danger : t.primary}
                 onPress={() => setExamId(e.id)}
@@ -97,7 +183,7 @@ function OpenRoom() {
         {error ? <Banner icon="alert-circle" color={t.danger} text={error} /> : null}
         {exam && invalid ? <Banner icon="alert-circle" color={t.danger} text="Este examen tiene errores. Corrígelos en el editor antes de aplicarlo." action={{ label: 'Editar', onPress: () => useTeacher.getState().edit(exam.id) }} /> : null}
         <Button
-          label={opening ? 'Abriendo sala…' : 'Abrir sala'}
+          label={opening ? 'Abriendo sala…' : openRooms.length ? 'Abrir otra sala' : 'Abrir sala'}
           icon="radio-outline"
           kind="primary"
           disabled={!exam || invalid || opening || (spec.kind === 'lan' && !spec.url?.trim())}
@@ -118,19 +204,19 @@ function ResumeRoom({ room }: { room: RoomState }) {
     <ScrollView contentContainerStyle={{ padding: 16, alignItems: 'center' }}>
       <View style={{ width: '100%', maxWidth: 640 }}>
         <Card accent={t.warning}>
-          <Text style={{ color: t.text, fontSize: 17, fontWeight: '800', marginBottom: 6 }}>Hay una sala sin cerrar</Text>
+          <Text style={{ color: t.text, fontSize: 17, fontWeight: '800', marginBottom: 6 }}>Esta sala quedó sin cerrar</Text>
           <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 12 }}>
             «{room.exam.title}» · código <Text style={{ fontFamily: MONO, fontWeight: '800', color: t.text }}>{room.code}</Text> · {n} alumno(s). Ábrela de nuevo para que los alumnos se reconecten con su avance.
           </Text>
           {error ? <Banner icon="alert-circle" color={t.danger} text={error} /> : null}
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            <Button label={opening ? 'Abriendo…' : 'Reabrir sala'} icon="refresh" kind="primary" disabled={opening} onPress={() => useTeacher.getState().reopenRoom()} />
+            <Button label={opening ? 'Abriendo…' : 'Reabrir sala'} icon="refresh" kind="primary" disabled={opening} onPress={() => useTeacher.getState().reopenRoom(roomKey(room))} />
             <Button
               label="Descartar sala"
               icon="trash-outline"
               kind="danger"
               onPress={async () => {
-                if (await confirmDialog('¿Descartar la sala?', 'Se perderán el avance y las calificaciones de esta sala.', 'Descartar')) useTeacher.getState().leaveRoom();
+                if (await confirmDialog('¿Descartar la sala?', 'Se perderán el avance y las calificaciones de esta sala.', 'Descartar')) useTeacher.getState().leaveRoom(roomKey(room));
               }}
             />
           </View>
@@ -148,7 +234,8 @@ type Sort = 'name' | 'progress' | 'grade';
 function LiveRoom({ room }: { room: RoomState }) {
   const t = useTheme();
   const { width } = useWindowDimensions();
-  const network = useTeacher((s) => s.network);
+  const key = roomKey(room);
+  const network = useTeacher((s) => s.network[key]) ?? { online: true };
   const [filter, setFilter] = useState<Filter>('all');
   const [sort, setSort] = useState<Sort>('name');
   const [detail, setDetail] = useState<string | null>(null);
@@ -208,7 +295,7 @@ function LiveRoom({ room }: { room: RoomState }) {
     const ok = await confirmDialog('¿Cerrar el examen?', pending ? `${pending} alumno(s) aún no envían: sus exámenes se recogerán y calificarán con lo que lleven.` : 'Nadie más podrá entrar ni enviar respuestas.', 'Cerrar examen');
     if (!ok) return;
     setClosing(true);
-    await useTeacher.getState().closeExam();
+    await useTeacher.getState().closeExam(key);
     setClosing(false);
   };
 
@@ -216,6 +303,7 @@ function LiveRoom({ room }: { room: RoomState }) {
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ padding: 14 }}>
         {!network.online ? <Banner icon="cloud-offline-outline" color={t.warning} text={network.detail ?? 'Sin conexión con la red. Reintentando…'} /> : null}
+        {room.requests?.length ? <ReconnectRequests roomId={key} room={room} now={now} /> : null}
 
         <View style={[styles.codeRow, { flexDirection: width >= 760 ? 'row' : 'column' }]}>
           <Card style={{ flex: 1.1, marginRight: width >= 760 ? 12 : 0 }} accent={status.color}>
@@ -262,13 +350,13 @@ function LiveRoom({ room }: { room: RoomState }) {
                 <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 10 }}>
                   {students.length ? `${students.length} alumno(s) en la sala.` : 'Esperando a que entren los alumnos…'} Cuando estén listos, inicia el examen; cada uno lo comienza al presionar «Comenzar».
                 </Text>
-                <Button label="Iniciar examen" icon="play" kind="primary" onPress={() => useTeacher.getState().startExam()} style={{ height: 48, marginBottom: 8 }} />
+                <Button label="Iniciar examen" icon="play" kind="primary" onPress={() => useTeacher.getState().startExam(key)} style={{ height: 48, marginBottom: 8 }} />
               </>
             ) : null}
             {room.status === 'running' ? (
               <View style={{ gap: 8 }}>
                 <Button label="Enviar aviso a todos" icon="megaphone-outline" onPress={() => setNoticeOpen(true)} />
-                {room.exam.durationMin ? <Button label="Dar 5 minutos más a todos" icon="time-outline" onPress={() => useTeacher.getState().addTime(5)} /> : null}
+                {room.exam.durationMin ? <Button label="Dar 5 minutos más a todos" icon="time-outline" onPress={() => useTeacher.getState().addTime(key, 5)} /> : null}
                 <Button label={closing ? 'Recogiendo exámenes…' : 'Cerrar examen'} icon="lock-closed-outline" kind="danger" onPress={close} disabled={closing} />
               </View>
             ) : null}
@@ -280,18 +368,23 @@ function LiveRoom({ room }: { room: RoomState }) {
                   label="Aceptar alumnos nuevos"
                   description={room.locked ? 'Ingreso cerrado: solo pueden reconectarse quienes ya entraron.' : 'Cualquiera con el código puede entrar. Ciérralo cuando estén todos.'}
                   value={!room.locked}
-                  onChange={(open) => useTeacher.getState().setLocked(!open)}
+                  onChange={(open) => useTeacher.getState().setLocked(key, !open)}
                 />
               </View>
             ) : null}
             {room.status === 'closed' ? (
               <View style={{ gap: 8 }}>
-                <Text style={{ color: t.textMuted, fontSize: 13 }}>El examen terminó. Revisa el concentrado de calificaciones o abre una sala nueva.</Text>
-                <Button label="Ver concentrado" icon="bar-chart-outline" kind="primary" onPress={() => useTeacher.setState({ tab: 'results', viewingKey: null })} />
-                <Button label="Terminar y abrir otra sala" icon="add-circle-outline" onPress={() => useTeacher.getState().leaveRoom()} />
+                <Text style={{ color: t.textMuted, fontSize: 13 }}>
+                  El examen terminó. Puedes seguir revisando y ajustando calificaciones cuando quieras (también después de archivar la sala, desde «Resultados»).
+                </Text>
+                {students.some((x) => x.submittedAt) ? (
+                  <Button label="Revisar y calificar" icon="create-outline" kind="primary" onPress={() => setDetail((shown.find((x) => x.submittedAt) ?? students.find((x) => x.submittedAt))!.id)} />
+                ) : null}
+                <Button label="Ver concentrado" icon="bar-chart-outline" onPress={() => useTeacher.getState().viewHistory(key)} />
+                <Button label="Archivar sala" icon="archive-outline" onPress={() => useTeacher.getState().leaveRoom(key)} />
               </View>
             ) : null}
-            {room.status !== 'closed' ? <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 10 }}>Mantén esta ventana abierta: tu equipo es el que recibe y califica los exámenes.</Text> : null}
+            {room.status !== 'closed' ? <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 10 }}>Mantén esta ventana abierta: tu equipo es el que recibe y califica los exámenes (de todas las salas abiertas).</Text> : null}
           </Card>
         </View>
 
@@ -338,20 +431,20 @@ function LiveRoom({ room }: { room: RoomState }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 }}>
             {shown.map((s) => (
               <View key={s.id} style={{ width: `${100 / cols}%`, paddingHorizontal: 5 }}>
-                <StudentCard s={s} room={room} now={now} duplicate={isDuplicate(s)} onPress={() => setDetail(s.id)} />
+                <StudentCard s={s} room={room} now={now} duplicate={isDuplicate(s)} asking={!!room.requests?.some((r) => r.targetId === s.id)} onPress={() => setDetail(s.id)} />
               </View>
             ))}
           </View>
         )}
       </ScrollView>
-      {detail && room.students[detail] ? <StudentDetailModal room={room} studentId={detail} live onClose={() => setDetail(null)} /> : null}
-      {noticeOpen ? <NoticeDialog onClose={() => setNoticeOpen(false)} /> : null}
+      {detail && room.students[detail] ? <StudentDetailModal room={room} studentId={detail} live onClose={() => setDetail(null)} order={shown.map((x) => x.id)} onNavigate={setDetail} /> : null}
+      {noticeOpen ? <NoticeDialog roomId={key} code={room.code} onClose={() => setNoticeOpen(false)} /> : null}
       {projector ? <ProjectorView room={room} link={link} stats={stats} onClose={() => setProjector(false)} /> : null}
     </View>
   );
 }
 
-function StudentCard({ s, room, now, duplicate, onPress }: { s: StudentRecord; room: RoomState; now: number; duplicate: boolean; onPress(): void }) {
+function StudentCard({ s, room, now, duplicate, asking, onPress }: { s: StudentRecord; room: RoomState; now: number; duplicate: boolean; asking: boolean; onPress(): void }) {
   const t = useTheme();
   const phase = studentPhase(s, room);
   const pi = PHASE_INFO[phase];
@@ -416,8 +509,9 @@ function StudentCard({ s, room, now, duplicate, onPress }: { s: StudentRecord; r
         </View>
       ) : null}
 
-      {s.focusLost || s.pasteBlocked || s.lockdown || duplicate ? (
+      {s.focusLost || s.pasteBlocked || s.lockdown || duplicate || asking ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {asking ? <Pill icon="hand-left-outline" color={t.warning} text="Pide continuar en otro dispositivo" /> : null}
           {duplicate ? <Pill icon="people-outline" color={t.danger} text="Nombre repetido" /> : null}
           {s.focusLost ? <Pill icon="eye-off-outline" color={t.warning} text={`Salió ${s.focusLost}× · ${formatSince(s.awayMs)}`} /> : null}
           {s.pasteBlocked ? <Pill icon="clipboard-outline" color={t.danger} text={`Pegar ${s.pasteBlocked}×`} /> : null}
@@ -425,6 +519,53 @@ function StudentCard({ s, room, now, duplicate, onPress }: { s: StudentRecord; r
         </View>
       ) : null}
     </Pressable>
+  );
+}
+
+/**
+ * Alumnos que volvieron desde otro dispositivo (o sin su sesión) y piden seguir su examen.
+ * El maestro confirma que es la misma persona, la admite como alumno nuevo o la rechaza.
+ */
+function ReconnectRequests({ roomId, room, now }: { roomId: string; room: RoomState; now: number }) {
+  const t = useTheme();
+  const st = useTeacher.getState();
+  return (
+    <Card accent={t.warning}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+        <Ionicons name="hand-left-outline" size={18} color={t.warning} />
+        <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginLeft: 8, flex: 1 }}>
+          {room.requests!.length === 1 ? 'Un alumno quiere continuar su examen' : `${room.requests!.length} alumnos quieren continuar su examen`}
+        </Text>
+      </View>
+      <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 8, lineHeight: 17 }}>
+        Entraron con el nombre de alguien que ya había comenzado, pero desde otro dispositivo o sin su sesión. Si es la misma persona, autorízalo: seguirá con sus respuestas y su tiempo, y el otro dispositivo se desconectará.
+      </Text>
+      {room.requests!.map((r: ReconnectRequest) => {
+        const target = room.students[r.targetId];
+        const total = target?.key?.questionIds.length ?? 0;
+        const where = !target
+          ? 'Su registro ya no está en la sala'
+          : `${target.submittedAt ? 'Ya entregó' : `${answeredCount(target, room)}/${total} respondidas`} · ${target.connected ? 'el otro dispositivo sigue conectado' : `desconectado hace ${formatSince(now - target.lastSeen)}`}`;
+        return (
+          <View key={r.id} style={[styles.request, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+            <View style={{ flex: 1, minWidth: 200 }}>
+              <Text style={{ color: t.text, fontWeight: '800', fontSize: 14 }}>
+                {r.name}
+                {r.group ? <Text style={{ color: t.textMuted, fontWeight: '600' }}> · {r.group}</Text> : null}
+              </Text>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>
+                Dice ser {target ? <Text style={{ fontWeight: '800', color: t.text }}>{target.name}</Text> : 'un alumno'} · {where} · pidió hace {formatSince(now - r.at)}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              <Button label="Autorizar" icon="checkmark" kind="primary" size="sm" disabled={!target} onPress={() => st.approveReconnect(roomId, r.id)} />
+              <Button label="Es otro alumno" icon="person-add-outline" size="sm" onPress={() => st.admitAsNew(roomId, r.id)} />
+              <Button label="Rechazar" icon="close" kind="ghost" size="sm" onPress={() => st.rejectReconnect(roomId, r.id)} />
+            </View>
+          </View>
+        );
+      })}
+    </Card>
   );
 }
 
@@ -468,19 +609,19 @@ function ProjectorView({ room, link, stats, onClose }: { room: RoomState; link: 
 
 const NOTICE_PRESETS = ['Quedan 10 minutos.', 'Quedan 5 minutos.', 'Revisen sus respuestas antes de enviar.', 'Recuerden leer bien cada enunciado.'];
 
-function NoticeDialog({ onClose }: { onClose(): void }) {
+function NoticeDialog({ roomId, code, onClose }: { roomId: string; code: string; onClose(): void }) {
   const t = useTheme();
   const [text, setText] = useState('');
   const send = (msg: string) => {
     if (!msg.trim()) return;
-    useTeacher.getState().notice(msg.trim());
+    useTeacher.getState().notice(roomId, msg.trim());
     onClose();
   };
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={[styles.dialog, { backgroundColor: t.surface, borderColor: t.border }]}>
-          <Text style={{ color: t.text, fontWeight: '800', fontSize: 17, marginBottom: 10 }}>Aviso para todos los alumnos</Text>
+          <Text style={{ color: t.text, fontWeight: '800', fontSize: 17, marginBottom: 10 }}>Aviso para los alumnos de la sala {code}</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 6 }}>
             {NOTICE_PRESETS.map((p) => (
               <Chip key={p} label={p} onPress={() => send(p)} />
@@ -499,6 +640,12 @@ function NoticeDialog({ onClose }: { onClose(): void }) {
 
 const styles = StyleSheet.create({
   codeRow: { alignItems: 'stretch' },
+  switcher: { flexGrow: 0, flexShrink: 0, borderBottomWidth: BORDER },
+  switcherRow: { paddingHorizontal: 10, paddingVertical: 8, gap: 8, alignItems: 'center' },
+  roomChip: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 6, minHeight: 46 },
+  newRoom: { borderStyle: 'dashed' },
+  askBadge: { flexDirection: 'row', alignItems: 'center', borderRadius: RADIUS.pill, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 8 },
+  request: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginTop: 6 },
   liveDot: { width: 9, height: 9, borderRadius: 5, marginRight: 6 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 },
   filters: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 },

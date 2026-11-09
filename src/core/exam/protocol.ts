@@ -45,6 +45,8 @@ export type HostMsg =
   | { t: 'notice'; text: string; at: number }
   | { t: 'force-submit'; reason: SubmitReason }
   | { t: 'rejected'; reason: string }
+  /** Entró con otro dispositivo (o perdió su sesión): espera a que el maestro autorice que siga su examen. */
+  | { t: 'pending'; reason: string }
   | { t: 'pong'; now: number };
 
 const CLIENT_TYPES = new Set(['hello', 'begin', 'progress', 'event', 'submit', 'ping']);

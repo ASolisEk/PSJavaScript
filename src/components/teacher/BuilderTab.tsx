@@ -219,7 +219,7 @@ export default function BuilderTab() {
         kind="primary"
         disabled={!!errors.length}
         onPress={() => {
-          useTeacher.setState({ tab: 'room', openError: null });
+          useTeacher.setState({ tab: 'room', activeKey: null, openError: null });
         }}
       />
     </View>

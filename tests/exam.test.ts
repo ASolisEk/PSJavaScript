@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { AddressInfo } from 'node:net';
 import { cloneExam, createExam, createQuestion, parseExam, questionsPerStudent, sampleExam as fullSampleExam, serializeExam, validateExam } from '../src/core/exam/config';
 import { FUNDAMENTOS_PER_TOPIC, FUNDAMENTOS_TOPICS } from '../src/core/exam/samples/fundamentos';
-import { expectedFromSolution, gradePaper, gradeQuestion, outputMatches, ruleSatisfied, runProgram, studentView } from '../src/core/exam/grading';
+import { adjustResult, expectedFromSolution, gradePaper, gradeQuestion, outputMatches, ruleSatisfied, runProgram, studentView } from '../src/core/exam/grading';
 import { buildPaper, isAnswered } from '../src/core/exam/paper';
 import { ExamHost } from '../src/core/exam/host';
 import { ExamClient } from '../src/core/exam/client';
@@ -582,4 +582,217 @@ test('examen bloqueado: atajos que se impiden', async () => {
   assert.match(k('Tab', { metaKey: true })!, /ventana/);
   assert.equal(k('Tab'), null);
   assert.equal(k('Tab', { shiftKey: true }), null);
+});
+
+// ───────────────────────────── reconexión ─────────────────────────────
+
+/** Alumno con una identidad propia (como un dispositivo nuevo o una sesión borrada). */
+function device(net: MemoryNetwork, code: string, id: string, name: string, log: HostMsg[], group = '3A') {
+  const transports: MemoryClient[] = [];
+  const c = new ExamClient({
+    code,
+    transport: () => {
+      const t = new MemoryClient(net);
+      transports.push(t);
+      return t;
+    },
+    identity: { studentId: id, token: `tok-${id}`, name, group },
+    onMessage: (m) => log.push(m),
+    onStatus: () => {},
+    pingMs: 0,
+    retry: false,
+  });
+  return { c, transports };
+}
+
+test('reconexión: desde otro dispositivo sigue su examen si el maestro lo autoriza', async () => {
+  const net = new MemoryNetwork();
+  const host = new ExamHost({ transport: new MemoryHost(net), state: createRoom('BACK22', sampleExam(), { kind: 'memory' }), tickMs: 0 });
+  await host.open();
+  const la: HostMsg[] = [];
+  const a = device(net, 'BACK22', 'id-viejo', 'Ana López', la);
+  await a.c.connect();
+  host.start();
+  a.c.send({ t: 'begin' });
+  const paper = (la.find((m) => m.t === 'paper') as Extract<HostMsg, { t: 'paper' }>).paper;
+  const q0 = paper.questions[0].id;
+  a.c.send({ t: 'progress', current: 1, activity: 'answering', focused: true, answers: { [q0]: 'mi respuesta' } });
+  // se le cierra la ventana y entra desde otra computadora (con el nombre escrito distinto)
+  a.transports[0].drop();
+  host.setLocked(true);
+  const lb: HostMsg[] = [];
+  const b = device(net, 'BACK22', 'id-nuevo', '  ana lopez ', lb);
+  await b.c.connect();
+  assert.ok(lb.some((m) => m.t === 'pending'), 'espera autorización');
+  assert.ok(!lb.some((m) => m.t === 'paper'), 'sin autorización no recibe el examen');
+  assert.equal(host.state.requests?.length, 1);
+  assert.equal(host.state.requests![0].targetId, 'id-viejo');
+  // mientras espera, el latido sigue respondiéndose (no se da por desconectado)
+  b.c.send({ t: 'ping' });
+  assert.ok(lb.some((m) => m.t === 'pong'));
+
+  host.approveReconnect('id-nuevo');
+  assert.equal(host.state.requests?.length, 0);
+  assert.equal(host.state.students['id-viejo'], undefined);
+  const moved = host.state.students['id-nuevo'];
+  assert.ok(moved && moved.connected);
+  assert.equal(moved.name, 'Ana López');
+  assert.equal(moved.answers[q0], 'mi respuesta');
+  const p2 = lb.find((m) => m.t === 'paper') as Extract<HostMsg, { t: 'paper' }>;
+  assert.ok(p2, 'recibe su mismo examen');
+  assert.deepEqual(p2.paper.questions.map((q) => q.id), paper.questions.map((q) => q.id));
+  assert.equal(p2.answers[q0], 'mi respuesta');
+  // sigue respondiendo desde el dispositivo nuevo
+  b.c.send({ t: 'progress', current: 2, activity: 'answering', focused: true, answers: { [q0]: 'corregida' } });
+  assert.equal(host.state.students['id-nuevo'].answers[q0], 'corregida');
+  assert.ok(moved.events.some((e) => /otro dispositivo/.test(e.text)));
+  host.dispose();
+});
+
+test('reconexión: el dispositivo anterior se desconecta y las solicitudes se pueden rechazar o admitir', async () => {
+  const net = new MemoryNetwork();
+  const host = new ExamHost({ transport: new MemoryHost(net), state: createRoom('BACK33', sampleExam(), { kind: 'memory' }), tickMs: 0 });
+  await host.open();
+  host.start();
+  const la: HostMsg[] = [];
+  const a = device(net, 'BACK33', 'id-a', 'Beto', la);
+  await a.c.connect();
+  a.c.send({ t: 'begin' });
+
+  // otra persona escribe el mismo nombre: el maestro la rechaza
+  const lx: HostMsg[] = [];
+  const x = device(net, 'BACK33', 'id-x', 'Beto', lx);
+  await x.c.connect();
+  assert.ok(lx.some((m) => m.t === 'pending'));
+  host.rejectReconnect('id-x');
+  assert.ok(lx.some((m) => m.t === 'rejected'));
+  assert.ok(host.state.students['id-a'], 'el alumno original no se toca');
+
+  // un homónimo de verdad: el maestro lo admite como alumno nuevo
+  const ly: HostMsg[] = [];
+  const y = device(net, 'BACK33', 'id-y', 'Beto', ly);
+  await y.c.connect();
+  host.admitAsNew('id-y');
+  assert.ok(host.state.students['id-y'] && host.state.students['id-a']);
+  assert.ok(ly.some((m) => m.t === 'welcome'));
+
+  // el mismo alumno desde otro equipo mientras el anterior seguía conectado
+  const lz: HostMsg[] = [];
+  const z = device(net, 'BACK33', 'id-z', 'Beto', lz);
+  await z.c.connect();
+  // la solicitud apunta al que ya comenzó (no al homónimo que no ha comenzado)
+  assert.equal(host.state.requests!.find((r) => r.id === 'id-z')!.targetId, 'id-a');
+  host.approveReconnect('id-z');
+  const kicked = la.find((m) => m.t === 'rejected') as Extract<HostMsg, { t: 'rejected' }>;
+  assert.ok(kicked && /otro dispositivo/.test(kicked.reason));
+  assert.ok(host.state.students['id-z'].startedAt);
+  host.dispose();
+});
+
+test('reconexión: si aún no comenzaba vuelve a su lugar sin pedir autorización', async () => {
+  const net = new MemoryNetwork();
+  const host = new ExamHost({ transport: new MemoryHost(net), state: createRoom('BACK44', sampleExam(), { kind: 'memory' }), tickMs: 0 });
+  await host.open();
+  const la: HostMsg[] = [];
+  const a = device(net, 'BACK44', 'id-1', 'Carla', la);
+  await a.c.connect();
+  a.transports[0].drop();
+  host.setLocked(true);
+  const lb: HostMsg[] = [];
+  const b = device(net, 'BACK44', 'id-2', 'Carla', lb);
+  await b.c.connect();
+  assert.ok(lb.some((m) => m.t === 'welcome'), 'entra aunque el ingreso esté cerrado');
+  assert.deepEqual(Object.keys(host.state.students), ['id-2']);
+  assert.equal(host.state.requests?.length ?? 0, 0);
+  host.dispose();
+});
+
+test('reconexión: «Reintentar» no abre una segunda conexión y al volver la red se reconecta', async () => {
+  const net = new MemoryNetwork();
+  const host = new ExamHost({ transport: new MemoryHost(net), state: createRoom('BACK55', sampleExam(), { kind: 'memory' }), tickMs: 0 });
+  await host.open();
+  let made = 0;
+  let release: (() => void) | null = null;
+  const statuses: string[] = [];
+  const c = new ExamClient({
+    code: 'BACK55',
+    transport: () => {
+      made++;
+      const t = new MemoryClient(net);
+      // la primera conexión tarda en responder
+      if (made === 1) {
+        const connect = t.connect.bind(t);
+        t.connect = (code: string) => new Promise<void>((resolve) => (release = () => connect(code).then(resolve)));
+      }
+      return t;
+    },
+    identity: { studentId: 'id-r', token: 'tok-r', name: 'Rita', group: '' },
+    onMessage: () => {},
+    onStatus: (s) => statuses.push(s),
+    pingMs: 0,
+    retry: false,
+  });
+  const first = c.connect();
+  c.retryNow();
+  c.retryNow();
+  assert.equal(made, 1, 'mientras hay un intento en curso no se abre otro');
+  release!();
+  await first;
+  assert.equal(c.netStatus, 'online');
+  assert.equal(host.state.students['id-r'].connected, true);
+  // se cae la red: wake() (volvió la red o la app al frente) reconecta de inmediato
+  for (const t of [...(host as any).opts.transport.clients.values()]) t.drop();
+  assert.equal(c.netStatus, 'offline');
+  c.wake();
+  await flush();
+  assert.equal(c.netStatus, 'online');
+  assert.equal(made, 2);
+  c.dispose();
+  host.dispose();
+});
+
+test('calificación a mano: ajustar una pregunta no vuelve a calificar (ni ejecutar) las demás', () => {
+  const ex = sampleExam();
+  const { key } = buildPaper(ex, 'ajuste');
+  const byId = new Map(ex.questions.map((q) => [q.id, q]));
+  const answers: Record<string, any> = {};
+  for (const id of key.questionIds) {
+    const q = byId.get(id)!;
+    if (q.type === 'code') answers[id] = q.solution;
+    if (q.type === 'truefalse') answers[id] = !q.answer;
+  }
+  const base = gradePaper(ex, key, answers);
+  const code = key.questionIds.find((id) => byId.get(id)!.type === 'code')!;
+  const tf = key.questionIds.find((id) => byId.get(id)!.type === 'truefalse')!;
+  const before = base.questions.find((q) => q.questionId === tf)!;
+  assert.equal(before.status, 'wrong');
+
+  const t0 = Date.now();
+  const adj = adjustResult(ex, key, answers, base, tf, 1);
+  assert.ok(Date.now() - t0 < 50, 'es instantáneo');
+  const after = adj.questions.find((q) => q.questionId === tf)!;
+  assert.equal(after.score, 1);
+  assert.equal(after.manual, true);
+  assert.equal(after.status, 'correct');
+  assert.deepEqual(after.auto, { score: before.score, status: 'wrong' });
+  // las demás preguntas son las mismas (no se volvieron a ejecutar los programas)
+  assert.equal(adj.questions.find((q) => q.questionId === code), base.questions.find((q) => q.questionId === code));
+  assert.equal(adj.score, Math.round((base.score + 1) * 100) / 100);
+  // coincide con calificar todo de nuevo con el ajuste
+  const full = gradePaper(ex, key, answers, { [tf]: 1 });
+  assert.equal(adj.score, full.score);
+  assert.equal(adj.grade, full.grade);
+  // otro ajuste sobre la misma pregunta conserva la calificación automática original
+  const adj2 = adjustResult(ex, key, answers, adj, tf, 0.5);
+  assert.deepEqual(adj2.questions.find((q) => q.questionId === tf)!.auto, { score: before.score, status: 'wrong' });
+  // volver a la automática
+  const back = adjustResult(ex, key, answers, adj2, tf, null);
+  const restored = back.questions.find((q) => q.questionId === tf)!;
+  assert.equal(restored.score, before.score);
+  assert.equal(restored.status, 'wrong');
+  assert.equal(restored.manual, undefined);
+  assert.equal(back.score, base.score);
+  // resultados guardados sin la calificación automática: se recalifica solo esa pregunta
+  const legacy = { ...adj, questions: adj.questions.map((q) => (q.questionId === tf ? { ...q, auto: undefined } : q)) };
+  assert.equal(adjustResult(ex, key, answers, legacy, tf, null).questions.find((q) => q.questionId === tf)!.score, before.score);
 });

@@ -6,7 +6,7 @@ import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
 import { plainText } from '../../core/exam/richText';
 import type { RoomState } from '../../core/exam/room';
-import { answersCsv, correctText, roomReportHtml } from '../../core/exam/report';
+import { answersCsv, answersTxt, correctText, roomReportHtml } from '../../core/exam/report';
 import { summarizeRoom, summaryCsv } from '../../core/exam/summary';
 import { roomKey, useResultsRoom, useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
@@ -29,21 +29,36 @@ export default function ResultsTab() {
   const t = useTheme();
   const room = useResultsRoom();
   const history = useTeacher((s) => s.history);
-  const viewingKey = useTeacher((s) => s.viewingKey);
-  const current = useTeacher((s) => s.room);
-  const live = useTeacher((s) => s.live);
+  const rooms = useTeacher((s) => s.rooms);
+  const liveKeys = useTeacher((s) => s.liveKeys);
+  const shownKey = room ? roomKey(room) : null;
+  // salas actuales primero (una misma clave puede estar archivada y seguir en la lista un instante)
+  const currentKeys = new Set(rooms.map(roomKey));
+  const archived = history.filter((h) => !currentKeys.has(roomKey(h)));
 
   return (
     <ScrollView contentContainerStyle={{ padding: 14 }}>
-      {room ? <Summary room={room} live={live && !viewingKey} /> : <Empty icon="bar-chart-outline" text="Aquí verás el concentrado de calificaciones cuando apliques un examen." />}
+      {room ? <Summary key={shownKey!} room={room} live={liveKeys.includes(shownKey!)} /> : <Empty icon="bar-chart-outline" text="Aquí verás el concentrado de calificaciones cuando apliques un examen." />}
+
+      {rooms.length ? (
+        <>
+          <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', marginTop: 18, marginBottom: 8 }}>Salas actuales</Text>
+          {rooms.map((r) => (
+            <HistoryRow
+              key={roomKey(r)}
+              r={r}
+              active={shownKey === roomKey(r)}
+              label={r.status === 'closed' ? 'Cerrada (sin archivar)' : liveKeys.includes(roomKey(r)) ? (r.status === 'running' ? 'En curso' : 'En espera') : 'Sin reabrir'}
+              onPress={() => useTeacher.getState().viewHistory(roomKey(r))}
+            />
+          ))}
+        </>
+      ) : null}
 
       <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', marginTop: 18, marginBottom: 8 }}>Exámenes aplicados</Text>
-      {current && (viewingKey || current.status !== 'closed') ? (
-        <HistoryRow r={current} active={!viewingKey} label={current.status === 'closed' ? 'Sala actual (cerrada)' : 'Sala actual (en curso)'} onPress={() => useTeacher.getState().viewHistory(null)} />
-      ) : null}
-      {history.length === 0 ? <Text style={{ color: t.textMuted, fontSize: 13 }}>Cuando termines una sala aparecerá aquí.</Text> : null}
-      {history.map((h) => (
-        <HistoryRow key={roomKey(h)} r={h} active={viewingKey === roomKey(h)} onPress={() => useTeacher.getState().viewHistory(roomKey(h))} onDelete={async () => {
+      {archived.length === 0 ? <Text style={{ color: t.textMuted, fontSize: 13 }}>Cuando cierres y archives una sala aparecerá aquí.</Text> : null}
+      {archived.map((h) => (
+        <HistoryRow key={roomKey(h)} r={h} active={shownKey === roomKey(h)} onPress={() => useTeacher.getState().viewHistory(roomKey(h))} onDelete={async () => {
           if (await confirmDialog('¿Borrar del historial?', `Se borrarán los resultados de «${h.exam.title}» (${new Date(h.openedAt).toLocaleDateString()}).`, 'Borrar')) useTeacher.getState().deleteHistory(roomKey(h));
         }} />
       ))}
@@ -106,15 +121,24 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
             {sum.closedAt ? ` · cerrada a las ${new Date(sum.closedAt).toLocaleTimeString()}` : ''}
           </Text>
         </View>
+        {sum.rows.some((r) => r.submitted) ? (
+          <Button
+            label="Revisar y calificar"
+            icon="create-outline"
+            kind="primary"
+            onPress={() => setDetail((sum.rows.find((r) => r.submitted) ?? sum.rows[0]).id)}
+          />
+        ) : null}
       </View>
       <Card>
         <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 4 }}>Exportar</Text>
         <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 10, lineHeight: 17 }}>
-          El concentrado trae una fila por alumno. Las respuestas cruzan cada pregunta que le tocó a cada alumno con lo que respondió, la respuesta correcta y sus puntos. El reporte detallado se abre en el navegador y se puede imprimir o guardar como PDF.
+          «Preguntas y respuestas» es un archivo de texto (.txt) que se abre en cualquier computadora: por cada alumno trae cada pregunta que le tocó con su enunciado, lo que respondió, la respuesta correcta y sus puntos. El concentrado y las respuestas en CSV se abren en Excel u Hojas de cálculo; el reporte detallado se abre en el navegador y se puede imprimir o guardar como PDF.
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          <Button label="Concentrado (CSV)" icon="grid-outline" kind="primary" onPress={() => saveTextFile(`concentrado-${slug(sum.title)}.csv`, summaryCsv(sum), 'text/csv')} />
-          <Button label="Respuestas por pregunta (CSV)" icon="list-outline" onPress={() => saveTextFile(`respuestas-${slug(sum.title)}.csv`, answersCsv(room), 'text/csv')} />
+          <Button label="Preguntas y respuestas (TXT)" icon="document-outline" kind="primary" onPress={() => saveTextFile(`preguntas-y-respuestas-${slug(sum.title)}-${sum.code}.txt`, answersTxt(room), 'text/plain')} />
+          <Button label="Concentrado (CSV)" icon="grid-outline" onPress={() => saveTextFile(`concentrado-${slug(sum.title)}.csv`, summaryCsv(sum), 'text/csv')} />
+          <Button label="Respuestas (CSV)" icon="list-outline" onPress={() => saveTextFile(`respuestas-${slug(sum.title)}.csv`, answersCsv(room), 'text/csv')} />
           <Button label="Reporte detallado (HTML)" icon="document-text-outline" onPress={() => saveTextFile(`reporte-${slug(sum.title)}.html`, roomReportHtml(room), 'text/html')} />
           <Button label="Respaldo (JSON)" icon="download-outline" onPress={() => saveTextFile(`sala-${sum.code}-${slug(sum.title)}.json`, JSON.stringify(room, null, 2), 'application/json')} />
         </View>
@@ -252,7 +276,9 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
         </ScrollView>
         <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 8 }}>Toca un alumno para ver sus respuestas y ajustar puntos a mano.</Text>
       </Card>
-      {detail && room.students[detail] ? <StudentDetailModal room={room} studentId={detail} live={live} onClose={() => setDetail(null)} /> : null}
+      {detail && room.students[detail] ? (
+        <StudentDetailModal room={room} studentId={detail} live={live} onClose={() => setDetail(null)} order={sum.rows.map((r) => r.id)} onNavigate={setDetail} />
+      ) : null}
     </View>
   );
 }

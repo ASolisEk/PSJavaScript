@@ -31,7 +31,11 @@ export class ExamClient {
   private status: ClientNetStatus = 'connecting';
   private ping: any = null;
   private retryTimer: any = null;
+  private probeTimer: any = null;
   private attempts = 0;
+  /** Intento de conexión vigente (los anteriores se descartan si terminan después). */
+  private attemptId = 0;
+  private inFlight = false;
   private disposed = false;
   private lastPong = Date.now();
   /** Mensajes que deben llegar aunque se corte la red (se reenvían al reconectar). */
@@ -50,7 +54,19 @@ export class ExamClient {
 
   private async attempt(): Promise<void> {
     if (this.disposed) return;
-    this.setStatus('connecting');
+    const id = ++this.attemptId;
+    this.inFlight = true;
+    this.setStatus('connecting', this.attempts ? `Reconectando (intento ${this.attempts + 1})…` : undefined);
+    const prev = this.t;
+    if (prev) {
+      prev.onClose = null;
+      prev.onMessage = null;
+      try {
+        prev.close();
+      } catch {
+        /* ya cerrado */
+      }
+    }
     const t = this.opts.transport();
     this.t = t;
     t.onMessage = (raw) => {
@@ -70,16 +86,22 @@ export class ExamClient {
       await t.connect(this.opts.code);
     } catch (e) {
       if (this.t === t) this.t = null;
+      if (id === this.attemptId) this.inFlight = false;
+      // un intento más reciente ya está en curso: este error ya no importa
+      if (id !== this.attemptId) return;
       throw e;
     }
-    if (this.disposed) {
+    if (this.disposed || id !== this.attemptId) {
+      t.onClose = null;
+      t.onMessage = null;
       t.close();
       return;
     }
+    this.inFlight = false;
     this.attempts = 0;
     this.setStatus('online');
-    const id = this.opts.identity;
-    t.send({ t: 'hello', v: PROTOCOL_VERSION, studentId: id.studentId, token: id.token, name: id.name, group: id.group } satisfies ClientMsg);
+    const me = this.opts.identity;
+    t.send({ t: 'hello', v: PROTOCOL_VERSION, studentId: me.studentId, token: me.token, name: me.name, group: me.group } satisfies ClientMsg);
     this.lastPong = Date.now();
     const every = this.opts.pingMs ?? 8000;
     clearInterval(this.ping);
@@ -96,6 +118,7 @@ export class ExamClient {
 
   private lost(detail: string) {
     clearInterval(this.ping);
+    clearTimeout(this.probeTimer);
     const t = this.t;
     this.t = null;
     if (t) {
@@ -115,7 +138,8 @@ export class ExamClient {
   private scheduleRetry() {
     if (this.opts.retry === false || this.disposed) return;
     clearTimeout(this.retryTimer);
-    const delay = Math.min(10_000, 1500 * 2 ** Math.min(this.attempts, 3));
+    // 1 s, 2 s, 4 s, 8 s y luego cada 10 s (sin rendirse)
+    const delay = Math.min(10_000, 1000 * 2 ** Math.min(this.attempts, 4));
     this.attempts++;
     this.retryTimer = setTimeout(() => {
       this.attempt().catch((e) => {
@@ -125,15 +149,31 @@ export class ExamClient {
     }, delay);
   }
 
-  /** Reintenta de inmediato (botón «Reintentar»). */
+  /** Reintenta de inmediato (botón «Reintentar»). No abre otra conexión si ya hay un intento en curso. */
   retryNow() {
-    if (this.status === 'online' || this.disposed) return;
+    if (this.status === 'online' || this.disposed || this.inFlight) return;
     clearTimeout(this.retryTimer);
     this.attempts = 0;
     this.attempt().catch((e) => {
       this.setStatus('offline', e?.message ?? String(e));
       this.scheduleRetry();
     });
+  }
+
+  /**
+   * Volvió la red o la aplicación regresó al frente (el teléfono pudo suspenderla):
+   * sin conexión se reintenta ya; con conexión se comprueba que el maestro siga respondiendo.
+   */
+  wake() {
+    if (this.disposed) return;
+    if (this.status !== 'online') return this.retryNow();
+    if (Date.now() - this.lastPong < 5000) return;
+    const asked = Date.now();
+    this.raw({ t: 'ping' });
+    clearTimeout(this.probeTimer);
+    this.probeTimer = setTimeout(() => {
+      if (this.lastPong < asked && this.status === 'online') this.lost('La conexión se interrumpió.');
+    }, 4000);
   }
 
   send(msg: ClientMsg) {
@@ -187,6 +227,7 @@ export class ExamClient {
     this.disposed = true;
     clearInterval(this.ping);
     clearTimeout(this.retryTimer);
+    clearTimeout(this.probeTimer);
     const t = this.t;
     this.t = null;
     if (t) {

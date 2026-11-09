@@ -261,12 +261,45 @@ export function gradePaper(config: ExamConfig, key: PaperKey, answers: Answers, 
     } catch (e: any) {
       r = { questionId: q.id, type: q.type, score: 0, max: q.points, status: 'wrong', feedback: `No se pudo calificar: ${e?.message ?? e}` };
     }
-    if (overrides[id] !== undefined) {
-      const s = Math.max(0, Math.min(q.points, overrides[id]));
-      r = { ...r, score: round2(s), manual: true, status: s >= q.points ? 'correct' : s > 0 ? 'partial' : r.status === 'blank' ? 'blank' : 'wrong' };
-    }
+    if (overrides[id] !== undefined) r = withManualScore(r, q.points, overrides[id]);
     questions.push(r);
   }
+  return summarize(questions, config.scale, config.passPercent);
+}
+
+/** Aplica puntos asignados a mano a una pregunta ya calificada (guarda la calificación automática). */
+function withManualScore(r: QuestionResult, points: number, value: number): QuestionResult {
+  const s = round2(Math.max(0, Math.min(points, value)));
+  const auto = r.auto ?? (r.manual ? undefined : { score: r.score, status: r.status });
+  const base = auto?.status ?? r.status;
+  return { ...r, score: s, manual: true, auto, status: s >= points ? 'correct' : s > 0 ? 'partial' : base === 'blank' ? 'blank' : 'wrong' };
+}
+
+/**
+ * Ajuste manual de UNA pregunta sobre un resultado ya calculado. No vuelve a calificar
+ * el examen completo (calificar ejecuta los programas de las preguntas de código con todos
+ * sus casos, lo que congelaba la pantalla en cada clic): solo cambia esa pregunta y los totales.
+ * `points = null` regresa a la calificación automática.
+ */
+export function adjustResult(config: ExamConfig, key: PaperKey, answers: Answers, result: GradeResult, questionId: string, points: number | null): GradeResult {
+  const q = config.questions.find((x) => x.id === questionId);
+  if (!q || !result.questions.some((r) => r.questionId === questionId)) return result;
+  const questions = result.questions.map((r) => {
+    if (r.questionId !== questionId) return r;
+    if (points !== null) return withManualScore(r, q.points, points);
+    if (!r.manual) return r;
+    if (r.auto) {
+      const { auto, manual: _manual, ...rest } = r;
+      return { ...rest, score: auto.score, status: auto.status };
+    }
+    // resultados guardados antes de conservar la calificación automática: se recalifica solo esta pregunta
+    try {
+      return gradeQuestion(q, answers[questionId], getProfile(config.profileId), key);
+    } catch {
+      const { manual: _manual, ...rest } = r;
+      return rest;
+    }
+  });
   return summarize(questions, config.scale, config.passPercent);
 }
 

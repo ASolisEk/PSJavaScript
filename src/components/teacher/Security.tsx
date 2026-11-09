@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, View } from 'react-native';
 import { Text } from '../../ui/text';
-import { useTeacher } from '../../store/teacher';
+import { useLiveRoomCount, useTeacher } from '../../store/teacher';
 import { confirmDialog } from '../../ui/platform';
 import { useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
@@ -39,7 +39,7 @@ function PasswordField({ value, onChange, placeholder, onSubmit, autoFocus }: { 
 /** Lo que ve cualquiera que abra el modo Maestro protegido sin la contraseña. */
 export function LockScreen() {
   const t = useTheme();
-  const live = useTeacher((s) => s.live && !!s.room && s.room.status !== 'closed');
+  const live = useLiveRoomCount() > 0;
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +75,7 @@ export function LockScreen() {
             Escribe la contraseña para ver, editar o aplicar los exámenes y consultar los resultados.
           </Text>
         </View>
-        {live ? <Banner icon="radio-outline" color={t.success} text="La sala sigue abierta y recibiendo exámenes; solo la pantalla está bloqueada." /> : null}
+        {live ? <Banner icon="radio-outline" color={t.success} text="Las salas abiertas siguen recibiendo exámenes; solo la pantalla está bloqueada." /> : null}
         <PasswordField value={password} onChange={setPassword} placeholder="Contraseña" onSubmit={submit} autoFocus />
         {error ? <Text style={{ color: t.danger, fontSize: 13, marginTop: 8 }}>{error}</Text> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, gap: 10 }}>

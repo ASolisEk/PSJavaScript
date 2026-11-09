@@ -1,15 +1,15 @@
 /** Detalle de un alumno: respuestas en vivo, calificación por pregunta y bitácora. */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
-import { ACTIVITY_LABEL, answeredCount, RoomState, StudentEventKind, StudentRecord, studentPhase } from '../../core/exam/room';
+import { ACTIVITY_LABEL, answeredCount, RoomState, StudentEventKind, studentPhase } from '../../core/exam/room';
 import { runProgram } from '../../core/exam/grading';
-import { answerText, correctText, roomReportHtml, STATUS_LABEL } from '../../core/exam/report';
-import type { Question, QuestionResult } from '../../core/exam/types';
+import { answersTxt, answerText, correctText, roomReportHtml, STATUS_LABEL } from '../../core/exam/report';
+import type { AnswerValue, PaperKey, Question, QuestionResult } from '../../core/exam/types';
 import { getProfile } from '../../core/profiles';
-import { useTeacher } from '../../store/teacher';
+import { roomKey, useTeacher } from '../../store/teacher';
 import { confirmDialog, saveTextFile } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
@@ -41,26 +41,70 @@ const EVENT_ICON: Record<StudentEventKind, IconName> = {
   teacher: 'person-outline',
 };
 
-export default function StudentDetailModal({ room, studentId, live, onClose }: { room: RoomState; studentId: string; live: boolean; onClose(): void }) {
+/** Nombre de archivo sin acentos ni símbolos («José Pérez» → «jose-perez»). */
+const fileSlug = (name: string) =>
+  name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'alumno';
+
+/**
+ * `order` y `onNavigate`: lista de alumnos para pasar al anterior o al siguiente sin cerrar
+ * la ventana (para seguir calificando, también con el examen ya cerrado).
+ */
+export default function StudentDetailModal({
+  room,
+  studentId,
+  live,
+  onClose,
+  order,
+  onNavigate,
+}: {
+  room: RoomState;
+  studentId: string;
+  live: boolean;
+  onClose(): void;
+  order?: string[];
+  onNavigate?(id: string): void;
+}) {
   const t = useTheme();
   const s = room.students[studentId];
   const [tab, setTab] = useState<'answers' | 'log'>('answers');
   const [filter, setFilter] = useState<AnswerFilter>('all');
   const [now, setNow] = useState(() => Date.now());
+  const ticking = !!s && !s.submittedAt;
+  // el reloj solo hace falta mientras el alumno responde (redibujar cada segundo hacía lenta la revisión)
   useEffect(() => {
+    if (!ticking) return;
     const h = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(h);
-  }, []);
+  }, [ticking]);
   if (!s) return null;
+  const pos = order ? order.indexOf(studentId) : -1;
+  const prevId = pos > 0 ? order![pos - 1] : null;
+  const nextId = pos >= 0 && pos < order!.length - 1 ? order![pos + 1] : null;
   const phase = studentPhase(s, room);
   const pi = PHASE_INFO[phase];
   const total = s.key?.questionIds.length ?? 0;
   const byId = new Map(room.exam.questions.map((q) => [q.id, q]));
   const st = useTeacher.getState();
+  const key = roomKey(room);
 
   return (
     <ModalShell title={s.name} onClose={onClose} wide>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      {order && onNavigate && order.length > 1 ? (
+        <View style={[styles.nav, { borderBottomColor: t.border, backgroundColor: t.surfaceAlt }]}>
+          <Button label="Anterior" icon="chevron-back" size="sm" kind="ghost" disabled={!prevId} onPress={() => prevId && onNavigate(prevId)} />
+          <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '700', flex: 1, textAlign: 'center' }} numberOfLines={1}>
+            Alumno {pos + 1} de {order.length}
+            {s.result ? ` · ${s.result.grade}/${s.result.scale}` : ''}
+          </Text>
+          <Button label="Siguiente" icon="chevron-forward" size="sm" kind={nextId ? 'default' : 'ghost'} disabled={!nextId} onPress={() => nextId && onNavigate(nextId)} />
+        </View>
+      ) : null}
+      <ScrollView key={studentId} contentContainerStyle={{ padding: 16 }}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
           <Pill icon={pi.icon} text={pi.label} color={(t as any)[pi.color]} solid />
           <Pill icon={s.connected ? 'wifi' : 'cloud-offline-outline'} text={s.connected ? 'Conectado' : 'Desconectado'} color={s.connected ? t.success : t.danger} />
@@ -83,13 +127,13 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
           </View>
           {live ? (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
-              {s.startedAt && !s.submittedAt && s.deadline ? <Button label="+5 min" icon="time-outline" onPress={() => st.addTime(5, s.id)} /> : null}
+              {s.startedAt && !s.submittedAt && s.deadline ? <Button label="+5 min" icon="time-outline" onPress={() => st.addTime(key, 5, s.id)} /> : null}
               {s.startedAt && !s.submittedAt ? (
                 <Button
                   label="Recoger examen"
                   icon="hand-left-outline"
                   onPress={async () => {
-                    if (await confirmDialog('¿Recoger el examen?', `Se calificará con lo que ${s.name} lleve respondido.`, 'Recoger')) st.forceSubmit(s.id);
+                    if (await confirmDialog('¿Recoger el examen?', `Se calificará con lo que ${s.name} lleve respondido.`, 'Recoger')) st.forceSubmit(key, s.id);
                   }}
                 />
               ) : null}
@@ -99,7 +143,7 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
                   icon="lock-open-outline"
                   onPress={async () => {
                     if (await confirmDialog('¿Reabrir el examen?', `${s.name} podrá seguir respondiendo con sus respuestas actuales y deberá volver a enviarlo. Su calificación actual se descarta.`, 'Reabrir'))
-                      st.reopenStudent(s.id, 10);
+                      st.reopenStudent(key, s.id, 10);
                   }}
                 />
               ) : null}
@@ -109,7 +153,7 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
                 kind="danger"
                 onPress={async () => {
                   if (await confirmDialog('¿Quitar al alumno?', 'Se borrará de la lista con sus respuestas.', 'Quitar')) {
-                    st.removeStudent(s.id);
+                    st.removeStudent(key, s.id);
                     onClose();
                   }
                 }}
@@ -123,12 +167,20 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
           <Chip label={`Actividad (${s.events.length})`} active={tab === 'log'} onPress={() => setTab('log')} />
           <View style={{ flex: 1 }} />
           {s.key ? (
-            <Button
-              label="Reporte del alumno"
-              icon="document-text-outline"
-              size="sm"
-              onPress={() => saveTextFile(`reporte-${s.name.replace(/[^\w]+/g, '-').toLowerCase()}.html`, roomReportHtml(room, [s.id]), 'text/html')}
-            />
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <Button
+                label="Respuestas (TXT)"
+                icon="document-outline"
+                size="sm"
+                onPress={() => saveTextFile(`respuestas-${fileSlug(s.name)}-${room.code}.txt`, answersTxt(room, [s.id]), 'text/plain')}
+              />
+              <Button
+                label="Reporte (HTML)"
+                icon="document-text-outline"
+                size="sm"
+                onPress={() => saveTextFile(`reporte-${fileSlug(s.name)}.html`, roomReportHtml(room, [s.id]), 'text/html')}
+              />
+            </View>
           ) : null}
         </View>
         {tab === 'answers' && s.result ? (
@@ -136,7 +188,7 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
             {(
               [
                 ['all', 'Todas'],
-                ['wrong', `Por revisar (${s.result.questions.filter((x) => x.status === 'wrong' || x.status === 'partial').length})`],
+                ['wrong', `Por revisar (${s.result.questions.filter((x) => x.status === 'wrong' || x.status === 'partial' || x.manual).length})`],
                 ['blank', `Sin responder (${s.result.questions.filter((x) => x.status === 'blank').length})`],
               ] as [AnswerFilter, string][]
             ).map(([id, label]) => (
@@ -153,9 +205,23 @@ export default function StudentDetailModal({ room, studentId, live, onClose }: {
               const q = byId.get(id);
               if (!q) return null;
               const r = s.result?.questions.find((x) => x.questionId === id);
-              if (filter === 'wrong' && !(r && (r.status === 'wrong' || r.status === 'partial'))) return null;
+              // las que ya ajustaste siguen a la vista (no desaparecen al darles todos los puntos)
+              if (filter === 'wrong' && !(r && (r.status === 'wrong' || r.status === 'partial' || r.manual))) return null;
               if (filter === 'blank' && r?.status !== 'blank') return null;
-              return <AnswerCard key={id} q={q} index={i} s={s} r={r} current={!s.submittedAt && s.current === i} profileId={room.exam.profileId} />;
+              return (
+                <AnswerCard
+                  key={id}
+                  roomId={key}
+                  q={q}
+                  index={i}
+                  studentId={s.id}
+                  answer={s.answers[q.id]}
+                  paperKey={s.key}
+                  r={r}
+                  current={!s.submittedAt && s.current === i}
+                  profileId={room.exam.profileId}
+                />
+              );
             })
           )
         ) : (
@@ -219,12 +285,35 @@ function Pair({ mine, right, mono, ok }: { mine: string; right: string; mono?: b
   );
 }
 
-function AnswerCard({ q, index, s, r, current, profileId }: { q: Question; index: number; s: StudentRecord; r?: QuestionResult; current: boolean; profileId: string }) {
+/**
+ * Tarjeta de una pregunta. Recibe solo lo que necesita y está memorizada: al ajustar los
+ * puntos de una pregunta solo se vuelve a dibujar esa tarjeta, no todo el examen.
+ */
+const AnswerCard = memo(function AnswerCard({
+  roomId,
+  q,
+  index,
+  studentId,
+  answer: a,
+  paperKey,
+  r,
+  current,
+  profileId,
+}: {
+  roomId: string;
+  q: Question;
+  index: number;
+  studentId: string;
+  answer: AnswerValue | undefined;
+  paperKey: PaperKey | null;
+  r?: QuestionResult;
+  current: boolean;
+  profileId: string;
+}) {
   const t = useTheme();
   const [showRef, setShowRef] = useState(false);
   const info = questionTypeInfo(q.type);
-  const a = s.answers[q.id];
-  const mine = answerText(q, a, s.key);
+  const mine = useMemo(() => answerText(q, a, paperKey), [q, a, paperKey]);
   // salida real del programa de «¿Qué imprime?» (si aún no se califica, se calcula aquí)
   const right = useMemo(() => {
     const c = correctText(q, r);
@@ -343,18 +432,38 @@ function AnswerCard({ q, index, s, r, current, profileId }: { q: Question; index
       {q.type === 'output' && q.inputs.length ? <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>Datos para prompt(): {q.inputs.join(', ')}</Text> : null}
       {body}
       {r && (q.type === 'multiple' || q.type === 'order') && r.status !== 'correct' ? <RichText text={r.feedback} style={{ color: t.textMuted, fontSize: 12, marginTop: 6 }} /> : null}
-      {r ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-          <Text style={{ color: t.textMuted, fontSize: 12 }}>Ajustar puntos:</Text>
-          <NumberStepper value={r.score} onChange={(v) => useTeacher.getState().adjust(s.id, q.id, v)} min={0} max={q.points} step={q.points <= 2 ? 0.5 : 1} width={56} />
-          {r.manual ? <Button label="Automática" icon="refresh" onPress={() => useTeacher.getState().adjust(s.id, q.id, null)} /> : null}
-        </View>
-      ) : null}
+      {r ? <ScoreEditor roomId={roomId} studentId={studentId} q={q} r={r} /> : null}
     </Card>
+  );
+});
+
+/** Ajuste de puntos: pasos, accesos rápidos (sin puntos / la mitad / completa) y volver a la automática. */
+function ScoreEditor({ roomId, studentId, q, r }: { roomId: string; studentId: string; q: Question; r: QuestionResult }) {
+  const t = useTheme();
+  const set = (v: number | null) => useTeacher.getState().adjust(roomId, studentId, q.id, v);
+  const half = Math.round((q.points / 2) * 2) / 2;
+  return (
+    <View style={[styles.score, { borderTopColor: t.border }]}>
+      <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '700' }}>Puntos:</Text>
+      <NumberStepper value={r.score} onChange={set} min={0} max={q.points} step={q.points <= 2 ? 0.5 : 1} width={56} />
+      <Text style={{ color: t.textMuted, fontSize: 12 }}>de {q.points}</Text>
+      <View style={{ flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
+        <Chip label="0" active={r.manual && r.score === 0} onPress={() => set(0)} />
+        {half > 0 && half < q.points ? <Chip label={`${half}`} active={r.manual && r.score === half} onPress={() => set(half)} /> : null}
+        <Chip label={`${q.points} (completa)`} active={r.manual && r.score === q.points} onPress={() => set(q.points)} />
+      </View>
+      {r.manual ? (
+        <Button label={r.auto ? `Automática (${r.auto.score})` : 'Automática'} icon="refresh" size="sm" kind="ghost" onPress={() => set(null)} />
+      ) : (
+        <Text style={{ color: t.textMuted, fontSize: 11 }}>calificada automáticamente</Text>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  nav: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: BORDER },
+  score: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
   event: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderBottomWidth: BORDER },
   mono: { fontFamily: MONO, fontSize: 13, lineHeight: 19, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 5 },
   pair: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

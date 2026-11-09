@@ -212,7 +212,7 @@ function NetBanner() {
   const net = useStudent((s) => s.net);
   const detail = useStudent((s) => s.netDetail);
   if (net === 'online') return null;
-  if (net === 'connecting') return <Banner icon="sync-outline" color={t.info} text="Conectando con el maestro…" />;
+  if (net === 'connecting') return <Banner icon="sync-outline" color={t.info} text={detail ?? 'Conectando con el maestro…'} />;
   return (
     <Banner
       icon="cloud-offline-outline"
@@ -252,7 +252,18 @@ function WaitingView() {
       <ScreenHeader icon="school-outline" title={room?.title ?? 'Examen'} subtitle={`${placeLabel(s)} · ${s.identity.name}`} color={t.success} right={<Button label="Salir" icon="exit-outline" onPress={confirmLeave} />} />
       <Narrow>
         <NetBanner />
-        {!room ? (
+        {s.pendingApproval ? (
+          <Card accent={t.warning}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <ActivityIndicator color={t.warning} />
+              <Text style={{ color: t.text, fontSize: 17, fontWeight: '800', marginLeft: 10, flex: 1 }}>Esperando autorización de tu maestro</Text>
+            </View>
+            <Text style={{ color: t.text, fontSize: 15, lineHeight: 22 }}>{s.pendingApproval}</Text>
+            <Text style={{ color: t.textMuted, fontSize: 13, marginTop: 8, lineHeight: 19 }}>
+              Cuando lo autorice, regresarás a tu examen con tus respuestas y el tiempo que te quedaba. No cierres esta pantalla; si quieres, avísale a tu maestro.
+            </Text>
+          </Card>
+        ) : !room ? (
           <Card>
             <Centered>
               <ActivityIndicator color={t.primary} />
@@ -345,7 +356,7 @@ function RejectedView({ reason }: { reason: string }) {
   return (
     <Narrow>
       <Card accent={t.danger}>
-        <Text style={{ color: t.text, fontSize: 17, fontWeight: '800', marginBottom: 6 }}>No puedes entrar a esta sala</Text>
+        <Text style={{ color: t.text, fontSize: 17, fontWeight: '800', marginBottom: 6 }}>{/otro dispositivo/.test(reason) && /contin/.test(reason) && !/no autoriz/.test(reason) ? 'Tu examen continúa en otro dispositivo' : 'No puedes entrar a esta sala'}</Text>
         <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 14 }}>{reason}</Text>
         <Button
           label="Volver"
