@@ -1,6 +1,12 @@
 /**
  * Juego del dron: niveles para practicar JavaScript programando un dron de granja o de
  * minería (inspirado en «The Farmer Was Replaced»). Usa el mismo intérprete y editor del IDE.
+ *
+ * Distribución:
+ * - Pantalla ancha: a la izquierda la meta, la misión (pestañas) y el editor con su barra de
+ *   herramientas; a la derecha el tablero (ocupa todo el alto disponible) y la consola.
+ * - Pantalla angosta: la meta arriba, pestañas Granja / Código / Misión y la barra de
+ *   ejecución fija abajo.
  */
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,7 +18,7 @@ import { ruleSatisfied } from '../../core/exam/grading';
 import { API_DOCS, GAME_GLOBAL_NAMES, gameGlobals, GameTheme, themed, THEMES, unlockList } from '../../core/game/api';
 import { IntruderProgram } from '../../core/game/intruder';
 import { GameLevel, getLevel, HACK_MISSIONS, LEVELS } from '../../core/game/levels';
-import { EXPAND_SIZES, ItemId, PLANTABLE, World } from '../../core/game/world';
+import { EntityId, EXPAND_SIZES, ItemId, PLANTABLE, UnlockId, World } from '../../core/game/world';
 import { Runner, RunnerSnapshot } from '../../core/runner';
 import { useApp, useProfile } from '../../store/app';
 import { GameSpeed, SPEED_MS, useGame } from '../../store/game';
@@ -20,15 +26,20 @@ import { confirmDialog } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import CodeEditor from '../CodeEditor';
 import RichText from '../exam/RichText';
-import { BackToEditorButton, Banner, Button, Card, CodeBlock, IconName, Pill, ProgressBar, ScreenHeader, Segmented } from '../ui';
+import { BackToEditorButton, Banner, Button, CodeBlock, IconButton, IconName, Pill, ProgressBar, ScreenHeader, Segmented, Tab, tint, Tooltip } from '../ui';
+import { EntitySprite, ItemIcon } from './art';
 import WorldView from './WorldView';
 
-const SPEEDS: { id: GameSpeed; label: string }[] = [
-  { id: 'slow', label: 'Lento' },
-  { id: 'normal', label: 'Normal' },
-  { id: 'fast', label: 'Rápido' },
-  { id: 'instant', label: 'Al instante' },
+const SPEEDS: { id: GameSpeed; label: string; icon: IconName }[] = [
+  { id: 'slow', label: 'Lento', icon: 'walk-outline' },
+  { id: 'normal', label: 'Normal', icon: 'bicycle-outline' },
+  { id: 'fast', label: 'Rápido', icon: 'car-sport-outline' },
+  { id: 'instant', label: 'Instante', icon: 'flash-outline' },
 ];
+
+type MissionTab = 'mission' | 'hints' | 'intruder' | 'docs';
+type Pane = 'world' | 'code' | 'mission';
+type BottomTab = 'console' | 'upgrades';
 
 function makeWorld(level: GameLevel): World {
   if (!level.sandbox) return new World(level.world);
@@ -58,11 +69,72 @@ interface Done {
   rulesOk: boolean;
 }
 
+function Stars({ n, size = 14 }: { n: number; size?: number }) {
+  const t = useTheme();
+  return (
+    <Text style={{ color: t.warning, fontSize: size, letterSpacing: 1, lineHeight: size * 1.25 }} accessibilityLabel={`${n} de 3 estrellas`}>
+      {'★'.repeat(n)}
+      <Text style={{ color: t.border }}>{'★'.repeat(3 - n)}</Text>
+    </Text>
+  );
+}
+
+/** Selector de velocidad: iconos (con la etiqueta de la activa) o un solo botón que rota. */
+function SpeedPicker({ value, onChange, cycle }: { value: GameSpeed; onChange(s: GameSpeed): void; cycle?: boolean }) {
+  const t = useTheme();
+  if (cycle) {
+    const i = SPEEDS.findIndex((s) => s.id === value);
+    const s = SPEEDS[i];
+    return (
+      <Pressable
+        onPress={() => onChange(SPEEDS[(i + 1) % SPEEDS.length].id)}
+        accessibilityRole="button"
+        accessibilityLabel={`Velocidad: ${s.label}. Toca para cambiar`}
+        style={({ pressed }) => [styles.speedCycle, { borderColor: t.border, backgroundColor: pressed ? t.surfaceAlt : t.surface }]}
+      >
+        <Ionicons name={s.icon} size={16} color={t.accentDark} />
+        <Text style={{ color: t.accentDark, fontWeight: '800', fontSize: 12, marginLeft: 5 }}>{s.label}</Text>
+      </Pressable>
+    );
+  }
+  return (
+    <View style={[styles.speed, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+      {SPEEDS.map((s) => {
+        const on = s.id === value;
+        return (
+          <Tooltip key={s.id} text={`Velocidad: ${s.label}`}>
+            <Pressable
+              onPress={() => onChange(s.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Velocidad: ${s.label}`}
+              accessibilityState={{ selected: on }}
+              style={[styles.speedOpt, { backgroundColor: on ? t.surface : 'transparent', borderColor: on ? t.accent : 'transparent' }]}
+            >
+              <Ionicons name={s.icon} size={15} color={on ? t.accentDark : t.textMuted} />
+              {on ? <Text style={{ color: t.accentDark, fontWeight: '800', fontSize: 12, marginLeft: 4 }}>{s.label}</Text> : null}
+            </Pressable>
+          </Tooltip>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Dibujo de cada mejora de la granja libre. */
+function UnlockIcon({ id, theme, color }: { id: UnlockId; theme: GameTheme; color: string }) {
+  const entity: Partial<Record<UnlockId, EntityId>> = { trees: 'tree', carrots: 'carrot', pumpkins: 'pumpkin', sunflowers: 'sunflower', cactus: 'cactus', mazes: 'treasure', polyculture: 'bush' };
+  const item: Partial<Record<UnlockId, ItemId>> = { watering: 'water', fertilizer: 'fertilizer' };
+  if (entity[id]) return <EntitySprite type={entity[id]!} theme={theme} size={26} />;
+  if (item[id]) return <ItemIcon item={item[id]!} theme={theme} size={22} />;
+  return <Ionicons name={id === 'expand' ? 'expand-outline' : 'speedometer-outline'} size={20} color={color} />;
+}
+
 function GameInner() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 1000;
+  const roomy = width >= 1280;
   const theme = useGame((s) => s.theme);
   const speed = useGame((s) => s.speed);
   const levelId = useGame((s) => s.levelId);
@@ -82,18 +154,35 @@ function GameInner() {
   const [done, setDone] = useState<Done | null>(null);
   /** Misión de hackeo fallida (mensaje). */
   const [failed, setFailed] = useState<string | null>(null);
+  /** El alumno cerró la tarjeta de resultado para ver el tablero. */
+  const [resultHidden, setResultHidden] = useState(false);
   const [hints, setHints] = useState(0);
-  const [showIntro, setShowIntro] = useState(true);
+  const [missionTab, setMissionTab] = useState<MissionTab>('mission');
+  const [missionOpen, setMissionOpen] = useState(true);
+  const [pane, setPane] = useState<Pane>('mission');
+  const [bottomTab, setBottomTab] = useState<BottomTab>('console');
   const [showDocs, setShowDocs] = useState(false);
   const [diags, setDiags] = useState<Diagnostic[]>([]);
   const runner = useRef<Runner | null>(null);
   const speedRef = useRef(speed);
   const pendingRender = useRef(false);
+  const levelBarRef = useRef<ScrollView>(null);
+  const chipX = useRef<Record<string, number>>({});
+  const consoleRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     speedRef.current = speed;
   }, [speed]);
   useEffect(() => () => runner.current?.dispose(), []);
+
+  // la barra de niveles muestra el nivel actual
+  useEffect(() => {
+    const h = setTimeout(() => {
+      const x = chipX.current[level.id];
+      if (x !== undefined) levelBarRef.current?.scrollTo({ x: Math.max(0, x - 140), animated: true });
+    }, 80);
+    return () => clearTimeout(h);
+  }, [level.id]);
 
   // errores del editor (reconoce las funciones del dron)
   useEffect(() => {
@@ -134,6 +223,7 @@ function GameInner() {
     setRun(null);
     setDone(null);
     setFailed(null);
+    setResultHidden(false);
     setWorld(makeWorld(lv));
   };
 
@@ -150,6 +240,8 @@ function GameInner() {
     setWorld(w);
     setDone(null);
     setFailed(null);
+    setResultHidden(false);
+    setBottomTab('console');
     let r: Runner;
     // misiones de hackeo: el intruso ejecuta su propio programa al mismo tiempo (por turnos)
     const intruder = level.intruderCode ? new IntruderProgram(w, themed(level.intruderCode, theme), theme) : null;
@@ -214,7 +306,9 @@ function GameInner() {
     runner.current = null;
     useGame.getState().selectLevel(id);
     setHints(0);
-    setShowIntro(true);
+    setMissionTab('mission');
+    setMissionOpen(true);
+    setPane('mission');
     reset(getLevel(id));
   };
 
@@ -227,16 +321,55 @@ function GameInner() {
   const running = status === 'running' || status === 'paused' || status === 'input';
   const check = level.check(world, label, { finished: status === 'finished' });
   const blocking = hasBlockingErrors(diags);
+  const errorCount = diags.filter((d) => d.severity === 'error').length;
   const hackMode = level.kind === 'hack';
+  const tone = hackMode ? t.danger : t.primary;
   const list = hackMode ? HACK_MISSIONS : LEVELS;
   const idx = list.indexOf(level);
   const next = list[idx + 1];
   const unfinished = status === 'finished' && !done && !failed && !level.sandbox && !world.frozen;
+  const earned = progress[level.id]?.stars ?? 0;
+  const scored = list.filter((l) => !l.sandbox);
+  const totalStars = scored.reduce((a, l) => a + (progress[l.id]?.stars ?? 0), 0);
+  const progressText = check.progress.replace(/de (\w+)$/, (m, it) => `de ${THEMES[theme].itemLabel[it as ItemId] ?? it}`);
 
-  // ───────────────────────────── piezas ─────────────────────────────
+  // ───────────────────────────── encabezado y niveles ─────────────────────────────
+
+  const header = (
+    <ScreenHeader
+      icon={hackMode ? 'bug-outline' : 'game-controller-outline'}
+      title={wide ? (hackMode ? 'Juego del dron · Hackeo' : 'Juego del dron') : hackMode ? 'Hackeo' : 'Juego'}
+      subtitle={`${names.title} · ★ ${totalStars} de ${scored.length * 3}`}
+      color={tone}
+      right={
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Segmented
+            options={[
+              { id: 'farm', label: wide ? 'Granja' : '🌾', icon: wide ? 'leaf-outline' : undefined },
+              { id: 'mine', label: wide ? 'Minería' : '⛏️', icon: wide ? 'hammer-outline' : undefined },
+            ]}
+            value={theme}
+            onChange={(v) => setTheme(v as GameTheme)}
+          />
+          <BackToEditorButton
+            onPress={() => {
+              runner.current?.stop();
+              useApp.getState().setAppMode('ide');
+            }}
+          />
+        </View>
+      }
+    />
+  );
 
   const levelBar = (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.levelBar, { borderBottomColor: t.border, backgroundColor: t.surface }]} contentContainerStyle={{ padding: 8, gap: 6 }}>
+    <ScrollView
+      ref={levelBarRef}
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[styles.levelBar, { borderBottomColor: t.border, backgroundColor: t.surface }]}
+      contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 8, gap: 6, alignItems: 'center' }}
+    >
       <Segmented
         options={[
           { id: 'build', label: 'Construir', icon: 'hammer-outline' },
@@ -249,26 +382,36 @@ function GameInner() {
           selectLevel((target.find((l) => !progress[l.id]?.stars) ?? target[0]).id);
         }}
       />
+      <View style={[styles.barDivider, { backgroundColor: t.border }]} />
       {list.map((l, i) => {
         const on = l.id === level.id;
         const p = progress[l.id];
+        const c = hackMode ? t.danger : t.primary;
         return (
-          <Pressable key={l.id} onPress={() => selectLevel(l.id)} style={[styles.levelChip, { borderColor: on ? t.primary : t.border, backgroundColor: on ? t.primary + '18' : t.surface }]} accessibilityLabel={`${hackMode ? 'Misión' : 'Nivel'} ${i + 1}: ${l.title}`}>
-            <View style={[styles.levelNum, { backgroundColor: p?.stars ? t.primary : on ? t.primary + '30' : t.surfaceAlt }]}>
-              {l.sandbox ? <Ionicons name="construct" size={13} color={p?.stars || on ? (p?.stars ? '#fff' : t.primary) : t.textMuted} /> : <Text style={{ color: p?.stars ? '#fff' : on ? t.primary : t.textMuted, fontWeight: '900', fontSize: 12 }}>{i + 1}</Text>}
+          <Pressable
+            key={l.id}
+            onLayout={(e) => {
+              chipX.current[l.id] = e.nativeEvent.layout.x;
+            }}
+            onPress={() => selectLevel(l.id)}
+            style={({ pressed }) => [styles.levelChip, { borderColor: on ? c : t.border, backgroundColor: on ? tint(c, 0.1) : pressed ? t.surfaceAlt : t.surface }]}
+            accessibilityLabel={`${hackMode ? 'Misión' : 'Nivel'} ${i + 1}: ${l.title}`}
+            accessibilityState={{ selected: on }}
+          >
+            <View style={[styles.levelNum, { backgroundColor: p?.stars ? c : on ? tint(c, 0.2) : t.surfaceAlt }]}>
+              {p?.stars ? (
+                <Ionicons name="checkmark" size={14} color="#fff" />
+              ) : l.sandbox ? (
+                <Ionicons name="construct" size={12} color={on ? c : t.textMuted} />
+              ) : (
+                <Text style={{ color: on ? c : t.textMuted, fontWeight: '900', fontSize: 12 }}>{i + 1}</Text>
+              )}
             </View>
-            <View>
-              <Text style={{ color: on ? t.primary : t.text, fontWeight: '800', fontSize: 12 }} numberOfLines={1}>
+            <View style={{ flexShrink: 1 }}>
+              <Text style={{ color: on ? c : t.text, fontWeight: '800', fontSize: 12 }} numberOfLines={1}>
                 {l.title}
               </Text>
-              {!l.sandbox ? (
-                <Text style={{ color: t.warning, fontSize: 11, letterSpacing: 1 }}>
-                  {'★'.repeat(p?.stars ?? 0)}
-                  <Text style={{ color: t.border }}>{'★'.repeat(3 - (p?.stars ?? 0))}</Text>
-                </Text>
-              ) : (
-                <Text style={{ color: t.textMuted, fontSize: 11 }}>sin límite</Text>
-              )}
+              {!l.sandbox ? <Stars n={p?.stars ?? 0} size={11} /> : <Text style={{ color: t.textMuted, fontSize: 11 }}>sin límite</Text>}
             </View>
           </Pressable>
         );
@@ -276,102 +419,371 @@ function GameInner() {
     </ScrollView>
   );
 
-  const levelCard = (
-    <Card style={{ marginBottom: 8 }}>
-      <Pressable onPress={() => setShowIntro((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={[styles.levelIcon, { backgroundColor: t.primary + '1f' }]}>
-          <Ionicons name={level.icon as IconName} size={20} color={t.primary} />
+  // ───────────────────────────── meta y misión ─────────────────────────────
+
+  const starRules =
+    level.rules?.length || level.timeTarget ? (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+        <Pill text="★ Cumplir el objetivo" color={t.warning} />
+        {level.rules?.length ? <Pill text={`★ ${level.rules.map((r) => r.message).join(' ')}`} color={t.warning} /> : null}
+        {level.timeTarget ? <Pill text={`★ En ${level.timeTarget} s de juego o menos`} color={t.warning} /> : null}
+      </View>
+    ) : null;
+
+  const kicker = level.sandbox ? 'RETO LIBRE' : hackMode ? `MISIÓN ${idx + 1} DE ${HACK_MISSIONS.length} · ${(level.task ?? '').toUpperCase()}` : `NIVEL ${idx + 1} DE ${LEVELS.length - 1}`;
+
+  const goalStrip = (
+    <View style={[styles.goalStrip, { borderColor: hackMode ? tint(t.danger, 0.45) : t.border, backgroundColor: t.surface }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={[styles.levelIcon, { backgroundColor: tint(tone, 0.14) }]}>
+          <Ionicons name={level.icon as IconName} size={wide ? 20 : 18} color={tone} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: hackMode ? t.danger : t.textMuted, fontSize: 11, fontWeight: '800' }}>
-            {level.sandbox ? 'RETO LIBRE' : hackMode ? `MISIÓN ${idx + 1} DE ${HACK_MISSIONS.length} · ${(level.task ?? '').toUpperCase()}` : `NIVEL ${idx + 1} DE ${LEVELS.length - 1}`}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: hackMode ? t.danger : t.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }} numberOfLines={1}>
+            {kicker}
           </Text>
-          <Text style={{ color: t.text, fontSize: 17, fontWeight: '900' }}>{level.title}</Text>
+          <Text style={{ color: t.text, fontSize: wide ? 17 : 15, fontWeight: '900' }} numberOfLines={1}>
+            {level.title}
+          </Text>
         </View>
-        <Pill text={level.concept} icon="code-slash-outline" color={t.accent} />
-        <Ionicons name={showIntro ? 'chevron-up' : 'chevron-down'} size={18} color={t.textMuted} />
-      </Pressable>
-      {showIntro ? (
-        <View style={{ marginTop: 10 }}>
-          <RichText text={themed(level.intro, theme)} style={{ color: t.text, fontSize: 14, lineHeight: 21 }} />
-          {theme === 'mine' ? (
-            <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 6, lineHeight: 18 }}>
-              <Text style={{ fontWeight: '800' }}>En la mina: </Text>
-              {PLANTABLE.map((e) => `${THEMES.farm.entityEmoji[e]} ${THEMES.farm.entityLabel[e]} → ${names.entityEmoji[e]} ${names.entityLabel[e]}`).join(' · ')}
-              {' · '}
-              {(['hay', 'wood', 'power', 'water'] as ItemId[]).map((i) => `${THEMES.farm.itemLabel[i]} → ${names.itemLabel[i]}`).join(' · ')}
-              {' · '}
-              {`${THEMES.farm.groundLabel.grassland} → ${names.groundLabel.grassland} · ${THEMES.farm.groundLabel.soil} → ${names.groundLabel.soil}`}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
-      <View style={[styles.goal, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <Ionicons name="flag-outline" size={15} color={t.primary} />
-          <Text style={{ color: t.text, fontWeight: '800', flex: 1 }}>{themed(level.goal, theme)}</Text>
-        </View>
-        {!level.sandbox ? <ProgressBar value={check.ratio} color={check.done ? t.success : t.primary} /> : null}
-        <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>{check.progress.replace(/de (\w+)$/, (m, it) => `de ${THEMES[theme].itemLabel[it as ItemId] ?? it}`)}</Text>
-        {level.rules?.length || level.timeTarget ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-            <Pill text="★ Cumplir el objetivo" color={t.warning} />
-            {level.rules?.length ? <Pill text={`★ ${level.rules.map((r) => r.message).join(' ')}`} color={t.warning} /> : null}
-            {level.timeTarget ? <Pill text={`★ En ${level.timeTarget} s de juego o menos`} color={t.warning} /> : null}
-          </View>
+        {wide ? <Pill text={level.concept} icon="code-slash-outline" color={t.accent} /> : null}
+        {!level.sandbox ? <Stars n={earned} size={wide ? 16 : 14} /> : null}
+      </View>
+      <View style={[styles.goalRow, { backgroundColor: t.surfaceAlt }]}>
+        <Ionicons name={check.done ? 'checkmark-circle' : 'flag'} size={15} color={check.done ? t.success : tone} />
+        <Text style={{ color: t.text, fontWeight: '800', fontSize: 13, flex: 1, marginLeft: 6 }} numberOfLines={wide ? 2 : 3}>
+          {themed(level.goal, theme)}
+        </Text>
+        {!level.sandbox ? (
+          <Text style={{ color: check.done ? t.success : t.textMuted, fontSize: 12, fontWeight: '800', marginLeft: 8 }} numberOfLines={1}>
+            {progressText}
+          </Text>
         ) : null}
       </View>
-      {level.hints.length ? (
-        <View style={{ marginTop: 8 }}>
-          {level.hints.slice(0, hints).map((h, i) => (
-            <Banner key={i} icon="bulb-outline" color={t.accent} text={themed(h, theme)} />
-          ))}
-          {hints < level.hints.length ? <Button label={hints ? 'Otra pista' : 'Ver una pista'} icon="bulb-outline" kind="ghost" size="sm" onPress={() => setHints((h) => h + 1)} style={{ alignSelf: 'flex-start' }} /> : null}
-        </View>
-      ) : null}
-    </Card>
-  );
-
-  const controls = (
-    <View style={[styles.controls, { borderColor: t.border, backgroundColor: t.surface }]}>
-      {running && status !== 'paused' ? (
-        <Button label="Detener" icon="stop" kind="danger" onPress={stop} />
-      ) : (
-        <Button label={status === 'paused' ? 'Continuar' : 'Ejecutar'} icon="play" kind="primary" onPress={() => start('run')} disabled={blocking} />
-      )}
-      <Button label="Paso" icon="play-skip-forward-outline" onPress={() => start('step')} disabled={blocking || (running && status !== 'paused')} />
-      <Button label="Reiniciar" icon="refresh" kind="ghost" onPress={() => reset()} />
-      <View style={{ flex: 1 }} />
-      <Segmented options={SPEEDS} value={speed} onChange={(s) => useGame.getState().setSpeed(s)} />
+      {!level.sandbox ? <ProgressBar value={check.ratio} color={check.done ? t.success : tone} height={6} style={{ marginTop: 6 }} /> : null}
+      {wide ? starRules : null}
     </View>
   );
+
+  const mineGlossary =
+    theme === 'mine' ? (
+      <View style={[styles.glossary, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+        <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '800', marginBottom: 6 }}>EQUIVALENCIAS EN LA MINA</Text>
+        <View style={styles.chipGrid}>
+          {PLANTABLE.map((e) => (
+            <View key={e} style={[styles.pairChip, { borderColor: t.border, backgroundColor: t.surface }]}>
+              <EntitySprite type={e} theme="farm" size={20} />
+              <Text style={[styles.pairText, { color: t.textMuted }]}>{THEMES.farm.entityLabel[e]}</Text>
+              <Ionicons name="arrow-forward" size={11} color={t.textFaint} />
+              <EntitySprite type={e} theme="mine" size={20} />
+              <Text style={[styles.pairText, { color: t.text, fontWeight: '800' }]}>{names.entityLabel[e]}</Text>
+            </View>
+          ))}
+          {(['hay', 'wood', 'power', 'water', 'fertilizer'] as ItemId[]).map((i) => (
+            <View key={i} style={[styles.pairChip, { borderColor: t.border, backgroundColor: t.surface }]}>
+              <ItemIcon item={i} theme="farm" size={18} />
+              <Text style={[styles.pairText, { color: t.textMuted }]}>{THEMES.farm.itemLabel[i]}</Text>
+              <Ionicons name="arrow-forward" size={11} color={t.textFaint} />
+              <ItemIcon item={i} theme="mine" size={18} />
+              <Text style={[styles.pairText, { color: t.text, fontWeight: '800' }]}>{names.itemLabel[i]}</Text>
+            </View>
+          ))}
+        </View>
+        <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 6 }}>
+          {`${THEMES.farm.groundLabel.grassland} → ${names.groundLabel.grassland} · ${THEMES.farm.groundLabel.soil} → ${names.groundLabel.soil}`}
+        </Text>
+      </View>
+    ) : null;
+
+  const missionBody = (
+    <View>
+      <RichText text={themed(level.intro, theme)} style={{ color: t.text, fontSize: 14, lineHeight: 21 }} />
+      {mineGlossary}
+    </View>
+  );
+
+  const hintsBody = level.hints.length ? (
+    <View style={{ gap: 6 }}>
+      {level.hints.slice(0, hints).map((h, i) => (
+        <Banner key={i} icon="bulb-outline" color={t.accent} text={themed(h, theme)} />
+      ))}
+      {hints < level.hints.length ? (
+        <Button label={hints ? `Otra pista (${level.hints.length - hints})` : `Ver una pista (${level.hints.length})`} icon="bulb-outline" kind="default" size="sm" onPress={() => setHints((h) => h + 1)} style={{ alignSelf: 'flex-start' }} />
+      ) : (
+        <Text style={{ color: t.textMuted, fontSize: 12 }}>Ya viste todas las pistas de este nivel.</Text>
+      )}
+    </View>
+  ) : (
+    <Text style={{ color: t.textMuted, fontSize: 13 }}>Este nivel no tiene pistas: ¡experimenta!</Text>
+  );
+
+  const intruderBody = level.intruderCode ? (
+    <View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        <Text style={{ color: t.text, fontSize: 13, flex: 1, minWidth: 180 }}>Lee su programa para anticipar qué hará. Es JavaScript de verdad.</Text>
+        <Pill text={level.intruderEvery && level.intruderEvery > 1 ? `1 acción por cada ${level.intruderEvery} tuyas` : '1 acción por cada tuya'} icon="time-outline" color={t.danger} />
+      </View>
+      <CodeBlock code={themed(level.intruderCode, theme)} />
+    </View>
+  ) : null;
+
+  const docsBody = (
+    <View>
+      {(['Acciones', 'Sensores', 'Granja libre', 'Hackeo'] as const).map((g) => (
+        <View key={g} style={{ marginBottom: 10 }}>
+          <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>{g.toUpperCase()}</Text>
+          {API_DOCS.filter((d) => d.group === g).map((d) => (
+            <View key={d.name} style={[styles.docRow, { borderLeftColor: tint(t.accent, 0.5) }]}>
+              <Text style={{ color: t.syntax.func, fontFamily: MONO, fontSize: 12, fontWeight: '700' }}>{themed(d.sig, theme)}</Text>
+              <Text style={{ color: t.text, fontSize: 12, lineHeight: 17 }}>{d.doc}</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+      <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>CONSTANTES</Text>
+      <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO, marginBottom: 6 }}>North, East, South, West</Text>
+      <Text style={[styles.catalogLabel, { color: t.textMuted }]}>Entities ({theme === 'farm' ? 'plantas' : 'minerales'})</Text>
+      <View style={styles.chipGrid}>
+        {PLANTABLE.concat(['dead_pumpkin', 'treasure']).map((e) => (
+          <View key={e} style={[styles.pairChip, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+            <EntitySprite type={e} theme={theme} size={22} />
+            <View>
+              <Text style={{ color: t.syntax.property, fontFamily: MONO, fontSize: 11, fontWeight: '700' }}>Entities.{names.entityKey[e]}</Text>
+              <Text style={{ color: t.textMuted, fontSize: 10 }}>{names.entityLabel[e]}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+      <Text style={[styles.catalogLabel, { color: t.textMuted }]}>Items (recursos)</Text>
+      <View style={styles.chipGrid}>
+        {(Object.keys(names.itemKey) as ItemId[]).map((i) => (
+          <View key={i} style={[styles.pairChip, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+            <ItemIcon item={i} theme={theme} size={20} />
+            <View>
+              <Text style={{ color: t.syntax.property, fontFamily: MONO, fontSize: 11, fontWeight: '700' }}>Items.{names.itemKey[i]}</Text>
+              <Text style={{ color: t.textMuted, fontSize: 10 }}>{names.itemLabel[i]}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+      <Text style={[styles.catalogLabel, { color: t.textMuted }]}>Grounds (suelos)</Text>
+      <Text style={{ color: t.text, fontSize: 12, fontFamily: MONO }}>
+        Grounds.{names.groundKey.grassland} ({names.groundLabel.grassland}), Grounds.{names.groundKey.soil} ({names.groundLabel.soil})
+      </Text>
+    </View>
+  );
+
+  const missionTabs: { id: MissionTab; label: string; icon: IconName }[] = [
+    { id: 'mission', label: hackMode ? 'Misión' : 'Lección', icon: 'document-text-outline' },
+    { id: 'hints', label: 'Pistas', icon: 'bulb-outline' },
+    ...(level.intruderCode ? [{ id: 'intruder' as const, label: 'Intruso', icon: 'radio-outline' as IconName }] : []),
+    { id: 'docs', label: 'Funciones', icon: 'book-outline' },
+  ];
+  const tab = missionTabs.some((m) => m.id === missionTab) ? missionTab : 'mission';
+
+  const missionPanel = (
+    <View style={[styles.panel, { borderColor: t.border, backgroundColor: t.surface }, missionOpen ? { maxHeight: '42%' } : null]}>
+      <View style={[styles.tabRow, { borderBottomColor: missionOpen ? t.border : 'transparent' }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+          {missionTabs.map((m) => (
+            <Tab
+              key={m.id}
+              label={m.label}
+              icon={m.icon}
+              active={missionOpen && tab === m.id}
+              compact={!roomy}
+              onPress={() => {
+                if (missionOpen && tab === m.id) setMissionOpen(false);
+                else {
+                  setMissionTab(m.id);
+                  setMissionOpen(true);
+                }
+              }}
+            />
+          ))}
+        </ScrollView>
+        <IconButton icon={missionOpen ? 'chevron-up' : 'chevron-down'} label={missionOpen ? 'Ocultar explicación' : 'Mostrar explicación'} tooltip={missionOpen ? 'Ocultar (más espacio para el código)' : 'Mostrar la explicación'} onPress={() => setMissionOpen((v) => !v)} size={18} />
+      </View>
+      {missionOpen ? (
+        <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ padding: 14 }}>
+          {tab === 'mission' ? missionBody : tab === 'hints' ? hintsBody : tab === 'intruder' ? intruderBody : docsBody}
+        </ScrollView>
+      ) : null}
+    </View>
+  );
+
+  // ───────────────────────────── ejecución y editor ─────────────────────────────
+
+  const runButton =
+    running && status !== 'paused' ? (
+      <Button label="Detener" icon="stop" kind="danger" onPress={stop} />
+    ) : (
+      <Button
+        label={status === 'paused' ? 'Continuar' : 'Ejecutar'}
+        icon="play"
+        kind="primary"
+        disabled={blocking}
+        onPress={() => {
+          start('run');
+          if (!wide) setPane('world');
+        }}
+      />
+    );
+  const stepDisabled = blocking || (running && status !== 'paused');
+  const errorPill = blocking ? (
+    <Pressable onPress={() => !wide && setPane('code')} accessibilityRole="button" accessibilityLabel="Hay errores en el código">
+      <Pill text={wide ? `${errorCount || 1} error${errorCount === 1 ? '' : 'es'} en el código` : `${errorCount || 1}`} icon="alert-circle" color={t.danger} />
+    </Pressable>
+  ) : null;
+
+  const toolbar = (
+    <View style={[styles.toolbar, wide ? { borderBottomColor: t.border, borderBottomWidth: BORDER, backgroundColor: t.surface } : null]}>
+      {runButton}
+      {roomy ? (
+        <Button label="Paso" icon="play-skip-forward-outline" onPress={() => start('step')} disabled={stepDisabled} />
+      ) : (
+        <IconButton icon="play-skip-forward-outline" label="Paso a paso" tooltip="Paso a paso: una instrucción a la vez" onPress={() => start('step')} disabled={stepDisabled} />
+      )}
+      <IconButton icon="refresh" label="Reiniciar" tooltip={level.sandbox ? 'Reiniciar el programa' : 'Reiniciar el nivel'} onPress={() => reset()} />
+      {errorPill}
+      <View style={{ flex: 1 }} />
+      <SpeedPicker value={speed} onChange={(s) => useGame.getState().setSpeed(s)} cycle={!wide} />
+    </View>
+  );
+
+  const patchBar = level.patch ? (
+    <View style={[styles.patchBar, { backgroundColor: t.danger }]}>
+      <Ionicons name="bug-outline" size={14} color="#fff" />
+      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800', marginLeft: 6, flex: 1 }}>Estás editando el sistema del dron intruso: este código lo ejecuta él</Text>
+    </View>
+  ) : null;
 
   const editor = (
-    <View style={[styles.editor, { borderColor: level.patch ? t.danger : t.border }, wide ? { flex: 1 } : { height: 360 }]}>
-      {level.patch ? (
-        <View style={[styles.patchBar, { backgroundColor: t.danger }]}>
-          <Ionicons name="bug-outline" size={14} color="#fff" />
-          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800', marginLeft: 6 }}>Estás editando el sistema del dron intruso: este código lo ejecuta él</Text>
+    <CodeEditor
+      code={code}
+      onChange={(c) => useGame.getState().setCode(level.id, c === starter ? null : c)}
+      breakpoints={[]}
+      onToggleBreakpoint={() => {}}
+      execLine={running ? run?.line ?? null : null}
+      errorLine={status === 'error' ? run?.error?.line ?? null : null}
+      diagnostics={diags}
+      fontSize={fontSize}
+      listenRequests={false}
+    />
+  );
+
+  // ───────────────────────────── tablero ─────────────────────────────
+
+  const shownItems = (Object.keys(world.items) as ItemId[]).filter((i) => world.items[i] > 0);
+  const here = world.cell();
+  const it = world.intruder;
+  const itSafe = !!it && (it.hacked || it.shutdown);
+  const destroyed = Object.values(world.stats.destroyed).reduce((a: number, n) => a + (n ?? 0), 0);
+
+  const invChips = shownItems.length ? (
+    shownItems.map((i) => (
+      <Tooltip key={i} text={names.itemLabel[i]}>
+        <View style={[styles.invChip, { borderColor: t.border, backgroundColor: t.surfaceAlt }]} accessibilityLabel={`${names.itemLabel[i]}: ${Math.floor(world.items[i])}`}>
+          <ItemIcon item={i} theme={theme} size={18} />
+          <Text style={{ color: t.text, fontWeight: '900', fontSize: 13, marginLeft: 5 }}>{Math.floor(world.items[i]).toLocaleString()}</Text>
         </View>
+      </Tooltip>
+    ))
+  ) : (
+    <Text style={{ color: t.textMuted, fontSize: 12, paddingVertical: 4 }}>Inventario vacío: cosecha para conseguir recursos.</Text>
+  );
+  const meta = (
+    <View style={[styles.hudMeta, wide ? null : { paddingTop: 0 }]}>
+      <Ionicons name="time-outline" size={13} color={t.textMuted} />
+      <Text style={[styles.hudMetaText, { color: t.textMuted }]}>{world.time.toFixed(1)} s</Text>
+      <Ionicons name="hardware-chip-outline" size={13} color={t.textMuted} style={{ marginLeft: 8 }} />
+      <Text style={[styles.hudMetaText, { color: t.textMuted }]}>{world.ops.toLocaleString()} ops</Text>
+    </View>
+  );
+  // en pantalla angosta el inventario es una sola fila que se desliza
+  const hud = wide ? (
+    <View style={styles.hud}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1, minWidth: 0 }}>{invChips}</View>
+      {meta}
+    </View>
+  ) : (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+      {invChips}
+    </ScrollView>
+  );
+
+  const statusLine = (
+    <View style={styles.statusLine}>
+      <View style={[styles.posChip, { backgroundColor: tint(t.accent, 0.12), borderColor: tint(t.accent, 0.4) }]}>
+        <Ionicons name="navigate" size={12} color={t.accent} />
+        <Text style={{ color: t.accentDark, fontFamily: MONO, fontSize: 12, fontWeight: '700', marginLeft: 4 }}>
+          ({world.x}, {world.y})
+        </Text>
+      </View>
+      <Text style={{ color: t.textMuted, fontSize: 12, flex: 1, minWidth: 120 }} numberOfLines={1}>
+        {names.groundLabel[here.ground]}
+        {here.entity
+          ? ` · ${names.entityLabel[here.entity.type]}${here.entity.progress < 1 ? ` (${Math.round(here.entity.progress * 100)} %)` : here.entity.type === 'hedge' || here.entity.type === 'dead_pumpkin' ? '' : ' · lista'}`
+          : ' · vacía'}
+        {here.water > 0.05 ? ` · agua ${Math.round(here.water * 100)} %` : ''}
+      </Text>
+      {wide ? null : meta}
+      {it ? (
+        <Pill
+          icon={itSafe ? 'shield-checkmark' : 'warning'}
+          color={itSafe ? t.success : t.danger}
+          text={`Intruso ${it.hacked ? 'hackeado' : it.shutdown ? 'apagado' : it.done ? 'sin programa' : 'activo'} en (${it.x}, ${it.y}) · destruyó ${destroyed}`}
+        />
       ) : null}
-      <CodeEditor
-        code={code}
-        onChange={(c) => useGame.getState().setCode(level.id, c === starter ? null : c)}
-        breakpoints={[]}
-        onToggleBreakpoint={() => {}}
-        execLine={running ? run?.line ?? null : null}
-        errorLine={status === 'error' ? run?.error?.line ?? null : null}
-        diagnostics={diags}
-        fontSize={fontSize}
-        listenRequests={false}
-      />
+      {(done || failed) && resultHidden ? <Button label="Resultado" icon="trophy-outline" size="sm" kind="default" onPress={() => setResultHidden(false)} /> : null}
     </View>
   );
 
+  const resultOverlay =
+    (done || failed) && !resultHidden ? (
+      <View style={[StyleSheet.absoluteFill, styles.overlay, { backgroundColor: tint(t.surface, 0.78) }]}>
+        <View style={[styles.resultCard, { backgroundColor: t.surface, borderColor: done ? t.success : t.danger }]}>
+          <Text style={{ fontSize: 42, lineHeight: 50 }}>{done ? (hackMode ? '🛡️' : '🎉') : '💥'}</Text>
+          <Text style={{ color: t.text, fontSize: 19, fontWeight: '900', textAlign: 'center' }}>{done ? (hackMode ? themed('¡Misión cumplida! Tu granja está a salvo', theme) : '¡Nivel completado!') : 'Misión fallida'}</Text>
+          {done ? <Stars n={done.stars} size={32} /> : null}
+          <Text style={{ color: t.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 }}>
+            {done
+              ? `${done.time.toFixed(1)} s de juego${!done.rulesOk ? ' · Para más estrellas cumple los requisitos del código' : level.timeTarget && done.time > level.timeTarget ? ` · La tercera estrella es en ${level.timeTarget} s o menos` : ''}`
+              : failed}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 6 }}>
+            {done && next ? <Button label={hackMode ? 'Siguiente misión' : 'Siguiente nivel'} icon="arrow-forward" kind="primary" onPress={() => selectLevel(next.id)} /> : null}
+            <Button label={failed ? 'Reintentar' : 'Repetir'} icon="refresh" kind={failed ? 'primary' : 'default'} onPress={() => reset()} />
+            <Button label="Ver tablero" icon="eye-outline" kind="ghost" onPress={() => setResultHidden(true)} />
+          </View>
+        </View>
+      </View>
+    ) : null;
+
+  const stage = (
+    <View style={[styles.stage, { borderColor: t.border, backgroundColor: t.surface }, wide ? { flex: 1 } : null]}>
+      {hud}
+      <WorldView world={world} theme={theme} version={version} fill={wide} maxSize={wide ? 640 : 460} />
+      {statusLine}
+      {resultOverlay}
+    </View>
+  );
+
+  // ───────────────────────────── consola y mejoras ─────────────────────────────
+
   const output = (run?.output ?? []).filter((l) => l.kind !== 'canvas').slice(-150);
-  const consoleView = (
-    <View style={[styles.console, { backgroundColor: t.terminal.bg }]}>
-      <Text style={{ color: t.terminal.muted, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>CONSOLA</Text>
+  const consoleBody = (
+    <ScrollView
+      ref={consoleRef}
+      style={[styles.console, { backgroundColor: t.terminal.bg }, wide ? { flex: 1 } : { minHeight: 110, maxHeight: 260 }]}
+      contentContainerStyle={{ padding: 10 }}
+      onContentSizeChange={() => consoleRef.current?.scrollToEnd({ animated: false })}
+    >
+      {unfinished ? (
+        <Text style={{ color: t.terminal.warn, fontSize: 12, marginBottom: 6, lineHeight: 18 }}>
+          ⓘ El programa terminó, pero todavía no se cumple el objetivo. Revisa tu lógica (o usa un ciclo para que el dron siga trabajando).
+        </Text>
+      ) : null}
       {output.length ? (
         output.map((l) => (
           <Text
@@ -387,99 +799,40 @@ function GameInner() {
       )}
       {run?.notice ? <Text style={{ color: t.terminal.warn, fontFamily: MONO, fontSize: 12 }}>{run.notice}</Text> : null}
       {run?.error?.hint ? <Text style={{ color: t.terminal.muted, fontSize: 12, marginTop: 4 }}>{run.error.hint.solutions?.[0] ?? ''}</Text> : null}
-    </View>
+    </ScrollView>
   );
 
-  const shownItems = (Object.keys(world.items) as ItemId[]).filter((i) => world.items[i] > 0);
-  const stats = (
-    <View style={{ marginTop: 10 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {shownItems.length ? (
-          shownItems.map((i) => <Pill key={i} text={`${names.itemEmoji[i]} ${names.itemLabel[i]}: ${Math.floor(world.items[i])}`} color={t.primary} />)
-        ) : (
-          <Text style={{ color: t.textMuted, fontSize: 12 }}>Aún no tienes recursos.</Text>
-        )}
-      </View>
-      <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 6 }}>
-        Posición ({world.x}, {world.y}) · {names.groundLabel[world.cell().ground]}
-        {world.cell().entity ? ` · ${names.entityLabel[world.cell().entity!.type]}${world.cell().entity!.progress < 1 ? ` (${Math.round(world.cell().entity!.progress * 100)} %)` : ''}` : ''} · Tiempo {world.time.toFixed(1)} s · {world.ops.toLocaleString()} operaciones
-      </Text>
-    </View>
-  );
-
-  const it = world.intruder;
-  const intruderLine = it ? (
-    <View style={[styles.intruderLine, { borderColor: it.hacked || it.shutdown ? t.success : t.danger }]}>
-      <Ionicons name={it.hacked || it.shutdown ? 'shield-checkmark' : 'warning'} size={15} color={it.hacked || it.shutdown ? t.success : t.danger} />
-      <Text style={{ color: t.text, fontSize: 12, marginLeft: 6, flex: 1 }}>
-        Dron intruso en ({it.x}, {it.y}) · {it.hacked ? 'hackeado' : it.shutdown ? 'apagado' : it.done ? 'terminó su programa' : 'activo'} · destruyó {Object.values(world.stats.destroyed).reduce((a, n) => a + (n ?? 0), 0)} planta(s)
-      </Text>
-    </View>
-  ) : null;
-
-  const intruderProgram = level.intruderCode ? (
-    <Card style={{ marginTop: 10 }} accent={t.danger}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-        <Ionicons name="radio-outline" size={16} color={t.danger} />
-        <Text style={{ color: t.text, fontWeight: '800', fontSize: 14, marginLeft: 6, flex: 1 }}>Programa del dron intruso</Text>
-        <Pill text={level.intruderEvery && level.intruderEvery > 1 ? `1 acción por cada ${level.intruderEvery} tuyas` : '1 acción por cada tuya'} color={t.danger} />
-      </View>
-      <CodeBlock code={themed(level.intruderCode, theme)} />
-    </Card>
-  ) : null;
-
-  const doneBanner = done ? (
-    <Card accent={t.success} style={{ marginTop: 10 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Text style={{ fontSize: 30 }}>🎉</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: t.text, fontSize: 17, fontWeight: '900' }}>{hackMode ? themed('¡Misión cumplida! Tu granja está a salvo', theme) : '¡Nivel completado!'}</Text>
-          <Text style={{ color: t.warning, fontSize: 20, letterSpacing: 2 }}>
-            {'★'.repeat(done.stars)}
-            <Text style={{ color: t.border }}>{'★'.repeat(3 - done.stars)}</Text>
-          </Text>
-          <Text style={{ color: t.textMuted, fontSize: 12 }}>
-            {done.time.toFixed(1)} s de juego
-            {!done.rulesOk ? ' · Para más estrellas cumple los requisitos del código' : level.timeTarget && done.time > level.timeTarget ? ` · La tercera estrella es en ${level.timeTarget} s o menos` : ''}
-          </Text>
-        </View>
-        {next ? <Button label={hackMode ? 'Siguiente misión' : 'Siguiente nivel'} icon="arrow-forward" kind="primary" onPress={() => selectLevel(next.id)} /> : null}
-      </View>
-    </Card>
-  ) : failed ? (
-    <Card accent={t.danger} style={{ marginTop: 10 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Text style={{ fontSize: 28 }}>💥</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: t.text, fontSize: 16, fontWeight: '900' }}>Misión fallida</Text>
-          <Text style={{ color: t.textMuted, fontSize: 13 }}>{failed}</Text>
-        </View>
-        <Button label="Reintentar" icon="refresh" onPress={() => reset()} />
-      </View>
-    </Card>
-  ) : unfinished ? (
-    <View style={{ marginTop: 10 }}>
-      <Banner icon="information-circle-outline" color={t.warning} text="El programa terminó, pero todavía no se cumple el objetivo. Revisa tu lógica (o usa un ciclo para que el dron siga trabajando)." />
-    </View>
-  ) : null;
-
-  const sandboxPanel = level.sandbox ? (
-    <Card style={{ marginTop: 10 }}>
-      <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 6 }}>Mejoras</Text>
+  const upgradesBody = level.sandbox ? (
+    <View>
       {unlockList(theme).map((u) => {
         const cost = world.unlockCost(u.id);
         const lvl = world.unlocks[u.id];
         const can = !!cost && Object.entries(cost).every(([k, v]) => world.items[k as ItemId] >= (v as number));
         return (
           <View key={u.id} style={[styles.unlockRow, { borderBottomColor: t.border }]}>
-            <View style={{ flex: 1 }}>
+            <View style={[styles.unlockIcon, { backgroundColor: t.surfaceAlt, borderColor: lvl ? tint(t.primary, 0.5) : t.border }]}>
+              <UnlockIcon id={u.id} theme={theme} color={t.accentDark} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ color: t.text, fontWeight: '700', fontSize: 13 }}>
                 {u.label} <Text style={{ color: t.textMuted, fontFamily: MONO, fontSize: 11 }}>Unlocks.{u.key}</Text>
               </Text>
-              <Text style={{ color: t.textMuted, fontSize: 11 }}>
-                {lvl ? `Nivel ${lvl}` : 'Sin comprar'}
-                {cost ? ` · cuesta ${Object.entries(cost).map(([k, v]) => `${v} ${names.itemLabel[k as ItemId]}`).join(', ')}` : ' · al máximo'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                <Text style={{ color: lvl ? t.primaryDark : t.textMuted, fontSize: 11, fontWeight: '700' }}>{lvl ? `Nivel ${lvl}` : 'Sin comprar'}</Text>
+                {cost ? (
+                  Object.entries(cost).map(([k, v]) => {
+                    const enough = world.items[k as ItemId] >= (v as number);
+                    return (
+                      <View key={k} style={[styles.costChip, { borderColor: enough ? tint(t.primary, 0.45) : tint(t.danger, 0.4), backgroundColor: enough ? tint(t.primary, 0.08) : tint(t.danger, 0.06) }]} accessibilityLabel={`Cuesta ${v} de ${names.itemLabel[k as ItemId]}`}>
+                        <ItemIcon item={k as ItemId} theme={theme} size={14} />
+                        <Text style={{ color: t.text, fontSize: 11, fontWeight: '800', marginLeft: 3 }}>{(v as number).toLocaleString()}</Text>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <Text style={{ color: t.textMuted, fontSize: 11 }}>· al máximo</Text>
+                )}
+              </View>
             </View>
             <Button
               label="Comprar"
@@ -508,141 +861,155 @@ function GameInner() {
           reset();
         }}
       />
-    </Card>
+    </View>
   ) : null;
 
-  const docs = (
-    <Card style={{ marginTop: 10 }}>
-      <Pressable onPress={() => setShowDocs((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Ionicons name="book-outline" size={16} color={t.accent} />
-        <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginLeft: 6, flex: 1 }}>Funciones del {names.drone}</Text>
-        <Ionicons name={showDocs ? 'chevron-up' : 'chevron-down'} size={16} color={t.textMuted} />
-      </Pressable>
-      {showDocs ? (
-        <View style={{ marginTop: 8 }}>
-          {(['Acciones', 'Sensores', 'Granja libre', 'Hackeo'] as const).map((g) => (
-            <View key={g} style={{ marginBottom: 8 }}>
-              <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>{g.toUpperCase()}</Text>
-              {API_DOCS.filter((d) => d.group === g).map((d) => (
-                <View key={d.name} style={{ marginBottom: 6 }}>
-                  <Text style={{ color: t.syntax.func, fontFamily: MONO, fontSize: 12, fontWeight: '700' }}>{themed(d.sig, theme)}</Text>
-                  <Text style={{ color: t.text, fontSize: 12, lineHeight: 17 }}>{d.doc}</Text>
-                </View>
-              ))}
+  const bottomPanel = (
+    <View style={[styles.panel, { borderColor: t.border, backgroundColor: t.surface, height: level.sandbox ? 210 : 170 }]}>
+      <View style={[styles.tabRow, { borderBottomColor: t.border }]}>
+        <Tab label="Consola" icon="terminal-outline" active={bottomTab === 'console'} onPress={() => setBottomTab('console')} badge={status === 'error' ? '!' : undefined} />
+        {level.sandbox ? <Tab label="Mejoras" icon="trending-up-outline" active={bottomTab === 'upgrades'} onPress={() => setBottomTab('upgrades')} /> : null}
+      </View>
+      {bottomTab === 'upgrades' && level.sandbox ? <ScrollView contentContainerStyle={{ padding: 12 }}>{upgradesBody}</ScrollView> : consoleBody}
+    </View>
+  );
+
+  // ───────────────────────────── distribución ─────────────────────────────
+
+  if (wide) {
+    return (
+      <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top, paddingBottom: insets.bottom }}>
+        {header}
+        {levelBar}
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <View style={[styles.column, { flex: 1.05, paddingRight: 6 }]}>
+            {goalStrip}
+            {missionPanel}
+            <View style={[styles.panel, { flex: 1, borderColor: level.patch ? t.danger : t.border, backgroundColor: t.surface }]}>
+              {toolbar}
+              {patchBar}
+              {editor}
             </View>
-          ))}
-          <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '800', marginBottom: 4 }}>CONSTANTES</Text>
-          <Text style={{ color: t.text, fontSize: 12, lineHeight: 19 }}>
-            <Text style={{ fontFamily: MONO }}>North, East, South, West</Text>
-            {'\n'}
-            {PLANTABLE.concat(['dead_pumpkin', 'treasure']).map((e) => (
-              <Text key={e}>
-                {names.entityEmoji[e]} <Text style={{ fontFamily: MONO }}>Entities.{names.entityKey[e]}</Text>
-                {'   '}
-              </Text>
-            ))}
-            {'\n'}
-            {(Object.keys(names.itemKey) as ItemId[]).map((i) => (
-              <Text key={i}>
-                {names.itemEmoji[i]} <Text style={{ fontFamily: MONO }}>Items.{names.itemKey[i]}</Text>
-                {'   '}
-              </Text>
-            ))}
-            {'\n'}
-            <Text style={{ fontFamily: MONO }}>
-              Grounds.{names.groundKey.grassland}, Grounds.{names.groundKey.soil}
-            </Text>
-          </Text>
+          </View>
+          <View style={[styles.column, { flex: 1, paddingLeft: 6 }]}>
+            {stage}
+            {bottomPanel}
+          </View>
         </View>
-      ) : null}
-    </Card>
-  );
+      </View>
+    );
+  }
 
-  const header = (
-    <ScreenHeader
-      icon="game-controller-outline"
-      title={hackMode ? 'Juego del dron · Hackeo' : 'Juego del dron'}
-      subtitle={`${names.title} · ${level.title}`}
-      color={t.primary}
-      right={
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Segmented
-            options={[
-              { id: 'farm', label: wide ? 'Granja' : '🌾', icon: wide ? 'leaf-outline' : undefined },
-              { id: 'mine', label: wide ? 'Minería' : '⛏️', icon: wide ? 'hammer-outline' : undefined },
-            ]}
-            value={theme}
-            onChange={(v) => setTheme(v as GameTheme)}
-          />
-          <BackToEditorButton
-            onPress={() => {
-              runner.current?.stop();
-              useApp.getState().setAppMode('ide');
-            }}
-          />
-        </View>
-      }
-    />
-  );
-
-  const farmSide = (
-    <>
-      <WorldView world={world} theme={theme} version={version} maxSize={wide ? 520 : 420} />
-      {stats}
-      {intruderLine}
-      {doneBanner}
-      {intruderProgram}
-      {sandboxPanel}
-      <View style={{ marginTop: 10 }}>{consoleView}</View>
-      {docs}
-    </>
-  );
+  const paneTabs: { id: Pane; label: string; icon: IconName; badge?: number | string }[] = [
+    { id: 'world', label: names.title, icon: theme === 'farm' ? 'leaf-outline' : 'diamond-outline', badge: done || failed ? (done ? '★' : '!') : undefined },
+    { id: 'code', label: 'Código', icon: 'code-slash-outline', badge: blocking ? errorCount || 1 : undefined },
+    { id: 'mission', label: hackMode ? 'Misión' : 'Lección', icon: 'document-text-outline' },
+  ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top, paddingBottom: insets.bottom }}>
+    <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top }}>
       {header}
       {levelBar}
-      {wide ? (
-        <View style={{ flex: 1, flexDirection: 'row' }}>
-          <View style={{ flex: 1.1, minWidth: 0, padding: 12, paddingRight: 6 }}>
-            <ScrollView style={{ flexGrow: 0, maxHeight: '45%' }}>{levelCard}</ScrollView>
-            {controls}
+      <View style={{ paddingHorizontal: 10, paddingTop: 8 }}>{goalStrip}</View>
+      <View style={[styles.paneTabs, { borderBottomColor: t.border }]}>
+        {paneTabs.map((p) => (
+          <View key={p.id} style={{ flex: 1, alignItems: 'center' }}>
+            <Tab label={p.label} icon={p.icon} active={pane === p.id} onPress={() => setPane(p.id)} badge={p.badge} />
+          </View>
+        ))}
+      </View>
+      {pane === 'world' ? (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10, gap: 10, paddingBottom: 20 }}>
+          {stage}
+          <View style={[styles.panel, { borderColor: t.border, backgroundColor: t.surface }]}>
+            <View style={[styles.tabRow, { borderBottomColor: t.border }]}>
+              <Tab label="Consola" icon="terminal-outline" active onPress={() => {}} />
+            </View>
+            {consoleBody}
+          </View>
+          {level.sandbox ? (
+            <View style={[styles.panel, { borderColor: t.border, backgroundColor: t.surface, padding: 12 }]}>
+              <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 6 }}>Mejoras</Text>
+              {upgradesBody}
+            </View>
+          ) : null}
+        </ScrollView>
+      ) : pane === 'code' ? (
+        <View style={{ flex: 1, padding: 10 }}>
+          <View style={[styles.panel, { flex: 1, borderColor: level.patch ? t.danger : t.border, backgroundColor: t.surface }]}>
+            {patchBar}
             {editor}
           </View>
-          <ScrollView style={{ flex: 1, borderLeftWidth: BORDER, borderLeftColor: t.border }} contentContainerStyle={{ padding: 12 }}>
-            {farmSide}
-          </ScrollView>
         </View>
       ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-          {levelCard}
-          <WorldView world={world} theme={theme} version={version} maxSize={420} />
-          {stats}
-          {intruderLine}
-          {doneBanner}
-          {intruderProgram}
-          <View style={{ marginTop: 10 }}>{controls}</View>
-          {editor}
-          {sandboxPanel}
-          <View style={{ marginTop: 10 }}>{consoleView}</View>
-          {docs}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, gap: 14, paddingBottom: 24 }}>
+          <View>
+            <Pill text={level.concept} icon="code-slash-outline" color={t.accent} />
+            <View style={{ marginTop: 10 }}>{missionBody}</View>
+            {starRules}
+          </View>
+          {level.intruderCode ? (
+            <View>
+              <Text style={[styles.sectionLabel, { color: t.danger }]}>PROGRAMA DEL DRON INTRUSO</Text>
+              {intruderBody}
+            </View>
+          ) : null}
+          <View>
+            <Text style={[styles.sectionLabel, { color: t.textMuted }]}>PISTAS</Text>
+            {hintsBody}
+          </View>
+          <View style={[styles.panel, { borderColor: t.border, backgroundColor: t.surface }]}>
+            <Pressable onPress={() => setShowDocs((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', padding: 12 }} accessibilityRole="button">
+              <Ionicons name="book-outline" size={16} color={t.accent} />
+              <Text style={{ color: t.text, fontWeight: '800', fontSize: 14, marginLeft: 6, flex: 1 }}>Funciones del {names.drone}</Text>
+              <Ionicons name={showDocs ? 'chevron-up' : 'chevron-down'} size={16} color={t.textMuted} />
+            </Pressable>
+            {showDocs ? <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>{docsBody}</View> : null}
+          </View>
+          <Button label="Escribir el código" icon="code-slash-outline" kind="primary" onPress={() => setPane('code')} style={{ alignSelf: 'stretch' }} />
         </ScrollView>
       )}
+      <View style={[styles.bottomBar, { borderTopColor: t.border, backgroundColor: t.surface, paddingBottom: insets.bottom + 8 }]}>{toolbar}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   levelBar: { flexGrow: 0, flexShrink: 0, borderBottomWidth: BORDER },
-  levelChip: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: BORDER, borderRadius: RADIUS.md, paddingVertical: 6, paddingHorizontal: 10, maxWidth: 220 },
+  barDivider: { width: 2, height: 28, borderRadius: 1, marginHorizontal: 2 },
+  levelChip: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: BORDER, borderRadius: RADIUS.md, paddingVertical: 5, paddingHorizontal: 9, maxWidth: 210 },
   levelNum: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   levelIcon: { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
-  goal: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginTop: 10 },
-  controls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 8, marginBottom: 8 },
-  editor: { borderWidth: BORDER, borderRadius: RADIUS.md, overflow: 'hidden' },
-  console: { borderRadius: RADIUS.md, padding: 10, minHeight: 80 },
-  patchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5 },
-  intruderLine: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, paddingVertical: 6, marginTop: 8 },
-  unlockRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  column: { minWidth: 0, padding: 12, gap: 10 },
+  goalStrip: { borderWidth: BORDER, borderRadius: RADIUS.lg, padding: 12 },
+  goalRow: { flexDirection: 'row', alignItems: 'center', borderRadius: RADIUS.sm, paddingHorizontal: 10, paddingVertical: 7, marginTop: 10 },
+  panel: { borderWidth: BORDER, borderRadius: RADIUS.lg, overflow: 'hidden' },
+  tabRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: BORDER, paddingHorizontal: 4, flexShrink: 0 },
+  glossary: { borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10, marginTop: 10 },
+  docRow: { borderLeftWidth: 3, paddingLeft: 8, marginBottom: 8 },
+  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, flexShrink: 0 },
+  speed: { flexDirection: 'row', borderRadius: RADIUS.md, borderWidth: BORDER, padding: 3 },
+  speedOpt: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: 8, borderRadius: 9, borderWidth: BORDER },
+  speedCycle: { flexDirection: 'row', alignItems: 'center', height: 42, paddingHorizontal: 12, borderRadius: RADIUS.md, borderWidth: BORDER },
+  patchBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6 },
+  stage: { borderWidth: BORDER, borderRadius: RADIUS.lg, padding: 10, gap: 8, overflow: 'hidden' },
+  hud: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  hudMeta: { flexDirection: 'row', alignItems: 'center', paddingTop: 5 },
+  hudMetaText: { fontSize: 12, fontWeight: '700', marginLeft: 3, fontFamily: MONO },
+  invChip: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 9, paddingVertical: 2 },
+  statusLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  posChip: { flexDirection: 'row', alignItems: 'center', borderWidth: BORDER, borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 2 },
+  overlay: { alignItems: 'center', justifyContent: 'center', padding: 16 },
+  resultCard: { borderWidth: BORDER, borderRadius: RADIUS.lg, padding: 20, alignItems: 'center', gap: 6, maxWidth: 380, width: '100%' },
+  console: {},
+  unlockRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7, borderBottomWidth: StyleSheet.hairlineWidth },
+  unlockIcon: { width: 36, height: 36, borderRadius: RADIUS.sm, borderWidth: BORDER, alignItems: 'center', justifyContent: 'center' },
+  costChip: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: RADIUS.pill, paddingHorizontal: 6, paddingVertical: 1 },
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  pairChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1.5, borderRadius: RADIUS.sm, paddingHorizontal: 6, paddingVertical: 3 },
+  pairText: { fontSize: 11 },
+  catalogLabel: { fontSize: 11, fontWeight: '700', marginTop: 8, marginBottom: 4 },
+  paneTabs: { flexDirection: 'row', borderBottomWidth: BORDER, marginTop: 4 },
+  sectionLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginBottom: 6 },
+  bottomBar: { borderTopWidth: BORDER, paddingTop: 0 },
 });
-
