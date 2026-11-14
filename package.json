@@ -60,6 +60,8 @@
     "sala": "node scripts/sala-servidor.js",
     "build:desktop": "node scripts/build-desktop.js",
     "release": "node scripts/release.js",
+    "version:bump": "node scripts/version.js",
+    "version:check": "node scripts/version.js --check",
     "build:desktop:linux": "node scripts/build-desktop.js --linux",
     "build:desktop:mac": "node scripts/build-desktop.js --mac",
     "build:desktop:win": "node scripts/build-desktop.js --win"

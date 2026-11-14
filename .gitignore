@@ -62,3 +62,6 @@ public/*.aab
 public/*.dmg
 public/*.exe
 public/*.AppImage
+public/*.deb
+public/*.tar.gz
+public/SHA256SUMS.txt

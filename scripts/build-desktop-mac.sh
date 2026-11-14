@@ -67,28 +67,29 @@ cd "$ROOT_DIR"
 echo "8. Copiando instalador generado a la carpeta public/..."
 mkdir -p public
 
+# Apple Silicon → PSJavaScript.dmg · Intel → PSJavaScript-Intel.dmg (nombres fijos de GitHub Releases)
+OUT_NAME="PSJavaScript.dmg"
+[ "$ARCH" = "x64" ] && OUT_NAME="PSJavaScript-Intel.dmg"
 DMG_FILE=$(find desktop-app/out -maxdepth 1 -name "*.dmg" | head -n 1)
 
 if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
-  cp -f "$DMG_FILE" "public/PSJavaScript.dmg"
-  DMG_SIZE_BYTES=$(stat -f%z "public/PSJavaScript.dmg" 2>/dev/null || wc -c < "public/PSJavaScript.dmg")
+  cp -f "$DMG_FILE" "public/$OUT_NAME"
+  DMG_SIZE_BYTES=$(stat -f%z "public/$OUT_NAME" 2>/dev/null || wc -c < "public/$OUT_NAME")
   DMG_SIZE_MB=$(( DMG_SIZE_BYTES / 1048576 ))
-  echo "Instalador guardado en public/PSJavaScript.dmg (${DMG_SIZE_MB} MB / ${DMG_SIZE_BYTES} bytes)"
-  if [ "$DMG_SIZE_BYTES" -gt 104857600 ]; then
-    echo "ERROR: El archivo .dmg excede el límite de 100 MB de GitHub (${DMG_SIZE_MB} MB)"
-    exit 1
-  fi
+  echo "Instalador guardado en public/$OUT_NAME (${DMG_SIZE_MB} MB / ${DMG_SIZE_BYTES} bytes)"
 else
   echo "ERROR: No se encontró ningún archivo .dmg en desktop-app/out"
   exit 1
 fi
 
 # 9. Regenerar la versión web para incluir el nuevo instalador descargable
-echo "9. Regenerando sitio web para actualizar enlaces de descarga..."
-npm run export:web
+if [ -z "$CI" ]; then
+  echo "9. Regenerando sitio web..."
+  npm run export:web
+fi
 
 echo "=================================================="
 echo "  ¡Compilación para macOS finalizada con éxito!"
-echo "  Instalador listo en: public/PSJavaScript.dmg"
+echo "  Instalador listo en: public/$OUT_NAME"
 echo "  Paquete en out: $DMG_FILE"
 echo "=================================================="

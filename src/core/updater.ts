@@ -73,6 +73,9 @@ export interface DownloadProgress {
 let detectedDesktop: PlatformType | null = null;
 
 /** Detecta si estamos en Electron mediante el endpoint local /api/desktop/info */
+/** Arquitectura del equipo de escritorio (x64, arm64…), si se conoce. */
+let detectedArch: string | null = null;
+
 export async function detectDesktopEnvironment(): Promise<PlatformType | null> {
   if (detectedDesktop) return detectedDesktop;
   if (configuredPlatformOS === 'android' || configuredPlatformOS === 'ios') return null;
@@ -83,6 +86,7 @@ export async function detectDesktopEnvironment(): Promise<PlatformType | null> {
       if (res.ok) {
         const info = await res.json();
         if (info?.isElectron) {
+          if (typeof info.arch === 'string') detectedArch = info.arch;
           const plat: PlatformType =
             info.platform === 'darwin'
               ? 'electron-mac'
@@ -237,8 +241,9 @@ const MAIN_BINARIES: Partial<Record<PlatformType, string>> = {
 };
 
 /** Enlace directo al instalador de la última versión publicada (null si la plataforma no tiene). */
-export function mainBinary(platform: PlatformType, _version?: string): { downloadUrl: string; assetName: string } | null {
-  const file = MAIN_BINARIES[platform];
+export function mainBinary(platform: PlatformType, _version?: string, arch: string | null = detectedArch): { downloadUrl: string; assetName: string } | null {
+  // los Mac con procesador Intel usan su propio instalador
+  const file = platform === 'electron-mac' && arch === 'x64' ? 'PSJavaScript-Intel.dmg' : MAIN_BINARIES[platform];
   if (!file) return null;
   return { downloadUrl: latestDownloadUrl(file), assetName: file };
 }
@@ -249,12 +254,15 @@ export function latestDownloadUrl(file: string): string {
 }
 
 function resolveDownloadAsset(platform: PlatformType, assets: any[] = [], version?: string): { downloadUrl: string; assetName: string } {
-  const found = findBestAsset(assets, platform);
+  // en Mac se elige el .dmg de su procesador (Apple Silicon o Intel)
+  const main = mainBinary(platform, version);
+  const exact = main && assets.find((a: any) => a?.name === main.assetName);
+  if (exact) return { downloadUrl: exact.browser_download_url, assetName: exact.name };
+  const found = platform === 'electron-mac' ? undefined : findBestAsset(assets, platform);
   if (found) {
     return { downloadUrl: found.browser_download_url, assetName: found.name };
   }
   // sin instalador en la respuesta: la descarga directa de la última versión publicada
-  const main = mainBinary(platform, version);
   if (main) return main;
 
   // Fallback si no hay release binaria específica

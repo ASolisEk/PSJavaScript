@@ -17,9 +17,11 @@ import HelpModal from './modals/HelpModal';
 import InsertModal from './modals/InsertModal';
 import SettingsModal from './modals/SettingsModal';
 import UpdateModal from './modals/UpdateModal';
+import DownloadsModal, { useLatestRelease } from './modals/DownloadsModal';
+import { DOWNLOAD_TARGETS } from '../core/downloads';
 import ExamChooserModal from './exam/ExamChooserModal';
 import { isOpenRoom, roomKey, useTeacher } from '../store/teacher';
-import { checkForUpdate, isNonWeb, detectDesktopEnvironment, latestDownloadUrl, releaseDownloadUrls } from '../core/updater';
+import { checkForUpdate, isNonWeb, detectDesktopEnvironment } from '../core/updater';
 import ConsolePanel, { InputBar } from './panels/ConsolePanel';
 import DesktopPanel from './panels/DesktopPanel';
 import DiagramPanel from './panels/DiagramPanel';
@@ -223,6 +225,7 @@ function MoreSheet({ onClose }: { onClose(): void }) {
     { icon: 'game-controller-outline', label: 'Juego del dron', color: t.primary, onPress: go(() => useApp.getState().setAppMode('game')) },
     { icon: 'settings-outline', label: 'Configuración y perfil', onPress: go(() => setModal('settings')) },
     { icon: 'help-circle-outline', label: 'Ayuda', onPress: go(() => setModal('help')) },
+    ...(Platform.OS === 'web' ? [{ icon: 'download-outline' as IconName, label: 'Descargar la aplicación', onPress: go(() => setModal('downloads')) }] : []),
     { icon: 'logo-github', label: 'Código fuente en GitHub', onPress: go(() => Linking.openURL(REPO_URL)) },
   ];
   return (
@@ -587,60 +590,35 @@ function FloatingDebugWidget() {
 }
 
 /**
- * Instaladores de la última versión en GitHub Releases. El logo y el
- * nombre usan el color característico de cada sistema; `dark` es la variante legible
- * sobre el tema oscuro (en claro, amarillo y verde se oscurecen para tener contraste).
+ * Botón de descarga del encabezado (solo web): muestra el sistema detectado y abre la
+ * ventana de descargas con todos los instaladores de la última versión publicada.
  */
-type Download = { file: string; label: string; icon: IconName; color: string; dark: string };
-const DOWNLOADS: Download[] = [
-  { file: 'PSJavaScript.dmg', label: 'macOS', icon: 'logo-apple', color: '#1d1d1f', dark: '#f5f5f7' },
-  { file: 'PSJavaScript-Setup.exe', label: 'Windows', icon: 'logo-windows', color: '#0078d4', dark: '#4cc2ff' },
-  { file: 'PSJavaScript.AppImage', label: 'Linux', icon: 'logo-tux', color: '#b8860b', dark: '#fcc624' },
-  { file: 'PSJavaScript.apk', label: 'Android', icon: 'logo-android', color: '#1f9d55', dark: '#3ddc84' },
-];
-
-/** Enlace de descarga (solo web). Con poco ancho muestra solo el logo; el nombre queda en el tooltip. */
-function DownloadLink({ item, showLabel, href }: { item: Download; showLabel: boolean; href?: string }) {
+function DownloadButton({ compact }: { compact: boolean }) {
   const t = useTheme();
+  const { recommended, release } = useLatestRelease();
   const [hover, setHover] = useState(false);
-  const color = t.dark ? item.dark : item.color;
-  const title = `Descargar para ${item.label}`;
+  const target = recommended ? DOWNLOAD_TARGETS.find((d) => d.id === recommended) : undefined;
+  const color = target ? (t.dark ? target.dark : target.color) : t.primary;
+  const title = target ? `Descargar para ${target.label}${release ? ` (v${release.version})` : ''}` : 'Descargar la aplicación';
   return (
-    <a
-      href={href ?? latestDownloadUrl(item.file)}
-      download={item.file}
-      title={title}
-      aria-label={title}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{ textDecoration: 'none', marginRight: SPACE.sm }}
+    <Pressable
+      onPress={() => useApp.getState().setModal('downloads')}
+      onHoverIn={() => setHover(true)}
+      onHoverOut={() => setHover(false)}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      {...({ title } as object)}
+      style={[styles.repoLink, { borderColor: hover ? color : t.borderStrong, backgroundColor: hover ? t.surfaceAlt : 'transparent' }, compact && { paddingHorizontal: 8 }]}
     >
-      <View style={[styles.repoLink, { marginRight: 0, borderColor: hover ? color : t.borderStrong, backgroundColor: hover ? t.surfaceAlt : 'transparent' }, !showLabel && { paddingHorizontal: 8 }]}>
-        <Ionicons name={item.icon} size={16} color={color} />
-        {showLabel ? <Text style={[styles.navLabel, { color, marginLeft: 5 }]}>{item.label}</Text> : null}
-        <Ionicons name="download-outline" size={13} color={color} style={{ marginLeft: showLabel ? 6 : 3 }} />
-      </View>
-    </a>
+      <Ionicons name={target?.icon ?? 'download-outline'} size={16} color={color} />
+      {!compact ? <Text style={[styles.navLabel, { color, marginLeft: 5 }]}>{target ? `Descargar para ${target.label}` : 'Descargar app'}</Text> : null}
+      {target || compact ? <Ionicons name="download-outline" size={13} color={color} style={{ marginLeft: compact ? 3 : 6 }} /> : null}
+    </Pressable>
   );
-}
-
-/** Enlaces de GitHub Releases de los instaladores (si ya se publicaron ahí). */
-function useReleaseUrls(): Record<string, string> {
-  const [urls, setUrls] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    let alive = true;
-    releaseDownloadUrls(DOWNLOADS.map((d) => d.file)).then((u) => alive && setUrls(u));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return urls;
 }
 
 export default function IDE() {
   const t = useTheme();
-  const releaseUrls = useReleaseUrls();
   const insets = useSafeAreaInsets();
   const { width, wide, phone, split } = useLayout();
   const hydrated = useApp((s) => s.hydrated);
@@ -788,13 +766,7 @@ export default function IDE() {
           </View>
           <LiveRoomPill />
           {/* descargas de escritorio: no tienen sentido en un teléfono */}
-          {Platform.OS === 'web' && width >= 700 && (
-            <>
-              {DOWNLOADS.map((d) => (
-                <DownloadLink key={d.file} item={d} showLabel={width >= 1100} href={releaseUrls[d.file]} />
-              ))}
-            </>
-          )}
+          {Platform.OS === 'web' && width >= 700 ? <DownloadButton compact={width < 1100} /> : null}
           {/* en el teléfono el enlace está en el menú «Más» para dejarle espacio a los archivos */}
           {!phone ? (
             <Pressable
@@ -874,6 +846,7 @@ export default function IDE() {
       {modal === 'insert' ? <InsertModal /> : null}
       {modal === 'update' ? <UpdateModal /> : null}
       {modal === 'exam' ? <ExamChooserModal /> : null}
+      {modal === 'downloads' ? <DownloadsModal /> : null}
     </KeyboardAvoidingView>
   );
 }

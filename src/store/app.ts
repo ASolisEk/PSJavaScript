@@ -22,7 +22,7 @@ export interface FileDoc {
 }
 
 export type PanelId = 'editor' | 'console' | 'variables' | 'desktop' | 'diagram' | 'explain' | 'problems';
-export type ModalId = null | 'files' | 'export' | 'settings' | 'help' | 'insert' | 'update' | 'exam';
+export type ModalId = null | 'files' | 'export' | 'settings' | 'help' | 'insert' | 'update' | 'exam' | 'downloads';
 /** Pantalla activa: el entorno normal, el modo Maestro o el modo Examen (alumno). */
 export type AppMode = 'ide' | 'teacher' | 'student' | 'game';
 

@@ -100,10 +100,6 @@ if ($appImageFile) {
     $appImageSize = (Get-Item "public/PSJavaScript.AppImage").Length
     $appImageSizeMB = [math]::Round($appImageSize / 1MB, 2)
     Write-Host "Instalador portable AppImage guardado en public/PSJavaScript.AppImage ($appImageSizeMB MB / $appImageSize bytes)"
-    if ($appImageSize -gt 104857600) {
-        Write-Error "ERROR: public/PSJavaScript.AppImage excede el límite de 100 MB de GitHub ($appImageSizeMB MB)"
-        exit 1
-    }
     $copied = $true
 }
 
@@ -113,10 +109,6 @@ if ($debFile) {
     $debSize = (Get-Item "public/PSJavaScript.deb").Length
     $debSizeMB = [math]::Round($debSize / 1MB, 2)
     Write-Host "Paquete Debian guardado en public/PSJavaScript.deb ($debSizeMB MB / $debSize bytes)"
-    if ($debSize -gt 104857600) {
-        Write-Error "ERROR: public/PSJavaScript.deb excede el límite de 100 MB de GitHub ($debSizeMB MB)"
-        exit 1
-    }
     $copied = $true
 }
 

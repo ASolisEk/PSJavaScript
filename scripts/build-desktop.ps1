@@ -69,18 +69,16 @@ if ($exePath) {
     $exeSizeMB = [math]::Round($exeSize / 1MB, 2)
     Write-Host "Instalador guardado en public/PSJavaScript-Setup.exe ($exeSizeMB MB / $exeSize bytes)"
 
-    if ($exeSize -gt 104857600) {
-        Write-Error "ERROR: public/PSJavaScript-Setup.exe excede el límite de 100 MB de GitHub ($exeSizeMB MB / $exeSize bytes)"
-        exit 1
-    }
 } else {
     Write-Error "ERROR: No se encontró ningún archivo .exe en desktop-app/out"
     exit 1
 }
 
 # 9. Regenerar la versión web para incluir el nuevo instalador descargable
-Write-Host "9. Regenerando sitio web para actualizar enlaces de descarga..."
-npm run export:web
+if (-not $env:CI) {
+    Write-Host "9. Regenerando sitio web..."
+    npm run export:web
+}
 
 Write-Host "=================================================="
 Write-Host "  ¡Compilación para Windows finalizada con éxito!"

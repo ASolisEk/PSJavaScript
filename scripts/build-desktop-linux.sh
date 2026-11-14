@@ -86,10 +86,6 @@ if [ -n "$APPIMAGE_FILE" ] && [ -f "$APPIMAGE_FILE" ]; then
   APPIMAGE_SIZE_BYTES=$(stat -c%s "public/PSJavaScript.AppImage" 2>/dev/null || stat -f%z "public/PSJavaScript.AppImage" 2>/dev/null || wc -c < "public/PSJavaScript.AppImage")
   APPIMAGE_SIZE_MB=$(( APPIMAGE_SIZE_BYTES / 1048576 ))
   echo "Instalador portable AppImage guardado en public/PSJavaScript.AppImage (${APPIMAGE_SIZE_MB} MB / ${APPIMAGE_SIZE_BYTES} bytes)"
-  if [ "$APPIMAGE_SIZE_BYTES" -gt 104857600 ]; then
-    echo "ERROR: El archivo .AppImage excede el límite de 100 MB de GitHub (${APPIMAGE_SIZE_MB} MB)"
-    exit 1
-  fi
   COPIED=1
 fi
 
@@ -99,10 +95,6 @@ if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
   DEB_SIZE_BYTES=$(stat -c%s "public/PSJavaScript.deb" 2>/dev/null || stat -f%z "public/PSJavaScript.deb" 2>/dev/null || wc -c < "public/PSJavaScript.deb")
   DEB_SIZE_MB=$(( DEB_SIZE_BYTES / 1048576 ))
   echo "Paquete Debian guardado en public/PSJavaScript.deb (${DEB_SIZE_MB} MB / ${DEB_SIZE_BYTES} bytes)"
-  if [ "$DEB_SIZE_BYTES" -gt 104857600 ]; then
-    echo "ERROR: El archivo .deb excede el límite de 100 MB de GitHub (${DEB_SIZE_MB} MB)"
-    exit 1
-  fi
   COPIED=1
 fi
 
@@ -121,8 +113,10 @@ if [ "$COPIED" -eq 0 ]; then
 fi
 
 # 9. Regenerar la versión web para incluir el nuevo instalador descargable
-echo "9. Regenerando sitio web para actualizar enlaces de descarga..."
-npm run export:web
+if [ -z "$CI" ]; then
+  echo "9. Regenerando sitio web..."
+  npm run export:web
+fi
 
 echo "=================================================="
 echo "  ¡Compilación para GNU/Linux finalizada con éxito!"

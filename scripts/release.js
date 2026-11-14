@@ -17,16 +17,24 @@ const root = path.resolve(__dirname, '..');
 const dry = process.argv.includes('--dry-run');
 const { version } = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const tag = `v${version}`;
-const FILES = ['PSJavaScript.apk', 'PSJavaScript.dmg', 'PSJavaScript-Setup.exe', 'PSJavaScript.AppImage'];
+const FILES = ['PSJavaScript.apk', 'PSJavaScript.dmg', 'PSJavaScript-Intel.dmg', 'PSJavaScript-Setup.exe', 'PSJavaScript.AppImage'];
 const found = FILES.map((f) => path.join(root, 'public', f)).filter((f) => fs.existsSync(f));
 
 if (!found.length) {
   console.error('No hay instaladores en public/. Compílalos primero (npm run build:android, npm run build:desktop:…).');
   process.exit(1);
 }
+const { spawnSync: check } = require('child_process');
+if (check('node', [path.join(__dirname, 'version.js'), '--check'], { stdio: 'inherit' }).status !== 0) process.exit(1);
 console.log(`Versión ${tag}: ${found.length} instalador(es)`);
 for (const f of found) console.log(`  · ${path.basename(f)} (${(fs.statSync(f).size / 1048576).toFixed(1)} MB)`);
-const missing = FILES.filter((f) => !found.some((x) => x.endsWith(f)));
+const missing = FILES.filter((f) => !found.some((x) => path.basename(x) === f));
+// huellas para comprobar las descargas
+const crypto = require('crypto');
+const sums = found.map((f) => `${crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')}  ${path.basename(f)}`).join('\n') + '\n';
+const sumsFile = path.join(root, 'public', 'SHA256SUMS.txt');
+fs.writeFileSync(sumsFile, sums);
+found.push(sumsFile);
 if (missing.length) console.log(`  (faltan: ${missing.join(', ')})`);
 
 const gh = (args) => {

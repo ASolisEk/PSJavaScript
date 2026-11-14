@@ -1,34 +1,80 @@
 name: Instaladores
 
-# Al publicar una etiqueta de versión (v1.0.5) se compilan los instaladores en cada sistema
-# y se suben a GitHub Releases. Los botones de descarga y el actualizador los usan solos.
+# Publica una versión: al subir una etiqueta vX.Y.Z (npm run version:bump -- patch --push)
+# se compilan los instaladores en cada sistema y se suben a GitHub Releases. Nunca se
+# guardan en el repositorio. Los botones de descarga de la página y el actualizador de la
+# app usan siempre los de la última versión publicada.
+#
+# Firma del APK (opcional): con los secretos ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS y ANDROID_KEY_PASSWORD se firma con tu llave; sin ellos, con la de depuración.
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Etiqueta a (re)compilar y publicar, p. ej. v1.0.6 (vacío = solo compilar, sin publicar)'
+        required: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: instaladores-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+
 jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG || github.ref }}
+      - id: v
+        name: La etiqueta coincide con la versión del proyecto
+        run: |
+          node scripts/version.js --check
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ -n "$TAG" ] && [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::La etiqueta $TAG no coincide con la versión $VERSION de package.json. Usa npm run version:bump."
+            exit 1
+          fi
+
   escritorio:
+    needs: revisar
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
-            target: --mac
+            name: mac
+            target: --mac arm64
             file: public/PSJavaScript.dmg
+          # electron-builder compila para Intel (x64) desde un Mac Apple Silicon
+          - os: macos-latest
+            name: mac-intel
+            target: --mac x64
+            file: public/PSJavaScript-Intel.dmg
           - os: windows-latest
+            name: windows
             target: --win
             file: public/PSJavaScript-Setup.exe
           - os: ubuntu-latest
+            name: linux
             target: --linux
             file: public/PSJavaScript.AppImage
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -41,14 +87,17 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}
+          name: ${{ matrix.name }}
           path: ${{ matrix.file }}
           if-no-files-found: error
 
   android:
+    needs: revisar
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -58,8 +107,23 @@ jobs:
           distribution: temurin
           java-version: 17
       - run: npm ci
+      - name: Llave de firma (si está configurada)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "PSJS_STORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "APK firmado con la llave del proyecto."
+          else
+            echo "::warning::Sin el secreto ANDROID_KEYSTORE_BASE64 el APK se firma con la llave de depuración."
+          fi
       - name: Compilar APK
         run: node scripts/build-android.js --apk
+        env:
+          PSJS_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PSJS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PSJS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -67,15 +131,54 @@ jobs:
           if-no-files-found: error
 
   publicar:
-    needs: [escritorio, android]
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [revisar, escritorio, android]
+    # publica aunque falle algún sistema (se sube lo que sí se compiló)
+    if: ${{ always() && needs.revisar.result == 'success' && (startsWith(github.ref, 'refs/tags/') || inputs.tag != '') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: instaladores
           merge-multiple: true
+      - name: Huellas SHA-256 y notas
+        run: |
+          cd instaladores
+          ls -la
+          if [ -z "$(ls -A)" ]; then echo "::error::No se compiló ningún instalador."; exit 1; fi
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cd ..
+          V="${{ needs.revisar.outputs.version }}"
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          link() { [ -f "instaladores/$2" ] && echo "| $1 | [$2]($BASE/$2) |"; }
+          {
+            echo "## Descargas de PSJavaScript $V"
+            echo
+            echo "| Sistema | Instalador |"
+            echo "|---|---|"
+            link "Windows 10/11" PSJavaScript-Setup.exe
+            link "macOS (Apple Silicon)" PSJavaScript.dmg
+            link "macOS (Intel)" PSJavaScript-Intel.dmg
+            link "Linux (AppImage)" PSJavaScript.AppImage
+            link "Android" PSJavaScript.apk
+            echo
+            echo "### Instalación"
+            echo "- **Windows**: si aparece «Windows protegió su PC», elige *Más información → Ejecutar de todas formas*."
+            echo "- **macOS**: arrastra la app a Aplicaciones; la primera vez, clic derecho → *Abrir* (no está firmada por Apple)."
+            echo "- **Linux**: \`chmod +x PSJavaScript.AppImage\` y ábrelo."
+            echo "- **Android**: permite *Instalar apps desconocidas* y abre el APK. Las versiones nuevas se instalan encima."
+            echo
+            echo "Comprueba la descarga con \`SHA256SUMS.txt\`."
+            echo
+          } > notas.md
+          FAILED="${{ needs.escritorio.result != 'success' || needs.android.result != 'success' }}"
+          if [ "$FAILED" = "true" ]; then echo "> ⚠️ Algún instalador no se pudo compilar en esta versión." >> notas.md; fi
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          name: PSJavaScript ${{ needs.revisar.outputs.version }}
+          body_path: notas.md
+          generate_release_notes: true
+          make_latest: true
           files: instaladores/*
           fail_on_unmatched_files: false

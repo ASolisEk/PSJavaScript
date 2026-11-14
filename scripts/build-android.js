@@ -52,7 +52,7 @@ Opciones principales:
   --debug             Compila un APK en modo Debug para pruebas y depuración rápida.
   --all-abis          Incluye x86/x86_64 en el APK Release (solo útiles en emuladores Intel).
                       Por defecto el APK Release lleva solo ARM (todos los teléfonos reales) para
-                      no pasar de 100 MB, el límite de GitHub para public/PSJavaScript.apk.
+                      pesar menos; se publica en GitHub Releases (no se guarda en el repositorio).
   --install           Instala automáticamente el APK resultante en un teléfono o emulador conectado vía ADB.
   --clean             Ejecuta gradlew clean antes de iniciar la compilación.
   --prebuild          Solo regenera la carpeta nativa android/ sin compilar.
@@ -358,10 +358,7 @@ function processBuildOutput(targetType) {
   if (targetType === 'release') {
     const publicApk = path.join(rootDir, 'public', 'PSJavaScript.apk');
     fs.copyFileSync(destinationFile, publicApk);
-    console.log(`🌐 Copiado para descarga web: ${publicApk}`);
-    if (stats.size > 100 * 1024 * 1024) {
-      console.warn('⚠️  Pesa más de 100 MB: GitHub rechazará el push de public/PSJavaScript.apk.');
-    }
+    console.log(`📦 Listo para publicar en GitHub Releases: ${publicApk} (npm run release o etiqueta vX.Y.Z)`);
   }
 
   if (targetType === 'aab') {
