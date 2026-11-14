@@ -275,8 +275,97 @@ const styles = StyleSheet.create({
   trophy: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10 },
   trophyIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  mapGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  mapCard: { flexGrow: 1, flexBasis: 200, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 12 },
+  mapNum: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   card: { flexGrow: 1, flexBasis: 280, maxWidth: '100%', gap: 10, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 12 },
   itemCard: { flexDirection: 'row', alignItems: 'center', flexBasis: 240 },
   plate: { width: 96, height: 96, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: BORDER, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
 });
+
+/** Mapa con todos los niveles (o misiones) del modo: avance, concepto y estrellas de cada uno. */
+export function LevelMapModal({
+  title,
+  levels,
+  progress,
+  currentId,
+  accent,
+  unit,
+  onPick,
+  onClose,
+}: {
+  title: string;
+  levels: { id: string; title: string; concept: string; icon: string; sandbox?: boolean }[];
+  progress: Record<string, { stars: number } | undefined>;
+  currentId: string;
+  accent: string;
+  unit: string;
+  onPick(id: string): void;
+  onClose(): void;
+}) {
+  const t = useTheme();
+  const next = levels.find((l) => !l.sandbox && !progress[l.id]?.stars);
+  const scored = levels.filter((l) => !l.sandbox);
+  const done = scored.filter((l) => progress[l.id]?.stars).length;
+  const stars = scored.reduce((a, l) => a + (progress[l.id]?.stars ?? 0), 0);
+  return (
+    <ModalShell title={title} onClose={onClose} wide>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Text style={{ color: t.text, fontWeight: '800', fontSize: 14 }}>
+            {done} de {scored.length} completados · ★ {stars} de {scored.length * 3}
+          </Text>
+          <View style={{ flex: 1, minWidth: 160, height: 8, borderRadius: 4, backgroundColor: tint(accent, 0.15), overflow: 'hidden' }}>
+            <View style={{ width: `${scored.length ? (done / scored.length) * 100 : 0}%`, height: '100%', backgroundColor: accent }} />
+          </View>
+        </View>
+        <View style={styles.mapGrid}>
+          {levels.map((l, i) => {
+            const p = progress[l.id];
+            const on = l.id === currentId;
+            const isNext = next?.id === l.id;
+            return (
+              <Pressable
+                key={l.id}
+                onPress={() => {
+                  onPick(l.id);
+                  onClose();
+                }}
+                style={({ pressed }) => [
+                  styles.mapCard,
+                  {
+                    borderColor: on ? accent : isNext ? accent : p?.stars ? tint(accent, 0.35) : t.border,
+                    borderStyle: isNext && !on ? 'dashed' : 'solid',
+                    backgroundColor: on ? tint(accent, 0.12) : pressed ? t.surfaceAlt : t.surface,
+                  },
+                ]}
+                accessibilityLabel={`${unit} ${i + 1}: ${l.title}`}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={[styles.mapNum, { backgroundColor: p?.stars ? accent : t.surfaceAlt }]}>
+                    {p?.stars ? <Ionicons name="checkmark" size={15} color="#fff" /> : <Text style={{ color: t.textMuted, fontWeight: '900', fontSize: 12 }}>{l.sandbox ? '∞' : i + 1}</Text>}
+                  </View>
+                  <Ionicons name={l.icon as IconName} size={18} color={accent} />
+                  <View style={{ flex: 1 }} />
+                  {on ? <Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>AQUÍ ESTÁS</Text> : isNext ? <Text style={{ color: accent, fontSize: 10, fontWeight: '900' }}>SIGUIENTE</Text> : null}
+                </View>
+                <Text style={{ color: t.text, fontWeight: '800', fontSize: 14, marginTop: 8 }} numberOfLines={2}>
+                  {l.title}
+                </Text>
+                <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 2 }} numberOfLines={2}>
+                  {l.concept}
+                </Text>
+                <View style={{ marginTop: 8 }}>{l.sandbox ? <Text style={{ color: t.textMuted, fontSize: 11 }}>Reto libre, sin estrellas</Text> : <Stars n={p?.stars ?? 0} size={13} />}</View>
+              </Pressable>
+            );
+          })}
+          {/* huecos invisibles: la última fila conserva el mismo ancho de tarjeta */}
+          {[0, 1, 2].map((k) => (
+            <View key={`hueco-${k}`} style={[styles.mapCard, { borderWidth: 0, paddingVertical: 0, height: 0 }]} />
+          ))}
+        </View>
+      </ScrollView>
+    </ModalShell>
+  );
+}

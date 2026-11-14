@@ -408,7 +408,8 @@ export function BigChoice({ icon, title, description, onPress, color, selected, 
 }
 
 /** Encabezado de pantalla completa (modo Maestro / Examen). */
-export function ScreenHeader({ icon, title, subtitle, color, left, right }: { icon: IconName; title: string; subtitle?: string; color?: string; left?: React.ReactNode; right?: React.ReactNode }) {
+/** `center`: controles junto al título (ocupan el espacio libre entre el título y `right`). */
+export function ScreenHeader({ icon, title, subtitle, color, left, center, right }: { icon: IconName; title: string; subtitle?: string; color?: string; left?: React.ReactNode; center?: React.ReactNode; right?: React.ReactNode }) {
   const t = useTheme();
   const c = color ?? t.primary;
   return (
@@ -417,7 +418,7 @@ export function ScreenHeader({ icon, title, subtitle, color, left, right }: { ic
       <View style={[styles.headerIcon, { backgroundColor: c }]}>
         <Ionicons name={icon} size={18} color="#fff" />
       </View>
-      <View style={{ flex: 1, marginLeft: SPACE.md }}>
+      <View style={center ? { flexShrink: 1, marginLeft: SPACE.md, marginRight: SPACE.lg } : { flex: 1, marginLeft: SPACE.md }}>
         <Text style={{ color: t.text, ...TYPE.subheading }} numberOfLines={1}>
           {title}
         </Text>
@@ -427,6 +428,7 @@ export function ScreenHeader({ icon, title, subtitle, color, left, right }: { ic
           </Text>
         ) : null}
       </View>
+      {center ? <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', minWidth: 0 }}>{center}</View> : null}
       {right}
     </View>
   );

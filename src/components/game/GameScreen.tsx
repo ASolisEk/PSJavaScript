@@ -29,7 +29,7 @@ import RichText from '../exam/RichText';
 import { BackToEditorButton, Banner, Button, CodeBlock, IconButton, IconName, Pill, ProgressBar, ScreenHeader, Segmented, Tab, tint, Tooltip } from '../ui';
 import { EntitySprite, ItemIcon } from './art';
 import WorldView from './WorldView';
-import { AlmanacModal, SpeedPicker, Stars, TrophiesModal, UnlockIcon } from './parts';
+import { AlmanacModal, LevelMapModal, SpeedPicker, Stars, TrophiesModal, UnlockIcon } from './parts';
 import { actionSound, playSound } from './sound';
 import { ACHIEVEMENTS, unlockedAchievements } from '../../core/game/achievements';
 import { blankCustomLevel, CUSTOM_PREFIX, CustomLevelData, serializeCustomLevel, toGameLevel } from '../../core/game/custom';
@@ -118,6 +118,7 @@ function GameInner() {
   const [showDocs, setShowDocs] = useState(false);
   const [showTrophies, setShowTrophies] = useState(false);
   const [showAlmanac, setShowAlmanac] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   /** Duelo de dos jugadores (pantalla aparte). */
   const [duel, setDuel] = useState(false);
   /** Nivel que se edita en el editor (nuevo o existente). */
@@ -318,12 +319,43 @@ function GameInner() {
 
   // ───────────────────────────── encabezado y niveles ─────────────────────────────
 
+  /** Modo de juego: en pantallas anchas va en el encabezado, junto al título. */
+  const modeInHeader = width >= 1180;
+  const modeSwitch = (
+    <Segmented
+      options={[
+        { id: 'build', label: 'Construir', icon: 'hammer-outline' },
+        { id: 'hack', label: 'Hackeo', icon: 'bug-outline' },
+        { id: 'custom', label: wide ? 'Mis niveles' : 'Míos', icon: 'brush-outline' },
+        { id: 'duel', label: wide ? 'Duelo 2 jugadores' : 'Duelo', icon: 'people-outline' },
+      ]}
+      value={customMode ? 'custom' : hackMode ? 'hack' : 'build'}
+      onChange={(m) => {
+        if (m === 'duel') {
+          runner.current?.stop();
+          setDuel(true);
+          return;
+        }
+        if (m === 'custom') {
+          // sin niveles propios todavía: se abre el editor
+          if (customLevels.length) selectLevel(customLevels[0].id);
+          else setEditing(blankCustomLevel(randomId('nivel')));
+          return;
+        }
+        const target = m === 'hack' ? HACK_MISSIONS : LEVELS;
+        // al cambiar de modo se abre el primero sin terminar
+        selectLevel((target.find((l) => !progress[l.id]?.stars) ?? target[0]).id);
+      }}
+    />
+  );
+
   const header = (
     <ScreenHeader
       icon={hackMode ? 'bug-outline' : 'game-controller-outline'}
       title={wide ? (hackMode ? 'Juego del dron · Hackeo' : 'Juego del dron') : hackMode ? 'Hackeo' : 'Juego'}
       subtitle={`${names.title} · ★ ${totalStars} de ${scored.length * 3}`}
       color={tone}
+      center={modeInHeader ? modeSwitch : undefined}
       right={
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <IconButton icon="book-outline" label="Almanaque" tooltip={theme === 'mine' ? 'Almanaque: minerales y recursos' : 'Almanaque: plantas y recursos'} onPress={() => setShowAlmanac(true)} />
@@ -353,94 +385,107 @@ function GameInner() {
     />
   );
 
+  // avance del modo actual
+  const scoredList = list.filter((l) => !l.sandbox);
+  const doneCount = scoredList.filter((l) => progress[l.id]?.stars).length;
+  const listStars = scoredList.reduce((a, l) => a + (progress[l.id]?.stars ?? 0), 0);
+  const nextOpen = list.find((l) => !l.sandbox && !progress[l.id]?.stars);
+  const accent = hackMode ? t.danger : customMode ? t.accent : t.primary;
+  const unit = hackMode ? 'Misión' : 'Nivel';
+
   const levelBar = (
-    <ScrollView
-      ref={levelBarRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={[styles.levelBar, { borderBottomColor: t.border, backgroundColor: t.surface }]}
-      contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 8, gap: 6, alignItems: 'center' }}
-    >
-      <Segmented
-        options={[
-          { id: 'build', label: 'Construir', icon: 'hammer-outline' },
-          { id: 'hack', label: 'Hackeo', icon: 'bug-outline' },
-          { id: 'custom', label: wide ? 'Mis niveles' : 'Míos', icon: 'brush-outline' },
-          { id: 'duel', label: wide ? 'Duelo 2 jugadores' : 'Duelo', icon: 'people-outline' },
-        ]}
-        value={customMode ? 'custom' : hackMode ? 'hack' : 'build'}
-        onChange={(m) => {
-          if (m === 'duel') {
-            runner.current?.stop();
-            setDuel(true);
-            return;
-          }
-          if (m === 'custom') {
-            // sin niveles propios todavía: se abre el editor
-            if (customLevels.length) selectLevel(customLevels[0].id);
-            else setEditing(blankCustomLevel(randomId('nivel')));
-            return;
-          }
-          const target = m === 'hack' ? HACK_MISSIONS : LEVELS;
-          // al cambiar de modo se abre el primero sin terminar
-          selectLevel((target.find((l) => !progress[l.id]?.stars) ?? target[0]).id);
-        }}
-      />
-      <View style={[styles.barDivider, { backgroundColor: t.border }]} />
-      {list.map((l, i) => {
-        const on = l.id === level.id;
-        const p = progress[l.id];
-        const c = hackMode ? t.danger : t.primary;
-        return (
-          <Pressable
-            key={l.id}
-            onLayout={(e) => {
-              chipX.current[l.id] = e.nativeEvent.layout.x;
-            }}
-            onPress={() => selectLevel(l.id)}
-            style={({ pressed }) => [styles.levelChip, { borderColor: on ? c : t.border, backgroundColor: on ? tint(c, 0.1) : pressed ? t.surfaceAlt : t.surface }]}
-            accessibilityLabel={`${hackMode ? 'Misión' : 'Nivel'} ${i + 1}: ${l.title}`}
-            accessibilityState={{ selected: on }}
-          >
-            <View style={[styles.levelNum, { backgroundColor: p?.stars ? c : on ? tint(c, 0.2) : t.surfaceAlt }]}>
-              {p?.stars ? (
-                <Ionicons name="checkmark" size={14} color="#fff" />
-              ) : l.sandbox ? (
-                <Ionicons name="construct" size={12} color={on ? c : t.textMuted} />
-              ) : (
-                <Text style={{ color: on ? c : t.textMuted, fontWeight: '900', fontSize: 12 }}>{i + 1}</Text>
-              )}
-            </View>
-            <View style={{ flexShrink: 1 }}>
-              <Text style={{ color: on ? c : t.text, fontWeight: '800', fontSize: 12 }} numberOfLines={1}>
-                {l.title}
-              </Text>
-              {!l.sandbox ? <Stars n={p?.stars ?? 0} size={11} /> : <Text style={{ color: t.textMuted, fontSize: 11 }}>sin límite</Text>}
-            </View>
-          </Pressable>
-        );
-      })}
-      {customMode ? (
-        <>
-          <Button label="Crear nivel" icon="add" size="sm" onPress={() => setEditing(blankCustomLevel(randomId('nivel')))} />
-          <Button
-            label="Importar"
-            icon="cloud-upload-outline"
-            size="sm"
-            kind="ghost"
-            onPress={async () => {
-              setImportError(null);
-              try {
-                const f = await pickTextFile('.json');
-                if (f) selectLevel(CUSTOM_PREFIX + useGame.getState().importCustom(f.text).id);
-              } catch (e: any) {
-                setImportError(e?.message ?? String(e));
-              }
-            }}
-          />
-        </>
+    <View style={[styles.levelBar, { borderBottomColor: t.border, backgroundColor: t.surface }]}>
+      {!modeInHeader ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, paddingTop: 8 }}>
+          {modeSwitch}
+        </ScrollView>
       ) : null}
-    </ScrollView>
+      <View style={styles.levelRow}>
+        {/* avance del modo y acceso al mapa de todos los niveles */}
+        <Pressable onPress={() => setShowMap(true)} style={({ pressed }) => [styles.progressBox, { borderColor: tint(accent, 0.4), backgroundColor: pressed ? tint(accent, 0.16) : tint(accent, 0.08) }]} accessibilityRole="button" accessibilityLabel="Ver todos los niveles">
+          <Ionicons name="map-outline" size={16} color={accent} />
+          <View>
+            <Text style={{ color: accent, fontWeight: '900', fontSize: 12 }}>
+              {doneCount}/{scoredList.length} {hackMode ? 'misiones' : 'niveles'}
+            </Text>
+            <View style={[styles.progressTrack, { backgroundColor: tint(accent, 0.18) }]}>
+              <View style={{ width: `${scoredList.length ? (doneCount / scoredList.length) * 100 : 0}%`, height: '100%', backgroundColor: accent, borderRadius: 2 }} />
+            </View>
+          </View>
+          {wide ? <Text style={{ color: t.textMuted, fontSize: 11, fontWeight: '700' }}>★ {listStars}/{scoredList.length * 3}</Text> : null}
+        </Pressable>
+        <IconButton icon="chevron-back" label={`${unit} anterior`} onPress={() => idx > 0 && selectLevel(list[idx - 1].id)} disabled={idx <= 0} />
+        <ScrollView ref={levelBarRef} horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, alignItems: 'center', paddingVertical: 2 }}>
+          {list.map((l, i) => {
+            const on = l.id === level.id;
+            const p = progress[l.id];
+            const isNext = !on && nextOpen?.id === l.id;
+            return (
+              <Pressable
+                key={l.id}
+                onLayout={(e) => {
+                  chipX.current[l.id] = e.nativeEvent.layout.x;
+                }}
+                onPress={() => selectLevel(l.id)}
+                style={({ pressed }) => [
+                  styles.levelChip,
+                  on
+                    ? { borderColor: accent, backgroundColor: accent }
+                    : { borderColor: isNext ? accent : p?.stars ? tint(accent, 0.35) : t.border, borderStyle: isNext ? 'dashed' : 'solid', backgroundColor: pressed ? t.surfaceAlt : p?.stars ? tint(accent, 0.06) : t.surface },
+                ]}
+                accessibilityLabel={`${unit} ${i + 1}: ${l.title}${p?.stars ? `, ${p.stars} estrellas` : ''}`}
+                accessibilityState={{ selected: on }}
+                {...({ title: `${unit} ${i + 1} · ${l.concept}` } as object)}
+              >
+                <View style={[styles.levelNum, { backgroundColor: on ? 'rgba(255,255,255,0.25)' : p?.stars ? accent : t.surfaceAlt }]}>
+                  {p?.stars && !on ? (
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                  ) : l.sandbox ? (
+                    <Ionicons name="construct" size={12} color={on ? '#fff' : t.textMuted} />
+                  ) : (
+                    <Text style={{ color: on ? '#fff' : t.textMuted, fontWeight: '900', fontSize: 12 }}>{i + 1}</Text>
+                  )}
+                </View>
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={{ color: on ? '#fff' : t.text, fontWeight: '800', fontSize: 12 }} numberOfLines={1}>
+                    {l.title}
+                  </Text>
+                  {l.sandbox ? (
+                    <Text style={{ color: on ? '#ffffffcc' : t.textMuted, fontSize: 11 }}>sin límite</Text>
+                  ) : isNext ? (
+                    <Text style={{ color: accent, fontSize: 10, fontWeight: '900', letterSpacing: 0.4 }}>SIGUIENTE</Text>
+                  ) : (
+                    <Stars n={p?.stars ?? 0} size={11} />
+                  )}
+                </View>
+              </Pressable>
+            );
+          })}
+          {customMode ? (
+            <>
+              <Button label="Crear nivel" icon="add" size="sm" onPress={() => setEditing(blankCustomLevel(randomId('nivel')))} />
+              <Button
+                label="Importar"
+                icon="cloud-upload-outline"
+                size="sm"
+                kind="ghost"
+                onPress={async () => {
+                  setImportError(null);
+                  try {
+                    const f = await pickTextFile('.json');
+                    if (f) selectLevel(CUSTOM_PREFIX + useGame.getState().importCustom(f.text).id);
+                  } catch (e: any) {
+                    setImportError(e?.message ?? String(e));
+                  }
+                }}
+              />
+            </>
+          ) : null}
+        </ScrollView>
+        <IconButton icon="chevron-forward" label={`${unit} siguiente`} onPress={() => idx < list.length - 1 && selectLevel(list[idx + 1].id)} disabled={idx < 0 || idx >= list.length - 1} />
+        {wide ? <Button label="Todos" icon="grid-outline" size="sm" onPress={() => setShowMap(true)} /> : null}
+      </View>
+    </View>
   );
 
   // ───────────────────────────── meta y misión ─────────────────────────────
@@ -976,6 +1021,18 @@ function GameInner() {
           </View>
         </View>
       {showTrophies ? <TrophiesModal progress={progress} onClose={() => setShowTrophies(false)} /> : null}
+      {showMap ? (
+        <LevelMapModal
+          title={customMode ? 'Mis niveles' : hackMode ? 'Misiones de hackeo' : `Niveles · ${names.title}`}
+          levels={list}
+          progress={progress}
+          currentId={level.id}
+          accent={accent}
+          unit={unit}
+          onPick={selectLevel}
+          onClose={() => setShowMap(false)}
+        />
+      ) : null}
       {showAlmanac ? <AlmanacModal theme={theme} onClose={() => setShowAlmanac(false)} /> : null}
       {levelEditor}
       </View>
@@ -1053,6 +1110,18 @@ function GameInner() {
       )}
       <View style={[styles.bottomBar, { borderTopColor: t.border, backgroundColor: t.surface, paddingBottom: insets.bottom + 8 }]}>{toolbar}</View>
       {showTrophies ? <TrophiesModal progress={progress} onClose={() => setShowTrophies(false)} /> : null}
+      {showMap ? (
+        <LevelMapModal
+          title={customMode ? 'Mis niveles' : hackMode ? 'Misiones de hackeo' : `Niveles · ${names.title}`}
+          levels={list}
+          progress={progress}
+          currentId={level.id}
+          accent={accent}
+          unit={unit}
+          onPick={selectLevel}
+          onClose={() => setShowMap(false)}
+        />
+      ) : null}
       {showAlmanac ? <AlmanacModal theme={theme} onClose={() => setShowAlmanac(false)} /> : null}
       {levelEditor}
     </View>
@@ -1061,8 +1130,10 @@ function GameInner() {
 
 const styles = StyleSheet.create({
   levelBar: { flexGrow: 0, flexShrink: 0, borderBottomWidth: BORDER },
-  barDivider: { width: 2, height: 28, borderRadius: 1, marginHorizontal: 2 },
-  levelChip: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: BORDER, borderRadius: RADIUS.md, paddingVertical: 5, paddingHorizontal: 9, maxWidth: 210 },
+  levelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8 },
+  progressBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: BORDER, borderRadius: RADIUS.md, paddingHorizontal: 10, height: 42 },
+  progressTrack: { width: 74, height: 4, borderRadius: 2, marginTop: 3, overflow: 'hidden' },
+  levelChip: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: BORDER, borderRadius: RADIUS.md, height: 42, paddingHorizontal: 9, width: 168 },
   levelNum: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   levelIcon: { width: 38, height: 38, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
   column: { minWidth: 0, padding: 12, gap: 10 },
