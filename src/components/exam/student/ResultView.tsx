@@ -102,7 +102,7 @@ export function ResultView() {
                   </>
                 ) : r.held ? (
                   <View style={{ alignItems: 'center', marginTop: 10 }}>
-                    <Text style={{ color: t.textMuted, fontSize: 14, textAlign: 'center' }}>Tu maestro está revisando los exámenes. Tu calificación aparecerá aquí en cuanto la publique.</Text>
+                    <Text style={{ color: t.textMuted, fontSize: 14, textAlign: 'center' }}>Tu maestro está revisando los exámenes. Tu calificación aparecerá aquí en cuanto la publique. Si cierras esta ventana, vuelve a entrar con el mismo código y tu nombre para verla.</Text>
                     <ActivityIndicator color={t.primary} style={{ marginTop: 10 }} />
                   </View>
                 ) : (

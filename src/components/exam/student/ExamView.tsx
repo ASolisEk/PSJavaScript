@@ -360,7 +360,7 @@ export function ExamView() {
                 }}
                 settings={paper.settings}
                 flagged={s.flagged.includes(q.id)}
-                onToggleFlag={() => st.toggleFlag(q.id)}
+                onToggleFlag={sequential ? undefined : () => st.toggleFlag(q.id)}
                 onRun={(d) => st.report('run', d)}
                 onTest={(d) => st.report('test', d)}
                 onBusy={(k) => touch(k ?? 'coding')}

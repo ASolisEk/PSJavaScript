@@ -111,7 +111,7 @@ export function answerRows(room: RoomState, students?: StudentRecord[]): AnswerR
         answer: answerText(q, a, s.key),
         correct: correctText(q, result),
         result,
-        status: result ? STATUS_LABEL[result.status] : empty(a) ? 'Sin responder' : 'Sin calificar',
+        status: result ? (result.voided ? 'Anulada' : STATUS_LABEL[result.status]) : empty(a) ? 'Sin responder' : 'Sin calificar',
       });
     });
   }
@@ -238,6 +238,10 @@ function questionTxt(row: AnswerRow, s: StudentRecord): string {
   }
   const feedback = res ? plainText(res.feedback).trim() : '';
   if (feedback) lines.push('', feedback.includes('\n') ? `  Retroalimentación:\n${indent(feedback)}` : `  Retroalimentación: ${feedback}`);
+  if (q.explanation?.trim()) lines.push('', `  Explicación: ${plainText(q.explanation).trim()}`);
+  const comment = s.comments?.[q.id];
+  if (comment) lines.push('', `  Comentario del maestro: ${comment}`);
+  if (q.image) lines.push('', '  (La pregunta incluye una imagen.)');
   return lines.join('\n');
 }
 

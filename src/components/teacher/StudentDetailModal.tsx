@@ -64,6 +64,7 @@ export default function StudentDetailModal({
   onClose,
   order,
   onNavigate,
+  initialFilter,
 }: {
   room: RoomState;
   studentId: string;
@@ -71,13 +72,15 @@ export default function StudentDetailModal({
   onClose(): void;
   order?: string[];
   onNavigate?(id: string): void;
+  /** Abre mostrando solo esas respuestas (p. ej. las que faltan por calificar). */
+  initialFilter?: AnswerFilter;
 }) {
   const t = useTheme();
   const s = room.students[studentId];
   const [tab, setTab] = useState<'answers' | 'log' | 'asks' | 'history'>('answers');
   const allRooms = useTeacher((x) => x.rooms);
   const allHistory = useTeacher((x) => x.history);
-  const [filter, setFilter] = useState<AnswerFilter>('all');
+  const [filter, setFilter] = useState<AnswerFilter>(initialFilter ?? 'all');
   const [now, setNow] = useState(() => Date.now());
   const ticking = !!s && !s.submittedAt;
   // el reloj solo hace falta mientras el alumno responde (redibujar cada segundo hacía lenta la revisión)
@@ -198,6 +201,7 @@ export default function StudentDetailModal({
                 ['all', 'Todas'],
                 ['wrong', `Por revisar (${s.result.questions.filter((x) => x.status === 'wrong' || x.status === 'partial' || x.status === 'pending' || x.manual).length})`],
                 ['blank', `Sin responder (${s.result.questions.filter((x) => x.status === 'blank').length})`],
+                ...(s.result.questions.some((x) => x.type === 'essay') ? ([['pending', `Abiertas por calificar (${s.result.questions.filter((x) => x.status === 'pending').length})`]] as [AnswerFilter, string][]) : []),
               ] as [AnswerFilter, string][]
             ).map(([id, label]) => (
               <Chip key={id} label={label} active={filter === id} onPress={() => setFilter(id)} />
@@ -216,6 +220,8 @@ export default function StudentDetailModal({
               // las que ya ajustaste siguen a la vista (no desaparecen al darles todos los puntos)
               if (filter === 'wrong' && !(r && (r.status === 'wrong' || r.status === 'partial' || r.status === 'pending' || r.manual))) return null;
               if (filter === 'blank' && r?.status !== 'blank') return null;
+              // las abiertas siguen a la vista después de calificarlas (para corregir sin perderlas)
+              if (filter === 'pending' && r?.type !== 'essay') return null;
               return (
                 <AnswerCard
                   key={id}
@@ -270,7 +276,7 @@ function Info({ label, value, strong }: { label: string; value: string; strong?:
   );
 }
 
-type AnswerFilter = 'all' | 'wrong' | 'blank';
+export type AnswerFilter = 'all' | 'wrong' | 'blank' | 'pending';
 
 const statusColor = (t: ReturnType<typeof useTheme>, r?: QuestionResult) =>
   !r ? undefined : r.voided ? t.textMuted : r.status === 'correct' ? t.success : r.status === 'partial' || r.status === 'pending' ? t.warning : r.status === 'blank' ? t.textMuted : t.danger;

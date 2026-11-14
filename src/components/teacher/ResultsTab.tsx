@@ -125,6 +125,11 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
   const sum = useMemo(() => summarizeRoom(room), [room]);
   const [detail, setDetail] = useState<string | null>(null);
   const [fixing, setFixing] = useState<Question | null>(null);
+  /** Cola de calificación: solo alumnos con respuestas abiertas, mostrando esas preguntas. */
+  const [queue, setQueue] = useState(false);
+  const pendingIds = sum.rows.filter((r) => room.students[r.id]?.result?.questions.some((q) => q.status === 'pending')).map((r) => r.id);
+  const essayIds = sum.rows.filter((r) => room.students[r.id]?.result?.questions.some((q) => q.type === 'essay')).map((r) => r.id);
+  const pendingCount = pendingIds.reduce((a, id) => a + room.students[id].result!.questions.filter((q) => q.status === 'pending').length, 0);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const toggle = (id: string) =>
     setOpen((prev) => {
@@ -151,7 +156,21 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
             label="Revisar y calificar"
             icon="create-outline"
             kind="primary"
-            onPress={() => setDetail((sum.rows.find((r) => r.submitted) ?? sum.rows[0]).id)}
+            onPress={() => {
+              setQueue(false);
+              setDetail((sum.rows.find((r) => r.submitted) ?? sum.rows[0]).id);
+            }}
+          />
+        ) : null}
+        {pendingCount ? (
+          <Button
+            label={`Calificar abiertas (${pendingCount})`}
+            icon="time-outline"
+            kind="primary"
+            onPress={() => {
+              setQueue(true);
+              setDetail(pendingIds[0]);
+            }}
           />
         ) : null}
       </View>
@@ -307,7 +326,13 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
               ))}
             </View>
             {sum.rows.map((r) => (
-              <Pressable key={r.id} onPress={() => setDetail(r.id)} style={({ pressed }) => [styles.tr, { borderBottomColor: t.border, backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}>
+              <Pressable
+                key={r.id}
+                onPress={() => {
+                  setQueue(false);
+                  setDetail(r.id);
+                }}
+                style={({ pressed }) => [styles.tr, { borderBottomColor: t.border, backgroundColor: pressed ? t.surfaceAlt : 'transparent' }]}>
                 <Text style={[styles.td, { color: t.text, width: COLS[0], fontWeight: '700' }]} numberOfLines={1}>
                   {r.name}
                 </Text>
@@ -336,7 +361,16 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
         <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 8 }}>Toca un alumno para ver sus respuestas y ajustar puntos a mano.</Text>
       </Card>
       {detail && room.students[detail] ? (
-        <StudentDetailModal room={room} studentId={detail} live={live} onClose={() => setDetail(null)} order={sum.rows.map((r) => r.id)} onNavigate={setDetail} />
+        <StudentDetailModal
+          key={queue ? 'cola' : 'todos'}
+          room={room}
+          studentId={detail}
+          live={live}
+          onClose={() => setDetail(null)}
+          order={queue ? essayIds : sum.rows.map((r) => r.id)}
+          onNavigate={setDetail}
+          initialFilter={queue ? 'pending' : undefined}
+        />
       ) : null}
       {fixing ? <FixQuestionModal room={room} question={fixing} onClose={() => setFixing(null)} /> : null}
     </View>

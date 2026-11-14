@@ -522,6 +522,8 @@ function StudentCard({ s, room, now, duplicate, asking, onPress }: { s: StudentR
             {s.group || 'Sin grupo'} · {s.connected ? 'conectado' : `desconectado hace ${formatSince(now - s.lastSeen)}`}
           </Text>
         </View>
+        {s.asks?.some((a) => !a.answer) ? <Ionicons name="hand-left" size={18} color={t.accent} style={{ marginRight: 6 }} /> : null}
+        {s.result?.questions.some((x) => x.status === 'pending') ? <Pill icon="time-outline" text="Por calificar" color={t.warning} /> : null}
         {s.result ? (
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={{ color: s.result.passed ? t.success : t.danger, fontSize: 20, fontWeight: '900' }}>{s.result.grade}</Text>

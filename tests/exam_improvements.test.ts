@@ -194,3 +194,56 @@ test('examen impreso: versiones con hoja de respuestas y clave', () => {
   assert.ok(html.includes('Clave de respuestas'));
   assert.ok(!printableExamHtml(e, { versions: 1, withKey: false }).includes('Clave de respuestas'));
 });
+
+test('modo secuencial: el avance no retrocede aunque el alumno reentre desde cero', async () => {
+  const net = new MemoryNetwork();
+  const e = exam({ sequential: true, questions: [single(true), single(true), single(true)] });
+  const host = new ExamHost({ transport: new MemoryHost(net), state: createRoom('SEC234', e, { kind: 'memory' }), tickMs: 0 });
+  await host.open();
+  const log: HostMsg[] = [];
+  const a = student(net, 'SEC234', 'Ana', log);
+  await a.connect();
+  await flush();
+  host.start();
+  a.send({ t: 'begin' });
+  a.send({ t: 'progress', current: 2, activity: 'reading', focused: true });
+  assert.equal(host.state.students['id-Ana'].current, 2);
+  // intenta volver a la primera: el maestro conserva dónde iba
+  a.send({ t: 'progress', current: 0, activity: 'reading', focused: true });
+  assert.equal(host.state.students['id-Ana'].current, 2);
+  // al reconectarse recibe su posición
+  a.send({ t: 'begin' });
+  const paper = log.filter((m) => m.t === 'paper').pop() as Extract<HostMsg, { t: 'paper' }>;
+  assert.equal(paper.current, 2);
+  assert.equal(paper.paper.settings.sequential, true);
+  a.dispose();
+  host.dispose();
+});
+
+test('validación: avisos de configuraciones que se contradicen', async () => {
+  const { validateExam } = await import('../src/core/exam/config');
+  const msgs = (e: ExamConfig) => validateExam(e).map((i) => i.message).join('\n');
+  assert.match(msgs(exam({ holdResults: true, showResults: 'none' })), /no habrá nada que publicar/);
+  assert.match(msgs(exam({ showResults: 'score' })), /respuesta\(s\) abiertas que calificas a mano/);
+  assert.doesNotMatch(msgs(exam({ showResults: 'score', holdResults: true })), /calificas a mano/);
+  const essayOnly = exam({ wrongPenalty: 0.5, holdResults: true });
+  essayOnly.questions = [essayOnly.questions[1]];
+  assert.match(msgs(essayOnly), /penalización por error no se aplica/);
+  const heavy = exam({ holdResults: true });
+  heavy.questions = heavy.questions.map((q) => ({ ...q, image: 'data:image/png;base64,' + 'A'.repeat(399_000) }));
+  heavy.questions.push(...[1, 2, 3, 4].map((k) => ({ ...single(true), id: `img${k}`, image: 'data:image/png;base64,' + 'A'.repeat(399_000) })));
+  assert.match(msgs(heavy), /imágenes del examen pesan/);
+});
+
+test('reporte TXT: marca la pregunta anulada e incluye la explicación', async () => {
+  const { answersTxt } = await import('../src/core/exam/report');
+  const e = exam({ questions: [{ ...single(true), explanation: 'Porque **sí**.', voided: true }] });
+  const q = e.questions[0] as any;
+  const room = createRoom('TXT234', e, { kind: 'memory' });
+  const { key } = buildPaper(e, 's');
+  const answers = { [q.id]: q.options[0].id };
+  room.students.a = { id: 'a', token: 'a', name: 'Ana', group: '', peer: null, connected: false, lastSeen: 0, joinedAt: 0, startedAt: 1, deadline: null, submittedAt: 2, submitReason: 'manual', key, answers, current: 0, activity: 'reviewing', activitySince: 0, focused: true, focusLost: 0, awayMs: 0, pasteBlocked: 0, runs: 0, tests: 0, events: [], result: gradePaper(e, key, answers), overrides: {} };
+  const txt = answersTxt(room);
+  assert.match(txt, /ANULADA/);
+  assert.match(txt, /Explicación: Porque sí\./);
+});

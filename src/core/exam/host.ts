@@ -312,7 +312,9 @@ export class ExamHost {
       case 'progress': {
         if (s.submittedAt) break;
         const patch: Partial<StudentRecord> = {};
-        if (typeof msg.current === 'number' && msg.current !== s.current) patch.current = msg.current;
+        // una pregunta a la vez: el avance nunca retrocede (aunque el alumno reentre desde cero)
+        const cur = typeof msg.current === 'number' ? (this.state.exam.sequential ? Math.max(s.current, msg.current) : msg.current) : s.current;
+        if (cur !== s.current) patch.current = cur;
         if (msg.activity && msg.activity !== s.activity) {
           patch.activity = msg.activity;
           patch.activitySince = now;
@@ -594,7 +596,7 @@ export class ExamHost {
     const s = this.state.students[id];
     if (!s?.key || !s.startedAt) return;
     const { paper } = buildPaper(this.state.exam, s.key.seed);
-    this.sendTo(id, { t: 'paper', now: this.now(), paper, startedAt: s.startedAt, deadline: s.deadline, answers: s.answers });
+    this.sendTo(id, { t: 'paper', now: this.now(), paper, startedAt: s.startedAt, deadline: s.deadline, answers: s.answers, current: s.current });
   }
 
   private sendResult(id: string) {

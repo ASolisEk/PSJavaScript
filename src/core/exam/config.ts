@@ -161,6 +161,8 @@ export function questionsPerStudent(e: Pick<ExamConfig, 'questions' | 'pickCount
 
 /** Tamaño máximo de una imagen (data URI) en una pregunta: ~300 KB. */
 export const MAX_IMAGE_CHARS = 400_000;
+/** A partir de este total de imágenes se avisa al maestro (~1.5 MB). */
+export const MAX_EXAM_IMAGE_CHARS = 2_100_000;
 
 export interface ExamIssue {
   severity: 'error' | 'warning';
@@ -192,6 +194,13 @@ export function validateExam(e: ExamConfig): ExamIssue[] {
     const groups = usesTopicPicks(e) ? examTopics(e).map((t) => e.questions.filter((q) => q.topic === t.topic)) : [e.questions];
     if (groups.some((g) => new Set(g.map((q) => q.points)).size > 1)) issues.push({ severity: 'warning', message: 'Las preguntas valen distinto y cada alumno recibe una selección al azar: el total de puntos puede variar entre alumnos (la calificación se calcula en porcentaje).' });
   }
+  if (e.holdResults && e.showResults === 'none') issues.push({ severity: 'warning', message: 'Retienes las calificaciones pero el alumno no ve «nada» al enviar: no habrá nada que publicar. Elige qué verá en «Al enviar, el alumno ve…».' });
+  if (e.wrongPenalty > 0 && !e.questions.some((q) => q.type === 'single' || q.type === 'truefalse' || (q.type === 'multiple' && !q.partialCredit))) issues.push({ severity: 'warning', message: 'La penalización por error no se aplica a ninguna pregunta (solo cuenta en opción múltiple, verdadero/falso y varias respuestas sin puntos parciales).' });
+  if (e.sequential && e.questions.some((q) => q.type === 'code') && e.questions.length > 1) issues.push({ severity: 'warning', message: 'Con «una pregunta a la vez» el alumno no puede volver a sus programas: avísales antes de comenzar.' });
+  const imageChars = e.questions.reduce((a, q) => a + (q.image?.length ?? 0), 0);
+  if (imageChars > MAX_EXAM_IMAGE_CHARS) issues.push({ severity: 'warning', message: `Las imágenes del examen pesan ${(imageChars / 1_400_000).toFixed(1)} MB en total: puede tardar en llegar a los alumnos o no caber en el almacenamiento del navegador. Usa menos imágenes o más pequeñas.` });
+  const manual = e.questions.filter((q) => q.type === 'essay').length;
+  if (manual && !e.holdResults && e.showResults !== 'none') issues.push({ severity: 'warning', message: `Hay ${manual} respuesta(s) abiertas que calificas a mano: el alumno verá su calificación incompleta al enviar. Activa «Retener calificaciones hasta que las publique».` });
   e.questions.forEach((q, i) => {
     const n = `Pregunta ${i + 1}`;
     const add = (severity: ExamIssue['severity'], message: string) => issues.push({ severity, questionId: q.id, message: `${n}: ${message}` });

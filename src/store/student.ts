@@ -190,7 +190,7 @@ export const useStudent = create<StudentState>((set, get) => {
       case 'paper': {
         // conserva lo que el alumno respondió localmente (puede ser más reciente que la copia del maestro)
         const answers = { ...m.answers, ...s.answers };
-        patch({ paper: m.paper, startedAt: m.startedAt, deadline: m.deadline, answers, phase: s.phase === 'submitted' ? 'submitted' : 'exam', current: Math.min(s.current, m.paper.questions.length - 1) });
+        patch({ paper: m.paper, startedAt: m.startedAt, deadline: m.deadline, answers, phase: s.phase === 'submitted' ? 'submitted' : 'exam', current: Math.min(m.paper.settings.sequential ? Math.max(s.current, m.current ?? 0) : s.current, m.paper.questions.length - 1) });
         // reenvía lo que el maestro no tenga
         const missing: Answers = {};
         for (const [k, v] of Object.entries(s.answers)) if (JSON.stringify(m.answers[k]) !== JSON.stringify(v)) missing[k] = v;

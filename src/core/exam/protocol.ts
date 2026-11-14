@@ -44,7 +44,8 @@ export type HostMsg =
       submitted: boolean;
     }
   | { t: 'room'; status: RoomStatus }
-  | { t: 'paper'; now: number; paper: Paper; startedAt: number; deadline: number | null; answers: Answers }
+  /** `current`: pregunta en la que iba (en modo secuencial no puede volver a las anteriores). */
+  | { t: 'paper'; now: number; paper: Paper; startedAt: number; deadline: number | null; answers: Answers; current?: number }
   | { t: 'result'; result: StudentResultView; submittedAt: number; reason: SubmitReason }
   | { t: 'deadline'; deadline: number | null; now: number }
   | { t: 'notice'; text: string; at: number }
