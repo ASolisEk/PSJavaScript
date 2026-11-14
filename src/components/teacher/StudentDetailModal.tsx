@@ -16,6 +16,8 @@ import ModalShell from '../modals/ModalShell';
 import { Button, Chip, TextField } from '../ui';
 import { Card, CodeBlock, formatDuration, formatSince, IconName, NumberStepper, Pill } from '../exam/kit';
 import RichText from '../exam/RichText';
+import { QuestionImage } from '../exam/QuestionView';
+import { studentHistory } from '../../core/exam/summary';
 
 export const PHASE_INFO = {
   lobby: { label: 'En espera', icon: 'hourglass-outline' as IconName, color: 'info' as const },
@@ -38,6 +40,7 @@ const EVENT_ICON: Record<StudentEventKind, IconName> = {
   test: 'flask-outline',
   submit: 'paper-plane-outline',
   leave: 'exit-outline',
+  ask: 'hand-left-outline',
   teacher: 'person-outline',
 };
 
@@ -71,7 +74,9 @@ export default function StudentDetailModal({
 }) {
   const t = useTheme();
   const s = room.students[studentId];
-  const [tab, setTab] = useState<'answers' | 'log'>('answers');
+  const [tab, setTab] = useState<'answers' | 'log' | 'asks' | 'history'>('answers');
+  const allRooms = useTeacher((x) => x.rooms);
+  const allHistory = useTeacher((x) => x.history);
   const [filter, setFilter] = useState<AnswerFilter>('all');
   const [now, setNow] = useState(() => Date.now());
   const ticking = !!s && !s.submittedAt;
@@ -166,6 +171,8 @@ export default function StudentDetailModal({
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
           <Chip label="Respuestas" active={tab === 'answers'} onPress={() => setTab('answers')} />
           <Chip label={`Actividad (${s.events.length})`} active={tab === 'log'} onPress={() => setTab('log')} />
+          {s.asks?.length ? <Chip label={`Preguntas al maestro (${s.asks.length})`} active={tab === 'asks'} onPress={() => setTab('asks')} /> : null}
+          <Chip label="Historial" active={tab === 'history'} onPress={() => setTab('history')} />
           <View style={{ flex: 1 }} />
           {s.key ? (
             <View style={{ flexDirection: 'row', gap: 6 }}>
@@ -189,7 +196,7 @@ export default function StudentDetailModal({
             {(
               [
                 ['all', 'Todas'],
-                ['wrong', `Por revisar (${s.result.questions.filter((x) => x.status === 'wrong' || x.status === 'partial' || x.manual).length})`],
+                ['wrong', `Por revisar (${s.result.questions.filter((x) => x.status === 'wrong' || x.status === 'partial' || x.status === 'pending' || x.manual).length})`],
                 ['blank', `Sin responder (${s.result.questions.filter((x) => x.status === 'blank').length})`],
               ] as [AnswerFilter, string][]
             ).map(([id, label]) => (
@@ -207,7 +214,7 @@ export default function StudentDetailModal({
               if (!q) return null;
               const r = s.result?.questions.find((x) => x.questionId === id);
               // las que ya ajustaste siguen a la vista (no desaparecen al darles todos los puntos)
-              if (filter === 'wrong' && !(r && (r.status === 'wrong' || r.status === 'partial' || r.manual))) return null;
+              if (filter === 'wrong' && !(r && (r.status === 'wrong' || r.status === 'partial' || r.status === 'pending' || r.manual))) return null;
               if (filter === 'blank' && r?.status !== 'blank') return null;
               return (
                 <AnswerCard
@@ -227,6 +234,18 @@ export default function StudentDetailModal({
               );
             })
           )
+        ) : tab === 'asks' ? (
+          (s.asks ?? []).map((a) => (
+            <Card key={a.id}>
+              <Text style={{ color: t.textMuted, fontSize: 12 }}>
+                {new Date(a.at).toLocaleTimeString()} · pregunta {a.question + 1}
+              </Text>
+              <Text style={{ color: t.text, fontSize: 14, marginVertical: 4 }}>{a.text}</Text>
+              <Text style={{ color: a.answer ? t.success : t.warning, fontSize: 13 }}>{a.answer ? (a.answer === '—' ? 'Descartada' : `Respuesta: ${a.answer}`) : 'Sin responder'}</Text>
+            </Card>
+          ))
+        ) : tab === 'history' ? (
+          <StudentHistoryList name={s.name} rooms={[...allRooms, ...allHistory]} current={roomKey(room)} />
         ) : (
           [...s.events].reverse().map((e, i) => (
             <View key={i} style={[styles.event, { borderBottomColor: t.border }]}>
@@ -254,7 +273,43 @@ function Info({ label, value, strong }: { label: string; value: string; strong?:
 type AnswerFilter = 'all' | 'wrong' | 'blank';
 
 const statusColor = (t: ReturnType<typeof useTheme>, r?: QuestionResult) =>
-  !r ? undefined : r.status === 'correct' ? t.success : r.status === 'partial' ? t.warning : r.status === 'blank' ? t.textMuted : t.danger;
+  !r ? undefined : r.voided ? t.textMuted : r.status === 'correct' ? t.success : r.status === 'partial' || r.status === 'pending' ? t.warning : r.status === 'blank' ? t.textMuted : t.danger;
+
+/** Calificaciones del alumno en otros exámenes (por su nombre). */
+function StudentHistoryList({ name, rooms, current }: { name: string; rooms: RoomState[]; current: string }) {
+  const t = useTheme();
+  const list = useMemo(() => {
+    const seen = new Set<string>();
+    const unique = rooms.filter((r) => {
+      const k = roomKey(r);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return studentHistory(unique, name).map((h) => ({ ...h, key: `${h.code}@${h.openedAt}` }));
+  }, [rooms, name]);
+  const graded = list.filter((h) => h.percent !== null);
+  const avg = graded.length ? Math.round((graded.reduce((a, h) => a + h.percent!, 0) / graded.length) * 10) / 10 : null;
+  if (list.length <= 1) return <Text style={{ color: t.textMuted }}>No hay otros exámenes de {name} en este equipo.</Text>;
+  return (
+    <View>
+      <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 8 }}>
+        {list.length} exámenes con el nombre «{name}»{avg !== null ? ` · promedio ${avg} %` : ''}. Se identifica por nombre: si hay homónimos, aparecen juntos.
+      </Text>
+      {list.map((h) => (
+        <View key={h.key} style={[styles.event, { borderBottomColor: t.border, backgroundColor: h.key === current ? t.primary + '12' : 'transparent' }]}>
+          <Ionicons name={h.passed === null ? 'ellipse-outline' : h.passed ? 'ribbon-outline' : 'alert-circle-outline'} size={15} color={h.passed === null ? t.textMuted : h.passed ? t.success : t.danger} />
+          <Text style={{ color: t.textMuted, fontSize: 12, width: 86, marginLeft: 8 }}>{new Date(h.openedAt).toLocaleDateString()}</Text>
+          <Text style={{ color: t.text, fontSize: 13, flex: 1 }} numberOfLines={1}>
+            {h.title}
+            {h.key === current ? ' (este)' : ''}
+          </Text>
+          <Text style={{ color: t.text, fontWeight: '800', fontSize: 13 }}>{h.grade !== null ? `${h.grade}/${h.scale}` : h.submitted ? '—' : 'Sin entregar'}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 /** Texto en monoespaciado con fondo, para salidas, datos y líneas. */
 function Mono({ text, color, empty = '(vacío)' }: { text: string; color?: string; empty?: string }) {
@@ -272,7 +327,7 @@ function Label({ children }: { children: string }) {
 }
 
 /** Respuesta del alumno junto a la correcta. */
-function Pair({ mine, right, mono, ok }: { mine: string; right: string; mono?: boolean; ok?: boolean }) {
+function Pair({ mine, right, mono, ok, rightLabel = 'Respuesta correcta' }: { mine: string; right: string; mono?: boolean; ok?: boolean; rightLabel?: string }) {
   const t = useTheme();
   return (
     <View style={styles.pair}>
@@ -281,7 +336,7 @@ function Pair({ mine, right, mono, ok }: { mine: string; right: string; mono?: b
         {mono ? <Mono text={mine} empty="(sin responder)" color={ok === false ? t.danger : undefined} /> : <Text selectable style={{ color: mine ? (ok === false ? t.danger : t.text) : t.textMuted, fontStyle: mine ? 'normal' : 'italic', fontSize: 14 }}>{mine || 'Sin responder'}</Text>}
       </View>
       <View style={styles.pairCol}>
-        <Label>Respuesta correcta</Label>
+        <Label>{rightLabel}</Label>
         {mono ? <Mono text={right} color={t.success} /> : <Text selectable style={{ color: t.success, fontSize: 14, fontWeight: '700' }}>{right}</Text>}
       </View>
     </View>
@@ -411,6 +466,8 @@ const AnswerCard = memo(function AnswerCard({
         ) : null}
       </View>
     );
+  } else if (q.type === 'essay') {
+    body = <Pair mine={mine} right={q.guide || '(sin guía)'} rightLabel="Guía del maestro" />;
   } else if (q.type === 'order') {
     body = <Pair mine={mine} right={right} mono ok={ok} />;
   } else {
@@ -424,6 +481,7 @@ const AnswerCard = memo(function AnswerCard({
         <Pill text={info.label} icon={info.icon as IconName} color={t.primary} />
         {q.topic ? <Pill text={q.topic} icon="pricetag-outline" /> : null}
         {current ? <Pill text="La está viendo ahora" icon="eye-outline" color={t.primary} solid /> : null}
+        {q.voided ? <Pill text="Anulada" icon="ban-outline" color={t.textMuted} /> : null}
         <View style={{ flex: 1 }} />
         {r ? (
           <Text style={{ color, fontWeight: '800' }}>
@@ -435,6 +493,7 @@ const AnswerCard = memo(function AnswerCard({
         )}
       </View>
       <RichText text={q.prompt} style={{ color: t.text, fontSize: 14, lineHeight: 20 }} />
+      {q.image ? <QuestionImage uri={q.image} /> : null}
       {q.code?.trim() ? <CodeBlock code={q.code} style={{ marginTop: 6 }} /> : null}
       {q.type === 'output' && q.inputs.length ? <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>Datos para prompt(): {q.inputs.join(', ')}</Text> : null}
       {body}

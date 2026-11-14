@@ -1,12 +1,12 @@
 /** Antes del examen: sala de espera con las instrucciones, examen terminado o ingreso rechazado. */
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, Platform, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, View } from 'react-native';
 import { Text } from '../../../ui/text';
 import { useApp } from '../../../store/app';
 import { useStudent } from '../../../store/student';
 import { useTheme } from '../../../ui/theme';
-import { Button, Heading } from '../../ui';
+import { Button, Heading, TextField } from '../../ui';
 import { Card, Pill, ScreenHeader } from '../kit';
 import { enterFullscreen, fullscreenSupported } from '../lockdown';
 
@@ -56,6 +56,10 @@ export function WaitingView() {
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                 <Pill icon="help-circle-outline" text={`${room.questionCount} preguntas`} color={t.primary} />
                 <Pill icon="time-outline" text={room.durationMin ? `${room.durationMin} minutos` : 'Sin límite de tiempo'} color={t.accent} />
+                {room.sequential ? <Pill icon="arrow-forward-outline" text="Una pregunta a la vez, sin regresar" color={t.warning} /> : null}
+                {room.startAt && room.status === 'lobby' ? (
+                  <Pill icon="alarm-outline" text={`Inicia a las ${new Date(room.startAt).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`} color={t.info} />
+                ) : null}
               </View>
             </Card>
             <Card>
@@ -126,6 +130,40 @@ export function EndedView() {
 
 export function RejectedView({ reason }: { reason: string }) {
   const t = useTheme();
+  const s = useStudent((x) => x.session);
+  const joining = useStudent((x) => x.joining);
+  const roster = s?.roster ?? [];
+  const [filter, setFilter] = React.useState('');
+  if (roster.length && s) {
+    const f = filter.trim().toLowerCase();
+    const shown = roster.filter((n) => !f || n.toLowerCase().includes(f));
+    return (
+      <Narrow>
+        <Card accent={t.primary}>
+          <Text style={{ color: t.text, fontSize: 17, fontWeight: '800', marginBottom: 6 }}>Elige tu nombre</Text>
+          <Text style={{ color: t.textMuted, fontSize: 14, marginBottom: 10 }}>{reason}</Text>
+          <TextField value={filter} onChangeText={setFilter} placeholder="Busca tu nombre…" />
+          <View style={{ gap: 6, marginTop: 10, maxHeight: 360 }}>
+            <ScrollView contentContainerStyle={{ gap: 6 }}>
+              {shown.map((n) => (
+                <Button
+                  key={n}
+                  label={n}
+                  icon="person-outline"
+                  disabled={joining}
+                  onPress={() => useStudent.getState().join({ code: s.code, name: n, group: s.identity.group, transport: s.transport })}
+                />
+              ))}
+              {!shown.length ? <Text style={{ color: t.textMuted }}>Ningún nombre coincide. Si no apareces en la lista, avisa a tu maestro.</Text> : null}
+            </ScrollView>
+          </View>
+          <View style={{ marginTop: 12 }}>
+            <Button label="Volver" icon="arrow-back" onPress={() => useStudent.getState().leave()} />
+          </View>
+        </Card>
+      </Narrow>
+    );
+  }
   return (
     <Narrow>
       <Card accent={t.danger}>

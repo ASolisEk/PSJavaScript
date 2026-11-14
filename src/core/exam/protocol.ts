@@ -18,6 +18,10 @@ export interface RoomInfo {
   durationMin: number;
   questionCount: number;
   restrictions: string[];
+  /** Hora programada de inicio (reloj del maestro). */
+  startAt?: number | null;
+  /** Una pregunta a la vez, sin regresar. */
+  sequential?: boolean;
 }
 
 /** Alumno → maestro. */
@@ -27,6 +31,7 @@ export type ClientMsg =
   | { t: 'progress'; current: number; activity: Activity; focused: boolean; answers?: Answers }
   | { t: 'event'; kind: ClientEventKind; detail?: string; awayMs?: number }
   | { t: 'submit'; answers: Answers; reason: SubmitReason }
+  | { t: 'ask'; text: string; question: number }
   | { t: 'ping' };
 
 /** Maestro → alumno. */
@@ -44,12 +49,15 @@ export type HostMsg =
   | { t: 'deadline'; deadline: number | null; now: number }
   | { t: 'notice'; text: string; at: number }
   | { t: 'force-submit'; reason: SubmitReason }
-  | { t: 'rejected'; reason: string }
+  /** `roster`: nombres de la lista del grupo para que el alumno elija el suyo. */
+  | { t: 'rejected'; reason: string; roster?: string[] }
+  /** Respuesta del maestro a una pregunta del alumno. */
+  | { t: 'reply'; askId: string; question: string; text: string; at: number }
   /** Entró con otro dispositivo (o perdió su sesión): espera a que el maestro autorice que siga su examen. */
   | { t: 'pending'; reason: string }
   | { t: 'pong'; now: number };
 
-const CLIENT_TYPES = new Set(['hello', 'begin', 'progress', 'event', 'submit', 'ping']);
+const CLIENT_TYPES = new Set(['hello', 'begin', 'progress', 'event', 'submit', 'ask', 'ping']);
 
 /** Valida superficialmente un mensaje recibido de un alumno. */
 export function asClientMsg(raw: unknown): ClientMsg | null {
@@ -63,6 +71,7 @@ export function asClientMsg(raw: unknown): ClientMsg | null {
   }
   if (!m || typeof m !== 'object' || !CLIENT_TYPES.has(m.t)) return null;
   if (m.t === 'hello' && (typeof m.studentId !== 'string' || typeof m.token !== 'string' || typeof m.name !== 'string')) return null;
+  if (m.t === 'ask' && typeof m.text !== 'string') return null;
   if ((m.answers !== undefined && (typeof m.answers !== 'object' || m.answers === null || Array.isArray(m.answers)))) return null;
   return m as ClientMsg;
 }

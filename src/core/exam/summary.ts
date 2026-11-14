@@ -1,5 +1,5 @@
 /** Concentrado de resultados de una sala: estadísticas, análisis por pregunta y CSV. */
-import { answeredCount, RoomState, StudentRecord } from './room';
+import { answeredCount, normalizeName, RoomState, StudentRecord } from './room';
 import { questionsPerStudent } from './config';
 import type { QuestionType } from './types';
 
@@ -39,6 +39,21 @@ export interface QuestionStat {
   /** Promedio de aciertos (0–100). */
   avgPercent: number;
   topic?: string;
+  /**
+   * Índice de discriminación (−1 a 1): aciertos del 27 % con mejor calificación menos los del
+   * 27 % con peor. Bajo (< 0.2) o negativo indica una pregunta confusa o con la clave mal.
+   * null si hay muy pocos alumnos para calcularlo.
+   */
+  discrimination: number | null;
+  voided?: boolean;
+}
+
+export interface GroupStat {
+  group: string;
+  students: number;
+  submitted: number;
+  average: number | null;
+  passRate: number | null;
 }
 
 export interface TopicStat {
@@ -71,7 +86,18 @@ export interface RoomSummary {
   questions: QuestionStat[];
   /** Análisis por tema (si las preguntas tienen tema). */
   topics: TopicStat[];
+  /** Comparación por grupo (si los alumnos escribieron grupos distintos). */
+  groups: GroupStat[];
   rows: SummaryRow[];
+}
+
+/** Interpretación del índice de discriminación. */
+export function discriminationLabel(d: number | null): { label: string; tone: 'success' | 'warning' | 'danger' | 'textMuted' } {
+  if (d === null) return { label: 'sin datos suficientes', tone: 'textMuted' };
+  if (d < 0) return { label: 'negativa: revisa la clave', tone: 'danger' };
+  if (d < 0.2) return { label: 'baja: pregunta confusa o muy fácil/difícil', tone: 'warning' };
+  if (d < 0.3) return { label: 'aceptable', tone: 'textMuted' };
+  return { label: 'buena', tone: 'success' };
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -118,6 +144,16 @@ export function summarizeRoom(room: RoomState): RoomSummary {
   const histogram = new Array(10).fill(0);
   for (const r of graded) histogram[Math.min(9, Math.floor((r.percent ?? 0) / 10))]++;
 
+  // grupos alto y bajo (27 %) para el índice de discriminación
+  const ranked = students.filter((s) => s.result && s.submittedAt).sort((a, b) => b.result!.percent - a.result!.percent);
+  const cut = ranked.length >= 4 ? Math.max(1, Math.round(ranked.length * 0.27)) : 0;
+  const upper = ranked.slice(0, cut);
+  const lower = cut ? ranked.slice(-cut) : [];
+  const fractionIn = (group: StudentRecord[], qid: string): number | null => {
+    const xs = group.map((s) => s.result!.questions.find((x) => x.questionId === qid)).filter((x) => x && x.max > 0);
+    return xs.length ? xs.reduce((a, x) => a + Math.max(0, x!.score) / x!.max, 0) / xs.length : null;
+  };
+
   const all: QuestionStat[] = exam.questions.map((q, index) => {
     let attempts = 0;
     let answered = 0;
@@ -131,7 +167,23 @@ export function summarizeRoom(room: RoomState): RoomSummary {
       if (qr.status === 'correct') correct++;
       sum += qr.max > 0 ? qr.score / qr.max : 0;
     }
-    return { questionId: q.id, index, type: q.type, prompt: q.prompt, points: q.points, attempts, answered, correct, avgPercent: attempts ? round1((sum / attempts) * 100) : 0, ...(q.topic ? { topic: q.topic } : {}) };
+    const hi = cut ? fractionIn(upper, q.id) : null;
+    const lo = cut ? fractionIn(lower, q.id) : null;
+    const discrimination = hi !== null && lo !== null ? Math.round((hi - lo) * 100) / 100 : null;
+    return {
+      questionId: q.id,
+      index,
+      type: q.type,
+      prompt: q.prompt,
+      points: q.points,
+      attempts,
+      answered,
+      correct,
+      avgPercent: attempts ? round1((sum / attempts) * 100) : 0,
+      discrimination: q.voided ? null : discrimination,
+      ...(q.topic ? { topic: q.topic } : {}),
+      ...(q.voided ? { voided: true } : {}),
+    };
   });
   // con un banco de preguntas solo se analizan las que le tocaron a alguien
   const subset = questionsPerStudent(exam) < exam.questions.length && graded.length > 0;
@@ -147,6 +199,27 @@ export function summarizeRoom(room: RoomState): RoomSummary {
     byTopic.set(q.topic, t);
   }
   const topics: TopicStat[] = [...byTopic].map(([topic, t]) => ({ topic, attempts: t.attempts, correct: t.correct, avgPercent: round1((t.sum / t.attempts) * 100) }));
+
+  const byGroup = new Map<string, SummaryRow[]>();
+  for (const r of rows) {
+    const g = r.group.trim() || 'Sin grupo';
+    byGroup.set(g, [...(byGroup.get(g) ?? []), r]);
+  }
+  const groups: GroupStat[] =
+    byGroup.size > 1
+      ? [...byGroup]
+          .map(([group, rs]) => {
+            const gs = rs.filter((r) => r.grade !== null);
+            return {
+              group,
+              students: rs.length,
+              submitted: rs.filter((r) => r.submitted).length,
+              average: gs.length ? round1(gs.reduce((a, r) => a + r.grade!, 0) / gs.length) : null,
+              passRate: gs.length ? round1((gs.filter((r) => r.passed).length / gs.length) * 100) : null,
+            };
+          })
+          .sort((a, b) => a.group.localeCompare(b.group, 'es'))
+      : [];
 
   return {
     title: exam.title,
@@ -167,8 +240,56 @@ export function summarizeRoom(room: RoomState): RoomSummary {
     histogram,
     questions,
     topics,
+    groups,
     rows,
   };
+}
+
+/** Una aplicación del mismo examen (para comparar salas o grupos). */
+export interface RoomComparison {
+  code: string;
+  openedAt: number;
+  students: number;
+  submitted: number;
+  average: number | null;
+  median: number | null;
+  passRate: number | null;
+  avgMinutes: number | null;
+}
+
+/** Compara las aplicaciones de un mismo examen (por id de examen), de la más reciente a la más antigua. */
+export function compareRooms(rooms: RoomState[], examId: string): RoomComparison[] {
+  return rooms
+    .filter((r) => r.exam.id === examId)
+    .sort((a, b) => b.openedAt - a.openedAt)
+    .map((r) => {
+      const s = summarizeRoom(r);
+      return { code: r.code, openedAt: r.openedAt, students: s.students, submitted: s.submitted, average: s.average, median: s.median, passRate: s.passRate, avgMinutes: s.avgMinutes };
+    });
+}
+
+export interface HistoryEntry {
+  title: string;
+  code: string;
+  openedAt: number;
+  grade: number | null;
+  scale: number;
+  percent: number | null;
+  passed: boolean | null;
+  submitted: boolean;
+}
+
+/** Exámenes en los que aparece un alumno (por nombre), del más reciente al más antiguo. */
+export function studentHistory(rooms: RoomState[], name: string): HistoryEntry[] {
+  const key = normalizeName(name);
+  const out: HistoryEntry[] = [];
+  for (const r of rooms) {
+    for (const s of Object.values(r.students)) {
+      if (normalizeName(s.name) !== key) continue;
+      out.push({ title: r.exam.title, code: r.code, openedAt: r.openedAt, grade: s.result?.grade ?? null, scale: r.exam.scale, percent: s.result?.percent ?? null, passed: s.result?.passed ?? null, submitted: !!s.submittedAt });
+    }
+  }
+  return out.sort((a, b) => b.openedAt - a.openedAt);
 }
 
 const REASON: Record<string, string> = { manual: 'El alumno', timeout: 'Tiempo agotado', closed: 'Cierre del examen', teacher: 'El maestro' };

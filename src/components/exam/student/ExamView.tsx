@@ -14,6 +14,7 @@ import { useExamLockdown } from '../lockdown';
 import QuestionView from '../QuestionView';
 
 import { NetBanner, styles } from './shared';
+import { ExamExtras } from './ExamExtras';
 
 // ───────────────────────────── el examen ─────────────────────────────
 
@@ -176,6 +177,8 @@ export function ExamView() {
   }, []);
 
   const go = (i: number) => st.goTo(i);
+  // una pregunta a la vez: no se puede regresar
+  const sequential = !!paper.settings.sequential;
 
   // atajos de teclado (web): ← → para moverse, letras para elegir opción, V/F
   const keyState = useRef({ q, current: s.current, total: paper.questions.length, confirm, answers: s.answers });
@@ -249,6 +252,7 @@ export function ExamView() {
               navPos.current[i] = { x: e.nativeEvent.layout.x, y: e.nativeEvent.layout.y };
             }}
             onPress={() => go(i)}
+            disabled={sequential && i < s.current}
             accessibilityLabel={`Pregunta ${i + 1}${done ? ', respondida' : ''}${flag ? ', marcada' : ''}`}
             style={[styles.navBtn, { borderColor: cur ? t.primary : done ? t.primary + '88' : t.border, backgroundColor: done ? t.primary : t.surface, borderWidth: cur ? 2.5 : 1 }]}
           >
@@ -364,7 +368,11 @@ export function ExamView() {
               />
             </Card>
             <View style={styles.footerNav}>
-              <Button label="Anterior" icon="chevron-back" onPress={() => go(s.current - 1)} disabled={s.current === 0} />
+              {sequential ? (
+                <Text style={{ color: t.textMuted, fontSize: 12, flexShrink: 1 }}>Una pregunta a la vez: al avanzar no podrás regresar.</Text>
+              ) : (
+                <Button label="Anterior" icon="chevron-back" onPress={() => go(s.current - 1)} disabled={s.current === 0} />
+              )}
               <View style={{ flex: 1 }} />
               {s.current < paper.questions.length - 1 ? (
                 <Button label="Siguiente" icon="chevron-forward" kind="primary" onPress={() => go(s.current + 1)} />
@@ -372,6 +380,7 @@ export function ExamView() {
                 <Button label="Revisar y terminar" icon="checkmark-done-outline" kind="primary" onPress={openSubmit} />
               )}
             </View>
+            <ExamExtras canAsk={s.transport.kind !== 'practice'} />
             {wide && Platform.OS === 'web' ? (
               <Text style={{ color: t.textMuted, fontSize: 12, textAlign: 'center', marginTop: -12, marginBottom: 24 }}>
                 Atajos: ← → para cambiar de pregunta
@@ -386,6 +395,7 @@ export function ExamView() {
       {confirm && !lock.cover ? (
         <SubmitDialog
           questions={paper.questions}
+          from={sequential ? s.current : 0}
           onCancel={() => {
             setConfirm(false);
             touch('reading');
@@ -466,11 +476,12 @@ export function Legend({ color, text, filled, dot }: { color: string; text: stri
   );
 }
 
-export function SubmitDialog({ questions, onCancel, onSubmit, onGo }: { questions: PaperQuestion[]; onCancel(): void; onSubmit(): void; onGo(i: number): void }) {
+export function SubmitDialog({ questions, onCancel, onSubmit, onGo, from = 0 }: { questions: PaperQuestion[]; onCancel(): void; onSubmit(): void; onGo(i: number): void; from?: number }) {
   const t = useTheme();
   const s = useStudent((x) => x.session)!;
-  const pending = questions.map((q, i) => ({ q, i })).filter(({ q }) => !isAnswered(q, s.answers[q.id]));
-  const flagged = questions.map((q, i) => ({ q, i })).filter(({ q }) => s.flagged.includes(q.id));
+  // en modo secuencial solo se puede saltar a preguntas que aún no pasa
+  const pending = questions.map((q, i) => ({ q, i })).filter(({ q, i }) => i >= from && !isAnswered(q, s.answers[q.id]));
+  const flagged = questions.map((q, i) => ({ q, i })).filter(({ q, i }) => i >= from && s.flagged.includes(q.id));
   const left = s.deadline === null ? null : s.deadline - serverNow();
   const all = !pending.length && !flagged.length;
   return (
@@ -484,7 +495,7 @@ export function SubmitDialog({ questions, onCancel, onSubmit, onGo }: { question
               {left !== null && left > 60_000 ? ` Aún te quedan ${formatDuration(left)}.` : ''}
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-              <Pill icon="checkmark-done-outline" color={t.success} text={`${questions.length - pending.length} de ${questions.length} respondidas`} />
+              <Pill icon="checkmark-done-outline" color={t.success} text={`${questions.filter((q) => isAnswered(q, s.answers[q.id])).length} de ${questions.length} respondidas`} />
             </View>
             <JumpList title={`Sin responder (${pending.length})`} icon="alert-circle-outline" color={t.danger} items={pending.map((x) => x.i)} onGo={onGo} />
             <JumpList title={`Marcadas para revisar (${flagged.length})`} icon="flag-outline" color={t.warning} items={flagged.map((x) => x.i)} onGo={onGo} />

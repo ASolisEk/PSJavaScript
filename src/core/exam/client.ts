@@ -182,7 +182,8 @@ export class ExamClient {
       // acumula las respuestas cambiadas mientras no hay conexión
       const prev = this.pendingProgress;
       this.pendingProgress = prev ? { ...msg, answers: { ...(prev.answers ?? {}), ...(msg.answers ?? {}) } } : msg;
-    } else if (msg.t === 'event') {
+    } else if (msg.t === 'event' || msg.t === 'ask') {
+      // eventos y preguntas al maestro: se reenvían al reconectar si se corta la red
       this.pendingEvents.push(msg);
       if (this.pendingEvents.length > 50) this.pendingEvents.shift();
     }

@@ -22,6 +22,7 @@ import QrCode from '../exam/QrCode';
 import { ConnectionTest, NetworkOptions } from '../exam/NetworkOptions';
 import { useNetwork } from '../../store/network';
 import StudentDetailModal, { PHASE_INFO } from './StudentDetailModal';
+import { AlertSoundToggle, AsksPanel, initialAlertSounds, PublishCard, RosterCard, ScheduleCard, useRoomAlerts } from './RoomExtras';
 
 const ACTIVITY_ICON: Record<Activity, IconName> = {
   reading: 'reader-outline',
@@ -272,6 +273,8 @@ function LiveRoom({ room }: { room: RoomState }) {
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [projector, setProjector] = useState(false);
+  const [sounds, setSounds] = useState(initialAlertSounds);
+  useRoomAlerts(room, sounds && Platform.OS === 'web');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const h = setInterval(() => setNow(Date.now()), 1000);
@@ -339,6 +342,8 @@ function LiveRoom({ room }: { room: RoomState }) {
       <ScrollView contentContainerStyle={{ padding: 14 }}>
         {!network.online ? <Banner icon="cloud-offline-outline" color={t.warning} text={network.detail ?? 'Sin conexión con la red. Reintentando…'} /> : null}
         {room.requests?.length ? <ReconnectRequests roomId={key} room={room} now={now} /> : null}
+        <AsksPanel room={room} now={now} />
+        <RosterCard room={room} />
 
         <View style={[styles.codeRow, { flexDirection: width >= 760 ? 'row' : 'column' }]}>
           <Card style={{ flex: 1.1, marginRight: width >= 760 ? 12 : 0 }} accent={status.color}>
@@ -428,6 +433,9 @@ function LiveRoom({ room }: { room: RoomState }) {
                 onChange={(v) => useApp.getState().updateSettings({ examBackupOnClose: v })}
               />
             ) : null}
+            <ScheduleCard room={room} now={now} />
+            <PublishCard room={room} />
+            {room.status !== 'closed' && Platform.OS === 'web' ? <AlertSoundToggle value={sounds} onChange={setSounds} /> : null}
             {room.status !== 'closed' ? <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 10 }}>Mantén esta ventana abierta: tu equipo es el que recibe y califica los exámenes (de todas las salas abiertas).</Text> : null}
           </Card>
         </View>

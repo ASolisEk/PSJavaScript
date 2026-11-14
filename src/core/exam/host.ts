@@ -3,12 +3,12 @@
  * alumnos, les entrega su examen, sigue su avance y califica.
  */
 import { ALWAYS_LOCKED, asClientMsg, ClientMsg, HostMsg, PROTOCOL_VERSION, RoomInfo, SubmitReason } from './protocol';
-import { adjustResult, gradePaper, studentView } from './grading';
+import { adjustResult, gradePaper, regradeAll, studentView } from './grading';
 import { buildPaper } from './paper';
 import { randomId } from './random';
 import { normalizeName, ReconnectRequest, RoomState, StudentEvent, StudentRecord } from './room';
 import type { HostTransport } from './transport/types';
-import type { Answers } from './types';
+import type { Answers, Question } from './types';
 import { questionsPerStudent } from './config';
 
 /** Segundos sin mensajes para considerar desconectado a un alumno. */
@@ -17,6 +17,7 @@ const OFFLINE_AFTER_MS = 25_000;
 const DEADLINE_GRACE_MS = 15_000;
 const MAX_EVENTS = 300;
 const MAX_ANSWER_LENGTH = 50_000;
+const MAX_ASKS = 20;
 
 export interface HostOptions {
   transport: HostTransport;
@@ -45,6 +46,7 @@ export class ExamHost {
   private timer: any = null;
   private now: () => number;
   private disposed = false;
+  private closing = false;
 
   constructor(private opts: HostOptions) {
     this.state = opts.state;
@@ -70,6 +72,12 @@ export class ExamHost {
 
   /** Tema de una pregunta (para el resultado por tema). */
   private topicOf = (questionId: string) => this.state.exam.questions.find((q) => q.id === questionId)?.topic;
+  private explanationOf = (questionId: string) => this.state.exam.questions.find((q) => q.id === questionId)?.explanation;
+
+  /** Las calificaciones se retienen hasta que el maestro las publique. */
+  get held(): boolean {
+    return !!this.state.exam.holdResults && !this.state.published;
+  }
 
   dispose() {
     this.disposed = true;
@@ -111,6 +119,56 @@ export class ExamHost {
     }
     this.set({ ...this.state, status: 'closed', closedAt: this.now() });
     this.broadcast({ t: 'room', status: 'closed' });
+  }
+
+  /** Publica las calificaciones retenidas: cada alumno que entregó recibe su resultado. */
+  publishResults() {
+    if (this.state.published) return;
+    this.set({ ...this.state, published: true });
+    for (const s of Object.values(this.state.students)) if (s.submittedAt) this.sendResult(s.id);
+  }
+
+  /**
+   * Reemplaza una pregunta del examen (clave corregida, anulada…) y vuelve a calificarla
+   * a todos los que ya entregaron. Quienes siguen trabajando se califican con la versión nueva.
+   */
+  updateQuestion(q: Question) {
+    const idx = this.state.exam.questions.findIndex((x) => x.id === q.id);
+    if (idx < 0) return;
+    const questions = this.state.exam.questions.slice();
+    questions[idx] = q;
+    const exam = { ...this.state.exam, questions, updatedAt: this.now() };
+    this.set({ ...this.state, exam, students: regradeAll(exam, this.state.students, q.id) });
+    for (const s of Object.values(this.state.students)) if (s.submittedAt) this.sendResult(s.id);
+  }
+
+  /** Responde la pregunta de un alumno (a él solo, o a todos si `toAll`). */
+  reply(studentId: string, askId: string, text: string, toAll = false) {
+    const s = this.state.students[studentId];
+    const ask = s?.asks?.find((a) => a.id === askId);
+    const clean = text.trim().slice(0, 1000);
+    if (!s || !ask || !clean) return;
+    const at = this.now();
+    const asks = (s.asks ?? []).map((a) => (a.id === askId ? { ...a, answer: clean, answeredAt: at } : a));
+    this.patch(studentId, { asks }, { kind: 'teacher', text: `El maestro respondió: ${clean.slice(0, 80)}` });
+    const msg: HostMsg = { t: 'reply', askId, question: ask.text, text: clean, at };
+    if (toAll) {
+      this.set({ ...this.state, notices: [...this.state.notices, { at, text: `${ask.text} → ${clean}` }] });
+      this.broadcast(msg);
+    } else this.sendTo(studentId, msg);
+  }
+
+  /** Descarta la pregunta de un alumno sin responderla. */
+  dismissAsk(studentId: string, askId: string) {
+    const s = this.state.students[studentId];
+    if (!s?.asks) return;
+    this.patch(studentId, { asks: s.asks.map((a) => (a.id === askId ? { ...a, answer: '—', answeredAt: this.now() } : a)) });
+  }
+
+  /** Programa el inicio y el cierre automáticos de la sala. */
+  setSchedule(startAt: number | null, closeAt: number | null) {
+    this.set({ ...this.state, schedule: { startAt, closeAt } });
+    for (const s of Object.values(this.state.students)) if (!s.startedAt) this.sendTo(s.id, { t: 'welcome', now: this.now(), room: this.roomInfo(), started: false, submitted: !!s.submittedAt });
   }
 
   /** Envía un aviso a todos los alumnos. */
@@ -297,6 +355,14 @@ export class ExamHost {
         this.patch(s.id, patch, text ? { kind: msg.kind as StudentEvent['kind'], text } : undefined);
         break;
       }
+      case 'ask': {
+        const text = String(msg.text ?? '').trim().slice(0, 500);
+        const asks = s.asks ?? [];
+        if (!text || s.submittedAt || asks.filter((a) => !a.answer).length >= 3 || asks.length >= MAX_ASKS) break;
+        const question = typeof msg.question === 'number' ? msg.question : s.current;
+        this.patch(s.id, { asks: [...asks, { id: randomId('a'), at: now, text, question }] }, { kind: 'ask', text: `Preguntó (pregunta ${question + 1}): ${text.slice(0, 100)}` });
+        break;
+      }
       case 'submit':
         if (s.submittedAt) this.sendResult(s.id);
         else if (s.startedAt) this.submit(s.id, { ...s.answers, ...this.cleanAnswers(s, msg.answers ?? {}) }, msg.reason === 'timeout' ? 'timeout' : msg.reason === 'closed' || msg.reason === 'teacher' ? msg.reason : 'manual');
@@ -336,11 +402,19 @@ export class ExamHost {
       this.opts.transport.send(peer, { t: 'rejected', reason: 'El examen ya fue cerrado por el maestro.' } satisfies HostMsg);
       return;
     }
+    // con lista del grupo solo entran los nombres de la lista (se le muestra para que elija el suyo)
+    const roster = (this.state.exam.roster ?? []).filter((n) => n.trim());
+    if (!s && roster.length && !roster.some((n) => normalizeName(n) === normalizeName(msg.name))) {
+      this.opts.transport.send(peer, { t: 'rejected', reason: 'Tu nombre no está en la lista del grupo. Elige tu nombre tal como aparece.', roster } satisfies HostMsg);
+      return;
+    }
     if (!s && this.state.locked) {
       this.opts.transport.send(peer, { t: 'rejected', reason: 'La sala ya no acepta alumnos nuevos. Pide a tu maestro que abra el ingreso.' } satisfies HostMsg);
       return;
     }
-    const name = msg.name.trim().slice(0, 80) || 'Alumno';
+    // con lista, el nombre se guarda tal como aparece en ella
+    const listed = roster.find((n) => normalizeName(n) === normalizeName(msg.name));
+    const name = (listed ?? msg.name).trim().slice(0, 80) || 'Alumno';
     const group = (msg.group ?? '').trim().slice(0, 40);
     if (s?.peer && s.peer !== peer) this.peers.delete(s.peer);
     this.peers.set(peer, msg.studentId);
@@ -526,7 +600,8 @@ export class ExamHost {
   private sendResult(id: string) {
     const s = this.state.students[id];
     if (!s?.result || !s.submittedAt) return;
-    this.sendTo(id, { t: 'result', result: studentView(s.result, this.state.exam.showResults, this.topicOf, s.comments), submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
+    const result = this.held ? { visibility: 'none' as const, held: true } : studentView(s.result, this.state.exam.showResults, this.topicOf, s.comments, this.explanationOf);
+    this.sendTo(id, { t: 'result', result, submittedAt: s.submittedAt, reason: s.submitReason ?? 'manual' });
   }
 
   private peerLeft(peer: string) {
@@ -541,6 +616,12 @@ export class ExamHost {
   /** Revisa desconexiones silenciosas y tiempos vencidos. */
   tick() {
     const now = this.now();
+    const sch = this.state.schedule;
+    if (sch?.startAt && this.state.status === 'lobby' && now >= sch.startAt) this.start();
+    if (sch?.closeAt && this.state.status === 'running' && now >= sch.closeAt && !this.closing) {
+      this.closing = true;
+      void this.close().finally(() => (this.closing = false));
+    }
     for (const s of Object.values(this.state.students)) {
       if (s.connected && now - s.lastSeen > OFFLINE_AFTER_MS) {
         this.patch(s.id, { connected: false }, { kind: 'disconnect', text: 'Perdió la conexión' });
@@ -574,6 +655,8 @@ export class ExamHost {
       durationMin: e.durationMin,
       questionCount: questionsPerStudent(e),
       restrictions: restrictionsOf(this.state),
+      startAt: this.state.schedule?.startAt ?? null,
+      ...(e.sequential ? { sequential: true } : {}),
     };
   }
 

@@ -24,6 +24,7 @@ export const STATUS: Record<string, { icon: IconName; label: string; color: 'suc
   partial: { icon: 'remove-circle', label: 'Parcial', color: 'warning' },
   wrong: { icon: 'close-circle', label: 'Incorrecta', color: 'danger' },
   blank: { icon: 'ellipse-outline', label: 'Sin responder', color: 'textMuted' },
+  pending: { icon: 'time-outline', label: 'Por calificar', color: 'warning' },
 };
 
 export type ResultFilter = 'all' | 'review' | 'correct';
@@ -99,6 +100,11 @@ export function ResultView() {
                       <Pill solid icon={r.passed ? 'ribbon-outline' : 'alert-outline'} text={r.passed ? 'Aprobado' : 'No aprobado'} color={r.passed ? t.success : t.danger} />
                     </View>
                   </>
+                ) : r.held ? (
+                  <View style={{ alignItems: 'center', marginTop: 10 }}>
+                    <Text style={{ color: t.textMuted, fontSize: 14, textAlign: 'center' }}>Tu maestro está revisando los exámenes. Tu calificación aparecerá aquí en cuanto la publique.</Text>
+                    <ActivityIndicator color={t.primary} style={{ marginTop: 10 }} />
+                  </View>
                 ) : (
                   <Text style={{ color: t.textMuted, fontSize: 14, marginTop: 10, textAlign: 'center' }}>Tu maestro te dará a conocer la calificación.</Text>
                 )}
@@ -149,7 +155,7 @@ export function ResultView() {
                 <Text style={{ color: t.textMuted, fontSize: 13, textAlign: 'center', marginBottom: 12 }}>{filter === 'review' ? '¡No hay preguntas por repasar aquí!' : 'No hay preguntas con este filtro.'}</Text>
               ) : null}
               {shown.map(({ qr, i, pq }) => {
-                const st = STATUS[qr.status];
+                const st = qr.voided ? { icon: 'ban-outline' as IconName, label: 'Anulada', color: 'textMuted' as const } : STATUS[qr.status];
                 const c = (t as any)[st.color] as string;
                 return (
                   <Card key={qr.questionId} accent={c}>
@@ -177,6 +183,12 @@ export function ResultView() {
                     ) : null}
                     {pq && review && (pq.type === 'single' || pq.type === 'multiple') ? <ChosenAnswer q={pq} value={s.answers[pq.id]} /> : null}
                     <RichText text={qr.feedback} style={{ color: t.text, fontSize: 13 }} />
+                    {qr.explanation ? (
+                      <View style={[styles.teacherComment, { borderLeftColor: t.info, backgroundColor: t.info + '14' }]}>
+                        <Text style={{ color: t.info, fontSize: 11, fontWeight: '800' }}>EXPLICACIÓN</Text>
+                        <RichText text={qr.explanation} style={{ color: t.text, fontSize: 13, lineHeight: 19 }} />
+                      </View>
+                    ) : null}
                     {qr.comment ? (
                       <View style={[styles.teacherComment, { borderLeftColor: t.accent, backgroundColor: t.accentSoft }]}>
                         <Text style={{ color: t.accentDark, fontSize: 11, fontWeight: '800' }}>COMENTARIO DE TU MAESTRO</Text>

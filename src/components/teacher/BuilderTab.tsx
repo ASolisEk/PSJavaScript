@@ -1,6 +1,6 @@
 /** Constructor de exámenes: ajustes generales y lista de preguntas. */
 import { Ionicons } from '@expo/vector-icons';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text, TextInput } from '../../ui/text';
 import { appendQuestions } from '../../core/exam/bank';
@@ -8,10 +8,12 @@ import { cloneQuestion, createQuestion, examFileName, examTopics, questionsPerSt
 import type { ExamConfig, Question, QuestionType } from '../../core/exam/types';
 import { plainText } from '../../core/exam/richText';
 import { useTeacher } from '../../store/teacher';
-import { confirmDialog, saveTextFile } from '../../ui/platform';
+import { confirmDialog, openHtml, saveTextFile } from '../../ui/platform';
+import { printableExamHtml } from '../../core/exam/print';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
 import { Button } from '../ui';
-import { Banner, BigChoice, IconName, Pill } from '../exam/kit';
+import { Banner, BigChoice, Field, IconName, Pill, Segmented, Toggle } from '../exam/kit';
+import ModalShell from '../modals/ModalShell';
 import BankModal from './BankModal';
 import ExamSettingsForm from './ExamSettingsForm';
 import PreviewModal from './PreviewModal';
@@ -19,6 +21,22 @@ import QuestionEditor from './QuestionEditor';
 import QuickTextModal from './QuickTextModal';
 
 type Sel = 'settings' | 'add' | string;
+
+/** Versiones anteriores de cada examen (para «Deshacer»). Los cambios seguidos se agrupan. */
+const undoStacks = new Map<string, { stack: ExamConfig[]; last: number }>();
+const UNDO_MAX = 50;
+const UNDO_GROUP_MS = 1200;
+
+function pushUndo(prev: ExamConfig) {
+  const u = undoStacks.get(prev.id) ?? { stack: [], last: 0 };
+  const now = Date.now();
+  if (now - u.last > UNDO_GROUP_MS || !u.stack.length) {
+    u.stack.push(prev);
+    if (u.stack.length > UNDO_MAX) u.stack.shift();
+  }
+  u.last = now;
+  undoStacks.set(prev.id, u);
+}
 
 /** Primeras líneas del código de la pregunta: distingue las que tienen el mismo enunciado («¿Qué muestra…?»). */
 function codeHint(q: Question): string {
@@ -44,7 +62,27 @@ export default function BuilderTab() {
   const [notice, setNotice] = useState<string | null>(null);
   const [showIssues, setShowIssues] = useState(false);
   const [topic, setTopic] = useState<string | null>(null);
+  const [undoCount, setUndoCount] = useState(() => (editingId ? (undoStacks.get(editingId)?.stack.length ?? 0) : 0));
+  const [printing, setPrinting] = useState(false);
   const issues = useMemo(() => (exam ? validateExam(exam) : []), [exam]);
+  // Ctrl/Cmd+Z fuera de un campo de texto deshace el último cambio del examen
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !editingId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      const u = undoStacks.get(editingId);
+      const prev = u?.stack.pop();
+      if (!prev) return;
+      e.preventDefault();
+      u!.last = 0;
+      useTeacher.getState().saveExam({ ...prev, updatedAt: Date.now() });
+      setUndoCount(u!.stack.length);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editingId]);
   const topics = useMemo(() => (exam ? examTopics(exam) : []), [exam]);
 
   if (!exam || !editingId) {
@@ -57,7 +95,21 @@ export default function BuilderTab() {
     );
   }
 
-  const save = (e: ExamConfig) => useTeacher.getState().saveExam(e);
+  const save = (e: ExamConfig) => {
+    pushUndo(exam);
+    useTeacher.getState().saveExam(e);
+    setUndoCount(undoStacks.get(exam.id)?.stack.length ?? 0);
+  };
+  const undo = () => {
+    const u = undoStacks.get(exam.id);
+    const prev = u?.stack.pop();
+    if (!prev) return;
+    u!.last = 0;
+    useTeacher.getState().saveExam({ ...prev, updatedAt: Date.now() });
+    setUndoCount(u!.stack.length);
+    if (sel && sel !== 'settings' && sel !== 'add' && !prev.questions.some((q) => q.id === sel)) setSel('settings');
+    setNotice('Se deshizo el último cambio.');
+  };
   const setQuestions = (questions: Question[]) => save({ ...exam, questions });
   const errors = issues.filter((i) => i.severity === 'error');
   const warnings = issues.filter((i) => i.severity === 'warning');
@@ -179,7 +231,7 @@ export default function BuilderTab() {
           setSel(c.id);
         }}
         onDelete={async () => {
-          if (!(await confirmDialog('¿Eliminar la pregunta?', 'Esta acción no se puede deshacer.', 'Eliminar'))) return;
+          if (!(await confirmDialog('¿Eliminar la pregunta?', `«${plainText(selected.prompt).trim().slice(0, 80) || 'sin enunciado'}» se quitará del examen. Puedes recuperarla con «Deshacer».`, 'Eliminar'))) return;
           const qs = exam.questions.filter((x) => x.id !== selected.id);
           setQuestions(qs);
           setSel(qs[Math.min(selIndex, qs.length - 1)]?.id ?? 'add');
@@ -211,7 +263,9 @@ export default function BuilderTab() {
       <Pressable onPress={() => setShowIssues((v) => !v)} style={{ marginRight: 8 }}>
         {errors.length ? <Pill icon="alert-circle" color={t.danger} text={`${errors.length} por corregir`} /> : warnings.length ? <Pill icon="warning-outline" color={t.warning} text={`${warnings.length} avisos`} /> : <Pill icon="checkmark-circle" color={t.success} text="Listo para aplicar" />}
       </Pressable>
+      <Button label="Deshacer" icon="arrow-undo-outline" onPress={undo} disabled={!undoCount} style={{ marginRight: 6 }} />
       <Button label="Vista previa" icon="eye-outline" onPress={() => setPreview(true)} disabled={!exam.questions.length} style={{ marginRight: 6 }} />
+      <Button label="Imprimir" icon="print-outline" onPress={() => setPrinting(true)} disabled={!exam.questions.length || !!errors.length} style={{ marginRight: 6 }} />
       <Button label="Exportar" icon="download-outline" onPress={() => saveTextFile(examFileName(exam), serializeExam(exam), 'application/json')} style={{ marginRight: 6 }} />
       <Button
         label="Aplicar examen"
@@ -228,6 +282,7 @@ export default function BuilderTab() {
   return (
     <View style={{ flex: 1 }}>
       {top}
+      {printing ? <PrintModal exam={exam} onClose={() => setPrinting(false)} /> : null}
       {notice ? (
         <View style={{ padding: 12, paddingBottom: 0 }}>
           <Banner icon="checkmark-circle" color={t.success} text={notice} onClose={() => setNotice(null)} />
@@ -306,3 +361,35 @@ const styles = StyleSheet.create({
   typeCard: { flexBasis: 220, flexGrow: 1, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 14 },
   typeIcon: { width: 42, height: 42, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
 });
+
+/** Opciones para imprimir el examen en papel. */
+function PrintModal({ exam, onClose }: { exam: ExamConfig; onClose(): void }) {
+  const t = useTheme();
+  const [versions, setVersions] = useState(1);
+  const [withKey, setWithKey] = useState(true);
+  return (
+    <ModalShell title="Imprimir examen" onClose={onClose}>
+      <View style={{ padding: 16, gap: 12 }}>
+        <Text style={{ color: t.textMuted, fontSize: 13 }}>
+          Se abre una página lista para imprimir o guardar como PDF: encabezado con nombre y grupo, las preguntas con espacio para responder, hoja de respuestas de opción múltiple y, si quieres, la clave. Cada versión mezcla preguntas y opciones de forma distinta (según los ajustes del examen).
+        </Text>
+        <Field label="Versiones">
+          <Segmented options={[1, 2, 3, 4].map((n) => ({ id: n, label: n === 1 ? 'Una' : `${n} (A–${'ABCD'[n - 1]})` }))} value={versions} onChange={(v) => setVersions(Number(v))} />
+        </Field>
+        <Toggle icon="key-outline" label="Incluir la clave de respuestas" description="Va al final de cada versión, en una hoja aparte." value={withKey} onChange={setWithKey} />
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+          <Button label="Cancelar" onPress={onClose} />
+          <Button
+            label="Abrir para imprimir"
+            icon="print-outline"
+            kind="primary"
+            onPress={() => {
+              openHtml(examFileName(exam).replace('.examen.json', '-impreso.html'), printableExamHtml(exam, { versions, withKey }));
+              onClose();
+            }}
+          />
+        </View>
+      </View>
+    </ModalShell>
+  );
+}

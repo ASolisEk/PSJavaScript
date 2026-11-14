@@ -12,7 +12,7 @@ function lineId(seed: string, qid: string, index: number): string {
 }
 
 function sanitize(q: Question, seed: string, shuffleOptions: boolean, rand: () => number, key: PaperKey): PaperQuestion {
-  const base: PaperQuestion = { id: q.id, type: q.type, prompt: q.prompt, points: q.points, ...(q.code ? { code: q.code } : {}), ...(q.topic ? { topic: q.topic } : {}) };
+  const base: PaperQuestion = { id: q.id, type: q.type, prompt: q.prompt, points: q.points, ...(q.code ? { code: q.code } : {}), ...(q.topic ? { topic: q.topic } : {}), ...(q.image ? { image: q.image } : {}) };
   switch (q.type) {
     case 'single':
     case 'multiple': {
@@ -45,6 +45,8 @@ function sanitize(q: Question, seed: string, shuffleOptions: boolean, rand: () =
       if (lines.length > 1 && mixed.every((l, i) => l.text === lines[i].text)) mixed = [...mixed.slice(1), mixed[0]];
       return { ...base, lines: mixed };
     }
+    case 'essay':
+      return { ...base, maxChars: q.maxChars };
   }
 }
 
@@ -88,6 +90,8 @@ export function buildPaper(config: ExamConfig, seed: string): { paper: Paper; ke
         showResults: config.showResults,
         scale: config.scale,
         passPercent: config.passPercent,
+        ...(config.sequential ? { sequential: true } : {}),
+        ...(config.wrongPenalty ? { wrongPenalty: config.wrongPenalty } : {}),
       },
     },
   };

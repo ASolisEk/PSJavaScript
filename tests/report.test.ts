@@ -71,6 +71,8 @@ function perfect(q: Question, key: ReturnType<typeof buildPaper>['key']): Answer
       return q.solution;
     case 'order':
       return key.lineIds[q.id];
+    case 'essay':
+      return 'respuesta abierta';
   }
 }
 

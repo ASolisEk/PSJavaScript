@@ -166,7 +166,7 @@ Escribe un ensayo {}
 `;
   const g = parseImportText(gift);
   assert.equal(g.format, 'gift');
-  assert.deepEqual(g.questions.map((q) => q.type), ['single', 'truefalse', 'numeric', 'short', 'multiple']);
+  assert.deepEqual(g.questions.map((q) => q.type), ['single', 'truefalse', 'numeric', 'short', 'multiple', 'essay']);
   const [single, tf, num, short, multi] = g.questions as any[];
   assert.equal(single.prompt, '¿Qué método agrega al final?');
   assert.equal(single.topic, 'Arreglos');
@@ -176,7 +176,7 @@ Escribe un ensayo {}
   assert.equal(short.prompt, 'La palabra ____ declara una variable que puede cambiar.');
   assert.deepEqual(short.answers, ['let', 'var']);
   assert.deepEqual(multi.options.map((o: any) => o.correct), [true, true, false]);
-  assert.equal(g.issues.length, 1, 'el ensayo se reporta');
+  assert.equal(g.issues.length, 0, 'el ensayo se importa como respuesta abierta');
 
   const aiken = `¿Qué imprime typeof 42?
 A. "string"

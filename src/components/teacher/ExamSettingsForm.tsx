@@ -79,6 +79,7 @@ export default function ExamSettingsForm({ exam, onChange }: { exam: ExamConfig;
         </Field>
         <Toggle icon="shuffle-outline" label="Mezclar el orden de las preguntas" description="Cada alumno las ve en un orden distinto." value={exam.shuffleQuestions} onChange={(shuffleQuestions) => up({ shuffleQuestions })} />
         <Toggle icon="swap-vertical-outline" label="Mezclar las opciones de respuesta" description="En opción múltiple, el orden de las opciones cambia por alumno." value={exam.shuffleOptions} onChange={(shuffleOptions) => up({ shuffleOptions })} />
+        <Toggle icon="arrow-forward-outline" label="Una pregunta a la vez, sin regresar" description="El alumno avanza en orden y no puede volver a las preguntas anteriores." value={!!exam.sequential} onChange={(sequential) => up({ sequential })} />
       </Card>
 
       <Card>
@@ -99,6 +100,25 @@ export default function ExamSettingsForm({ exam, onChange }: { exam: ExamConfig;
         <Field label="Al enviar, el alumno ve…">
           <Segmented options={RESULTS_VISIBILITY.map((r) => ({ id: r.id, label: r.label }))} value={exam.showResults} onChange={(showResults) => up({ showResults })} />
           <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>{RESULTS_VISIBILITY.find((r) => r.id === exam.showResults)?.description}</Text>
+        </Field>
+        <Toggle
+          icon="eye-off-outline"
+          label="Retener calificaciones hasta que las publique"
+          description="Al entregar, el alumno solo ve «entregado». Cuando termines de revisar (por ejemplo las respuestas abiertas), presionas «Publicar calificaciones»."
+          value={!!exam.holdResults}
+          onChange={(holdResults) => up({ holdResults })}
+        />
+        <Field label="Penalización por respuesta incorrecta" hint="Resta parte de los puntos en opción múltiple y verdadero/falso cuando la respuesta es incorrecta (dejarla sin responder no resta). Desalienta adivinar. La calificación total nunca baja de 0.">
+          <Segmented
+            options={[
+              { id: 0, label: 'Sin penalización' },
+              { id: 0.25, label: '25 %' },
+              { id: 0.33, label: '33 %' },
+              { id: 0.5, label: '50 %' },
+            ]}
+            value={exam.wrongPenalty ?? 0}
+            onChange={(wrongPenalty) => up({ wrongPenalty })}
+          />
         </Field>
         <Text style={{ color: t.textMuted, fontSize: 12 }}>Puntos totales del banco: {totalPoints(exam)}</Text>
       </Card>
@@ -123,7 +143,28 @@ export default function ExamSettingsForm({ exam, onChange }: { exam: ExamConfig;
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '800', marginBottom: 12 }}>Honestidad académica</Text>
         <Toggle icon="clipboard-outline" label="Bloquear pegar texto" description="Evita pegar código copiado de otro lugar (se te avisa si lo intentan)." value={exam.blockPaste} onChange={(blockPaste) => up({ blockPaste })} />
         <Toggle icon="eye-outline" label="Avisarme si salen de la ventana" description="Verás cuántas veces y cuánto tiempo estuvo fuera cada alumno." value={exam.trackFocus} onChange={(trackFocus) => up({ trackFocus })} />
+        <RosterField roster={exam.roster ?? []} onChange={(roster) => up({ roster })} />
       </Card>
     </View>
+  );
+}
+
+/** Lista del grupo: un nombre por renglón. Solo esos alumnos pueden entrar a la sala. */
+function RosterField({ roster, onChange }: { roster: string[]; onChange(r: string[]): void }) {
+  const [text, setText] = React.useState(roster.join('\n'));
+  const clean = (v: string) => [...new Set(v.split('\n').map((x) => x.trim()).filter(Boolean))].slice(0, 500);
+  return (
+    <Field
+      label={`Lista del grupo (opcional)${roster.length ? ` · ${roster.length} alumnos` : ''}`}
+      hint="Un nombre por renglón (puedes pegarla desde Excel). Si la llenas, solo esos alumnos pueden entrar: quien escriba otro nombre elige el suyo de la lista. Evita homónimos y errores de dedo, y en la sala ves quién falta."
+    >
+      <TextField
+        value={text}
+        onChangeText={(v) => {
+          setText(v);
+          onChange(clean(v));
+        }}
+        multiline minHeight={90} placeholder={'Ana López García\nLuis Pérez Ruiz\n…'} />
+    </Field>
   );
 }

@@ -8,7 +8,7 @@
  * maestro con la configuración completa.
  */
 
-export type QuestionType = 'single' | 'multiple' | 'truefalse' | 'short' | 'numeric' | 'output' | 'code' | 'order';
+export type QuestionType = 'single' | 'multiple' | 'truefalse' | 'short' | 'numeric' | 'output' | 'code' | 'order' | 'essay';
 
 /** Cómo se compara la salida del programa con la esperada. */
 export type OutputMatch = 'exact' | 'flexible' | 'contains' | 'numbers';
@@ -61,6 +61,12 @@ interface QuestionBase {
    * Al revisar, el maestro marca los que se cumplen y la pregunta vale la suma.
    */
   rubric?: RubricCriterion[];
+  /** Explicación de la respuesta: el alumno la ve con su resultado (detalle o repaso). */
+  explanation?: string;
+  /** Imagen de apoyo (data URI: PNG, JPG, GIF o WebP). */
+  image?: string;
+  /** Anulada por el maestro (p. ej. estaba mal planteada): no cuenta para nadie. */
+  voided?: boolean;
 }
 
 export interface RubricCriterion {
@@ -116,6 +122,8 @@ export interface CodeQuestion extends QuestionBase {
   tests: CodeTest[];
   match: OutputMatch;
   rules: CodeRule[];
+  /** Todo o nada: solo da puntos si pasa todos los casos y requisitos (si no, proporcional). */
+  allOrNothing?: boolean;
 }
 
 /** Ordenar líneas de código (problema de Parsons). `lines` está en el orden correcto. */
@@ -123,6 +131,15 @@ export interface OrderQuestion extends QuestionBase {
   type: 'order';
   lines: string[];
   partialCredit: boolean;
+}
+
+/** Respuesta abierta: texto libre que califica el maestro (con rúbrica opcional). */
+export interface EssayQuestion extends QuestionBase {
+  type: 'essay';
+  /** Caracteres máximos de la respuesta. */
+  maxChars: number;
+  /** Respuesta modelo o puntos a revisar (solo para el maestro; nunca se envía al alumno). */
+  guide: string;
 }
 
 export type Question =
@@ -133,7 +150,8 @@ export type Question =
   | NumericQuestion
   | OutputQuestion
   | CodeQuestion
-  | OrderQuestion;
+  | OrderQuestion
+  | EssayQuestion;
 
 /** `review`: calificación, detalle y respuesta correcta de cada pregunta (para practicar). */
 export type ResultsVisibility = 'none' | 'score' | 'detailed' | 'review';
@@ -175,6 +193,14 @@ export interface ExamConfig {
   blockPaste: boolean;
   /** Avisa al maestro cuando el alumno sale de la ventana. */
   trackFocus: boolean;
+  /** No muestra la calificación al entregar: el maestro la publica cuando termina de revisar. */
+  holdResults: boolean;
+  /** Fracción de los puntos que se resta por respuesta incorrecta en opción múltiple y V/F (0 = sin penalización). */
+  wrongPenalty: number;
+  /** Una pregunta a la vez, sin poder regresar a las anteriores. */
+  sequential: boolean;
+  /** Lista de alumnos del grupo (si tiene nombres, solo ellos pueden entrar). */
+  roster: string[];
   questions: Question[];
   createdAt: number;
   updatedAt: number;
@@ -202,6 +228,9 @@ export interface PaperQuestion {
   rules?: { kind: CodeRule['kind']; pattern: string; message: string }[];
   /** Líneas desordenadas (preguntas de ordenar). */
   lines?: { id: string; text: string }[];
+  image?: string;
+  /** Caracteres máximos (respuesta abierta). */
+  maxChars?: number;
 }
 
 export interface PaperSettings {
@@ -214,6 +243,8 @@ export interface PaperSettings {
   showResults: ResultsVisibility;
   scale: number;
   passPercent: number;
+  sequential?: boolean;
+  wrongPenalty?: number;
 }
 
 /** Examen personalizado que recibe cada alumno. */
@@ -247,7 +278,8 @@ export interface TestResult {
   error?: string;
 }
 
-export type QuestionStatus = 'correct' | 'partial' | 'wrong' | 'blank';
+/** `pending`: respuesta abierta que falta calificar a mano. */
+export type QuestionStatus = 'correct' | 'partial' | 'wrong' | 'blank' | 'pending';
 
 export interface QuestionResult {
   questionId: string;
@@ -262,6 +294,8 @@ export interface QuestionResult {
   manual?: boolean;
   /** Calificación automática original (para volver a ella sin calificar de nuevo). */
   auto?: { score: number; status: QuestionStatus };
+  /** Pregunta anulada: no cuenta (vale 0 de 0). */
+  voided?: boolean;
 }
 
 export interface GradeResult {
@@ -278,13 +312,15 @@ export interface GradeResult {
 /** Resultado que se le muestra al alumno (según `showResults`). */
 export interface StudentResultView {
   visibility: ResultsVisibility;
+  /** El maestro aún no publica las calificaciones. */
+  held?: boolean;
   grade?: number;
   scale?: number;
   percent?: number;
   passed?: boolean;
   score?: number;
   max?: number;
-  questions?: { questionId: string; status: QuestionStatus; score: number; max: number; feedback: string; tests?: TestResult[]; comment?: string }[];
+  questions?: { questionId: string; status: QuestionStatus; score: number; max: number; feedback: string; tests?: TestResult[]; comment?: string; explanation?: string; voided?: boolean }[];
   /** Resultado por tema (si las preguntas tienen tema). */
   topics?: TopicScore[];
 }

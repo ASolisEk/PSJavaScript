@@ -100,7 +100,8 @@ function giftQuestion(src: string, topic: string): Question | string {
   if (!prompt) return 'La pregunta no tiene enunciado.';
   const base = { prompt, ...(topic ? { topic } : {}) };
 
-  if (!body) return 'Las preguntas abiertas (ensayo) no se pueden calificar solas; usa «Escribir un programa» o respuesta corta.';
+  // pregunta abierta (ensayo): se califica a mano
+  if (!body) return { ...(createQuestion('essay') as any), ...base };
   if (/->/.test(body)) return 'Las preguntas de relacionar (->) aún no se pueden importar.';
 
   // verdadero o falso

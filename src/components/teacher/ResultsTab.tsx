@@ -3,11 +3,14 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
-import { questionTypeInfo } from '../../core/exam/config';
+import { questionTypeInfo, validateExam } from '../../core/exam/config';
 import { plainText } from '../../core/exam/richText';
 import type { RoomState } from '../../core/exam/room';
 import { answersCsv, answersTxt, backupFileName, correctText, gradesCsv, roomReportHtml } from '../../core/exam/report';
-import { RoomSummary, summarizeRoom, summaryCsv } from '../../core/exam/summary';
+import { compareRooms, discriminationLabel, RoomSummary, summarizeRoom, summaryCsv } from '../../core/exam/summary';
+import type { Question } from '../../core/exam/types';
+import QuestionEditor from './QuestionEditor';
+import { PublishCard } from './RoomExtras';
 import { roomKey, useResultsRoom, useTeacher } from '../../store/teacher';
 import { confirmDialog, pickTextFile, saveTextFile } from '../../ui/platform';
 import { BORDER, MONO, RADIUS, useTheme } from '../../ui/theme';
@@ -121,6 +124,7 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
   const t = useTheme();
   const sum = useMemo(() => summarizeRoom(room), [room]);
   const [detail, setDetail] = useState<string | null>(null);
+  const [fixing, setFixing] = useState<Question | null>(null);
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const toggle = (id: string) =>
     setOpen((prev) => {
@@ -166,6 +170,12 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
         </View>
       </Card>
       {room.status !== 'closed' ? <Banner icon="information-circle-outline" color={t.info} text="El examen sigue en curso: estos resultados son provisionales." /> : null}
+      {room.exam.holdResults ? (
+        <Card accent={room.published ? t.success : t.warning}>
+          <Text style={{ color: t.text, fontWeight: '800', fontSize: 15 }}>{room.published ? '✓ Calificaciones publicadas' : 'Calificaciones retenidas'}</Text>
+          {room.published ? <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 4 }}>Los alumnos ya ven su resultado; si ajustas puntos, lo reciben actualizado.</Text> : <PublishCard room={room} />}
+        </Card>
+      ) : null}
 
       <View style={styles.stats}>
         <Stat icon="people-outline" label="Alumnos" value={sum.students} sub={`${sum.submitted} entregaron`} />
@@ -223,7 +233,7 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
           <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 2 }}>Análisis por pregunta</Text>
           <Text style={{ color: t.textMuted, fontSize: 12, marginBottom: 10 }}>Toca una pregunta para verla completa con su respuesta correcta.</Text>
           {sum.questions.map((q) => {
-            const diff = q.attempts === 0 ? null : q.avgPercent >= 80 ? { l: 'Fácil', c: t.success } : q.avgPercent >= 50 ? { l: 'Media', c: t.warning } : { l: 'Difícil', c: t.danger };
+            const diff = q.attempts === 0 || q.voided ? null : q.avgPercent >= 80 ? { l: 'Fácil', c: t.success } : q.avgPercent >= 50 ? { l: 'Media', c: t.warning } : { l: 'Difícil', c: t.danger };
             const full = open.has(q.questionId) ? room.exam.questions.find((x) => x.id === q.questionId) : undefined;
             return (
               <View key={q.questionId} style={{ marginBottom: 10 }}>
@@ -237,6 +247,23 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
                 </Pressable>
                 {full ? (
                   <View style={[styles.full, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+                    <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                      <Button label="Corregir y recalificar" icon="build-outline" size="sm" onPress={() => setFixing(full)} />
+                      <Button
+                        label={full.voided ? 'Restaurar pregunta' : 'Anular pregunta'}
+                        icon={full.voided ? 'refresh-outline' : 'ban-outline'}
+                        size="sm"
+                        kind={full.voided ? 'default' : 'danger'}
+                        onPress={async () => {
+                          const ok = await confirmDialog(
+                            full.voided ? '¿Restaurar la pregunta?' : '¿Anular la pregunta?',
+                            full.voided ? 'Volverá a contar para la calificación de todos.' : 'No contará para nadie: se quita del total de puntos de cada alumno al que le tocó y se recalculan las calificaciones.',
+                            full.voided ? 'Restaurar' : 'Anular',
+                          );
+                          if (ok) useTeacher.getState().updateRoomQuestion(roomKey(room), { ...full, voided: full.voided ? undefined : true });
+                        }}
+                      />
+                    </View>
                     <RichText text={full.prompt} style={{ color: t.text, fontSize: 13, lineHeight: 19 }} />
                     {full.code?.trim() ? <CodeBlock code={full.code} style={{ marginTop: 6 }} /> : null}
                     {full.topic ? <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 6 }}>Tema: {full.topic}</Text> : null}
@@ -250,13 +277,21 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
                 ) : null}
                 <ProgressBar value={q.avgPercent / 100} color={diff?.c} />
                 <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {q.voided ? 'ANULADA · ' : ''}
                   {q.attempts ? `${q.avgPercent}% de aciertos · ${q.correct}/${q.attempts} completas · ${q.attempts - q.answered} sin responder` : 'No le tocó a nadie (banco aleatorio) o nadie ha entregado.'}
                 </Text>
+                {q.discrimination !== null ? (
+                  <Text style={{ color: (t as any)[discriminationLabel(q.discrimination).tone], fontSize: 11 }}>
+                    Discriminación {q.discrimination.toFixed(2)}: {discriminationLabel(q.discrimination).label}
+                  </Text>
+                ) : null}
               </View>
             );
           })}
         </Card>
       </View>
+
+      <CompareCard room={room} sum={sum} />
 
       <SimilarCard room={room} />
 
@@ -303,7 +338,118 @@ function Summary({ room, live }: { room: RoomState; live: boolean }) {
       {detail && room.students[detail] ? (
         <StudentDetailModal room={room} studentId={detail} live={live} onClose={() => setDetail(null)} order={sum.rows.map((r) => r.id)} onNavigate={setDetail} />
       ) : null}
+      {fixing ? <FixQuestionModal room={room} question={fixing} onClose={() => setFixing(null)} /> : null}
     </View>
+  );
+}
+
+/** Corrige una pregunta ya aplicada (clave, casos, valor…) y la vuelve a calificar a todos. */
+function FixQuestionModal({ room, question, onClose }: { room: RoomState; question: Question; onClose(): void }) {
+  const t = useTheme();
+  const [draft, setDraft] = useState(question);
+  const index = room.exam.questions.findIndex((x) => x.id === question.id);
+  const issues = validateExam({ ...room.exam, questions: [draft] }).filter((x) => x.questionId === draft.id);
+  const affected = Object.values(room.students).filter((s) => s.submittedAt && s.key?.questionIds.includes(question.id)).length;
+  return (
+    <ModalShell title={`Corregir la pregunta ${index + 1}`} onClose={onClose} wide>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <Banner
+          icon="information-circle-outline"
+          color={t.info}
+          text={`Al guardar se vuelve a calificar esta pregunta a ${affected} alumno(s) que ya entregaron (y a quienes entreguen después). Los puntos que asignaste a mano se conservan. El examen guardado en «Mis exámenes» no cambia.`}
+        />
+        <QuestionEditor q={draft} index={index} count={1} profileId={room.exam.profileId} issues={issues} onChange={setDraft} onMove={() => {}} onDuplicate={() => {}} onDelete={() => {}} fixed />
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+          <Button label="Cancelar" onPress={onClose} />
+          <Button
+            label="Guardar y recalificar"
+            icon="checkmark"
+            kind="primary"
+            disabled={issues.some((x) => x.severity === 'error')}
+            onPress={() => {
+              useTeacher.getState().updateRoomQuestion(roomKey(room), draft);
+              onClose();
+            }}
+          />
+        </View>
+      </ScrollView>
+    </ModalShell>
+  );
+}
+
+/** Comparación por grupo (en esta sala) y con otras aplicaciones del mismo examen. */
+function CompareCard({ room, sum }: { room: RoomState; sum: RoomSummary }) {
+  const t = useTheme();
+  const rooms = useTeacher((s) => s.rooms);
+  const history = useTeacher((s) => s.history);
+  const others = useMemo(() => {
+    const seen = new Set<string>();
+    const all = [...rooms, ...history].filter((r) => {
+      const k = roomKey(r);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return compareRooms(all, room.exam.id);
+  }, [rooms, history, room.exam.id]);
+  if (sum.groups.length < 2 && others.length < 2) return null;
+  const cell = (w: number, bold = false) => ({ width: w, color: t.text, fontSize: 12, fontWeight: bold ? ('800' as const) : ('400' as const), paddingVertical: 4 });
+  return (
+    <Card>
+      <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginBottom: 8 }}>Comparar</Text>
+      {sum.groups.length >= 2 ? (
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 4 }}>POR GRUPO EN ESTA SALA</Text>
+          <ScrollView horizontal>
+            <View>
+              <View style={{ flexDirection: 'row' }}>
+                {['Grupo', 'Alumnos', 'Entregaron', 'Promedio', 'Aprobados'].map((h, i) => (
+                  <Text key={h} style={[cell([160, 80, 90, 80, 90][i], true), { color: t.textMuted }]}>{h}</Text>
+                ))}
+              </View>
+              {sum.groups.map((g) => (
+                <View key={g.group} style={{ flexDirection: 'row', borderTopWidth: BORDER, borderTopColor: t.border }}>
+                  <Text style={cell(160, true)} numberOfLines={1}>{g.group}</Text>
+                  <Text style={cell(80)}>{g.students}</Text>
+                  <Text style={cell(90)}>{g.submitted}</Text>
+                  <Text style={cell(80)}>{fmt(g.average)}</Text>
+                  <Text style={cell(90)}>{fmt(g.passRate, '%')}</Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      ) : null}
+      {others.length >= 2 ? (
+        <View>
+          <Text style={{ color: t.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 4 }}>APLICACIONES DE ESTE EXAMEN ({others.length})</Text>
+          <ScrollView horizontal>
+            <View>
+              <View style={{ flexDirection: 'row' }}>
+                {['Fecha', 'Sala', 'Alumnos', 'Promedio', 'Mediana', 'Aprobados', 'Tiempo'].map((h, i) => (
+                  <Text key={h} style={[cell([150, 80, 70, 80, 80, 90, 80][i], true), { color: t.textMuted }]}>{h}</Text>
+                ))}
+              </View>
+              {others.map((o) => {
+                const current = o.code === room.code && o.openedAt === room.openedAt;
+                return (
+                  <Pressable key={`${o.code}@${o.openedAt}`} onPress={() => useTeacher.getState().viewHistory(`${o.code}@${o.openedAt}`)} style={{ flexDirection: 'row', borderTopWidth: BORDER, borderTopColor: t.border, backgroundColor: current ? t.primary + '14' : 'transparent' }}>
+                    <Text style={cell(150, current)}>{new Date(o.openedAt).toLocaleDateString()}</Text>
+                    <Text style={cell(80)}>{o.code}</Text>
+                    <Text style={cell(70)}>{o.submitted}/{o.students}</Text>
+                    <Text style={cell(80)}>{fmt(o.average)}</Text>
+                    <Text style={cell(80)}>{fmt(o.median)}</Text>
+                    <Text style={cell(90)}>{fmt(o.passRate, '%')}</Text>
+                    <Text style={cell(80)}>{fmt(o.avgMinutes, ' min')}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
+          <Text style={{ color: t.textMuted, fontSize: 11, marginTop: 4 }}>Toca una fila para abrir esa sala.</Text>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 

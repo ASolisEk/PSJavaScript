@@ -174,7 +174,21 @@ function result(q: Question, fraction: number, feedback: string, extra: Partial<
 
 const blank = (q: Question): QuestionResult => ({ questionId: q.id, type: q.type, score: 0, max: q.points, status: 'blank', feedback: 'Sin responder.' });
 
-export function gradeQuestion(q: Question, answer: AnswerValue | undefined, profile: Profile, key?: PaperKey): QuestionResult {
+/**
+ * Califica una pregunta. `wrongPenalty` (0–1): fracción de los puntos que se resta por una
+ * respuesta incorrecta en opción múltiple, varias respuestas (sin crédito parcial) y V/F.
+ */
+export function gradeQuestion(q: Question, answer: AnswerValue | undefined, profile: Profile, key?: PaperKey, wrongPenalty = 0): QuestionResult {
+  const r = gradeRaw(q, answer, profile, key);
+  const penalized = q.type === 'single' || q.type === 'truefalse' || (q.type === 'multiple' && !q.partialCredit);
+  if (wrongPenalty > 0 && penalized && r.status === 'wrong') {
+    const minus = round2(q.points * Math.min(1, wrongPenalty));
+    return { ...r, score: -minus, feedback: `${r.feedback}\n\nRespuesta incorrecta: −${minus} punto${minus === 1 ? '' : 's'}.` };
+  }
+  return r;
+}
+
+function gradeRaw(q: Question, answer: AnswerValue | undefined, profile: Profile, key?: PaperKey): QuestionResult {
   if (answer === undefined || answer === null || (typeof answer === 'string' && !answer.trim()) || (Array.isArray(answer) && !answer.length)) return blank(q);
   switch (q.type) {
     case 'single': {
@@ -219,11 +233,12 @@ export function gradeQuestion(q: Question, answer: AnswerValue | undefined, prof
       const rules = q.rules.filter((r) => r.pattern.trim()).map((r) => ({ message: r.message || (r.kind === 'contains' ? `Debe usar «${r.pattern}»` : `No debe usar «${r.pattern}»`), passed: ruleSatisfied(code, r) }));
       const total = tests.length + rules.length;
       const passed = tests.filter((t) => t.passed).length + rules.filter((r) => r.passed).length;
-      const f = total ? passed / total : 0;
+      const f = !total ? 0 : q.allOrNothing ? (passed === total ? 1 : 0) : passed / total;
       const tp = tests.filter((t) => t.passed).length;
       const failedRules = rules.filter((r) => !r.passed);
       let feedback = `Pasó ${tp} de ${tests.length} casos de prueba.`;
       if (failedRules.length) feedback += ` Requisitos sin cumplir: ${failedRules.map((r) => r.message).join('; ')}.`;
+      if (q.allOrNothing && f < 1 && passed > 0) feedback += ' Esta pregunta solo da puntos si todo funciona.';
       return result(q, f, feedback, { tests, rules });
     }
     case 'order': {
@@ -238,7 +253,15 @@ export function gradeQuestion(q: Question, answer: AnswerValue | undefined, prof
       const f = exact ? 1 : q.partialCredit ? Math.max(0, (lcs(givenTexts, expectedTexts) - 1) / Math.max(1, expectedTexts.length - 1)) : 0;
       return result(q, f, exact ? '¡Correcto!' : 'El orden no es correcto.');
     }
+    case 'essay':
+      // se califica a mano: queda pendiente hasta que el maestro asigne puntos
+      return { questionId: q.id, type: q.type, score: 0, max: q.points, status: 'pending', feedback: 'Pendiente de revisión del maestro.' };
   }
+}
+
+/** Pregunta anulada: no suma ni resta (vale 0 de 0). */
+function voidResult(r: QuestionResult): QuestionResult {
+  return { ...r, score: 0, max: 0, voided: true, feedback: 'Pregunta anulada por el maestro: no cuenta para la calificación.' };
 }
 
 export function scoreToGrade(score: number, max: number, scale: number): { percent: number; grade: number } {
@@ -257,11 +280,12 @@ export function gradePaper(config: ExamConfig, key: PaperKey, answers: Answers, 
     if (!q) continue;
     let r: QuestionResult;
     try {
-      r = gradeQuestion(q, answers[id], profile, key);
+      r = gradeQuestion(q, answers[id], profile, key, config.wrongPenalty ?? 0);
     } catch (e: any) {
       r = { questionId: q.id, type: q.type, score: 0, max: q.points, status: 'wrong', feedback: `No se pudo calificar: ${e?.message ?? e}` };
     }
     if (overrides[id] !== undefined) r = withManualScore(r, q.points, overrides[id]);
+    if (q.voided) r = voidResult(r);
     questions.push(r);
   }
   return summarize(questions, config.scale, config.passPercent);
@@ -276,6 +300,43 @@ function withManualScore(r: QuestionResult, points: number, value: number): Ques
 }
 
 /**
+ * Vuelve a calificar el examen entregado de cada alumno (p. ej. después de corregir la clave
+ * de una pregunta o de anularla). Conserva los puntos asignados a mano. `onlyQuestion`: solo
+ * recalifica esa pregunta (las demás conservan su resultado; no se vuelven a ejecutar programas).
+ */
+export function regradeAll<S extends { key: PaperKey | null; answers: Answers; overrides: Record<string, number>; result: GradeResult | null; submittedAt: number | null }>(
+  config: ExamConfig,
+  students: Record<string, S>,
+  onlyQuestion?: string,
+): Record<string, S> {
+  const out: Record<string, S> = {};
+  const q = onlyQuestion ? config.questions.find((x) => x.id === onlyQuestion) : undefined;
+  const profile = getProfile(config.profileId);
+  for (const [id, s] of Object.entries(students)) {
+    if (!s.key || !s.submittedAt || !s.result) {
+      out[id] = s;
+      continue;
+    }
+    if (q && s.result.questions.some((x) => x.questionId === q.id)) {
+      const questions = s.result.questions.map((x) => {
+        if (x.questionId !== q.id) return x;
+        let r: QuestionResult;
+        try {
+          r = gradeQuestion(q, s.answers[q.id], profile, s.key!, config.wrongPenalty ?? 0);
+        } catch (e: any) {
+          r = { questionId: q.id, type: q.type, score: 0, max: q.points, status: 'wrong', feedback: `No se pudo calificar: ${e?.message ?? e}` };
+        }
+        if (s.overrides[q.id] !== undefined) r = withManualScore(r, q.points, s.overrides[q.id]);
+        return q.voided ? voidResult(r) : r;
+      });
+      out[id] = { ...s, result: summarize(questions, config.scale, config.passPercent) };
+    } else if (!q) out[id] = { ...s, result: gradePaper(config, s.key, s.answers, s.overrides) };
+    else out[id] = s;
+  }
+  return out;
+}
+
+/**
  * Ajuste manual de UNA pregunta sobre un resultado ya calculado. No vuelve a calificar
  * el examen completo (calificar ejecuta los programas de las preguntas de código con todos
  * sus casos, lo que congelaba la pantalla en cada clic): solo cambia esa pregunta y los totales.
@@ -286,6 +347,7 @@ export function adjustResult(config: ExamConfig, key: PaperKey, answers: Answers
   if (!q || !result.questions.some((r) => r.questionId === questionId)) return result;
   const questions = result.questions.map((r) => {
     if (r.questionId !== questionId) return r;
+    if (q.voided) return r;
     if (points !== null) return withManualScore(r, q.points, points);
     if (!r.manual) return r;
     if (r.auto) {
@@ -294,7 +356,7 @@ export function adjustResult(config: ExamConfig, key: PaperKey, answers: Answers
     }
     // resultados guardados antes de conservar la calificación automática: se recalifica solo esta pregunta
     try {
-      return gradeQuestion(q, answers[questionId], getProfile(config.profileId), key);
+      return gradeQuestion(q, answers[questionId], getProfile(config.profileId), key, config.wrongPenalty ?? 0);
     } catch {
       const { manual: _manual, ...rest } = r;
       return rest;
@@ -305,7 +367,8 @@ export function adjustResult(config: ExamConfig, key: PaperKey, answers: Answers
 
 /** Recalcula totales (p. ej. después de un ajuste manual). */
 export function summarize(questions: QuestionResult[], scale: number, passPercent: number): GradeResult {
-  const score = round2(questions.reduce((s, q) => s + q.score, 0));
+  // con penalización una pregunta puede restar, pero el total nunca baja de 0
+  const score = Math.max(0, round2(questions.reduce((s, q) => s + q.score, 0)));
   const max = round2(questions.reduce((s, q) => s + q.max, 0));
   const { percent, grade } = scoreToGrade(score, max, scale);
   return { score, max, percent, grade, scale, passed: percent >= passPercent, questions, gradedAt: Date.now() };
@@ -328,7 +391,13 @@ export function topicScores(questions: QuestionResult[], topicOf: (questionId: s
 }
 
 /** Lo que puede ver el alumno de su resultado. `topicOf` permite agregar el resultado por tema. */
-export function studentView(r: GradeResult, visibility: ExamConfig['showResults'], topicOf?: (questionId: string) => string | undefined, comments?: Record<string, string>): StudentResultView {
+export function studentView(
+  r: GradeResult,
+  visibility: ExamConfig['showResults'],
+  topicOf?: (questionId: string) => string | undefined,
+  comments?: Record<string, string>,
+  explanationOf?: (questionId: string) => string | undefined,
+): StudentResultView {
   if (visibility === 'none') return { visibility };
   const head = { visibility, grade: r.grade, scale: r.scale, percent: r.percent, passed: r.passed, score: r.score, max: r.max };
   if (visibility === 'score') return head;
@@ -349,6 +418,8 @@ export function studentView(r: GradeResult, visibility: ExamConfig['showResults'
       tests: review ? q.tests : q.tests?.map((t) => (t.hidden || q.type === 'output' ? { id: t.id, name: t.name, hidden: t.hidden, passed: t.passed } : t)),
       // comentario del maestro al revisar
       ...(comments?.[q.questionId] ? { comment: comments[q.questionId] } : {}),
+      ...(explanationOf?.(q.questionId) ? { explanation: explanationOf(q.questionId) } : {}),
+      ...(q.voided ? { voided: true } : {}),
     })),
   };
 }

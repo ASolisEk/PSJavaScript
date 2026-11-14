@@ -17,6 +17,7 @@ export type StudentEventKind =
   | 'test'
   | 'submit'
   | 'leave'
+  | 'ask'
   | 'teacher';
 
 export interface StudentEvent {
@@ -62,6 +63,18 @@ export interface StudentRecord {
   comments?: Record<string, string>;
   /** Criterios de la rúbrica que cumplió (por pregunta). */
   rubric?: Record<string, string[]>;
+  /** Preguntas que le hizo al maestro durante el examen (y sus respuestas). */
+  asks?: StudentAsk[];
+}
+
+export interface StudentAsk {
+  id: string;
+  at: number;
+  text: string;
+  /** Pregunta del examen que estaba viendo (índice). */
+  question: number;
+  answer?: string;
+  answeredAt?: number;
 }
 
 /**
@@ -94,6 +107,23 @@ export interface RoomState {
   locked?: boolean;
   /** Solicitudes para seguir un examen desde otro dispositivo (las autoriza el maestro). */
   requests?: ReconnectRequest[];
+  /** Calificaciones publicadas (si el examen las retiene hasta que el maestro termine de revisar). */
+  published?: boolean;
+  /** Inicio y cierre automáticos (hora local en ms; null = manual). */
+  schedule?: { startAt: number | null; closeAt: number | null };
+}
+
+/** Preguntas de alumnos que el maestro aún no responde. */
+export function pendingAsks(room: RoomState): { student: StudentRecord; ask: StudentAsk }[] {
+  const out: { student: StudentRecord; ask: StudentAsk }[] = [];
+  for (const s of Object.values(room.students)) for (const a of s.asks ?? []) if (!a.answer) out.push({ student: s, ask: a });
+  return out.sort((a, b) => a.ask.at - b.ask.at);
+}
+
+/** Nombres de la lista del grupo que aún no entran a la sala. */
+export function missingFromRoster(room: RoomState): string[] {
+  const present = new Set(Object.values(room.students).map((s) => normalizeName(s.name)));
+  return (room.exam.roster ?? []).filter((n) => !present.has(normalizeName(n)));
 }
 
 /** Nombre comparable: sin acentos, mayúsculas ni espacios de más. */

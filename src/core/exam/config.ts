@@ -25,6 +25,7 @@ export const QUESTION_TYPES: QuestionTypeInfo[] = [
   { type: 'numeric', label: 'Respuesta numérica', description: 'Un número, con margen de tolerancia opcional.', icon: 'calculator-outline', usesCode: false },
   { type: 'output', label: '¿Qué imprime?', description: 'Muestras un programa y el alumno escribe la salida.', icon: 'terminal-outline', usesCode: true },
   { type: 'code', label: 'Escribir un programa', description: 'El alumno programa; se califica con casos de prueba.', icon: 'code-slash-outline', usesCode: true },
+  { type: 'essay', label: 'Respuesta abierta', description: 'Texto libre que calificas a mano (con rúbrica opcional).', icon: 'document-text-outline', usesCode: false },
   { type: 'order', label: 'Ordenar líneas', description: 'El alumno acomoda líneas de código en el orden correcto.', icon: 'reorder-four-outline', usesCode: false },
 ];
 
@@ -78,6 +79,8 @@ export function createQuestion(type: QuestionType): Question {
         match: 'flexible',
         rules: [],
       };
+    case 'essay':
+      return { id, type, prompt: '', points: 5, maxChars: 3000, guide: '' };
     case 'order':
       return { id, type, prompt: 'Ordena las líneas para que el programa funcione.', points: 2, lines: ['let suma = 0;', 'for (let i = 1; i <= 3; i++) {', '  suma += i;', '}', 'console.log(suma);'], partialCredit: true };
   }
@@ -106,6 +109,10 @@ export function createExam(p: Partial<ExamConfig> = {}): ExamConfig {
     showDiagnostics: true,
     blockPaste: true,
     trackFocus: true,
+    holdResults: false,
+    wrongPenalty: 0,
+    sequential: false,
+    roster: [],
     questions: [],
     createdAt: now,
     updatedAt: now,
@@ -152,6 +159,9 @@ export function questionsPerStudent(e: Pick<ExamConfig, 'questions' | 'pickCount
 
 // ───────────────────────────── validación ─────────────────────────────
 
+/** Tamaño máximo de una imagen (data URI) en una pregunta: ~300 KB. */
+export const MAX_IMAGE_CHARS = 400_000;
+
 export interface ExamIssue {
   severity: 'error' | 'warning';
   questionId?: string;
@@ -187,6 +197,7 @@ export function validateExam(e: ExamConfig): ExamIssue[] {
     const add = (severity: ExamIssue['severity'], message: string) => issues.push({ severity, questionId: q.id, message: `${n}: ${message}` });
     if (!q.prompt.trim()) add('error', 'falta el enunciado.');
     if (!(q.points > 0)) add('error', 'debe valer más de 0 puntos.');
+    if (q.image && q.image.length > MAX_IMAGE_CHARS) add('error', 'la imagen es demasiado grande.');
     switch (q.type) {
       case 'single':
       case 'multiple': {
@@ -220,6 +231,9 @@ export function validateExam(e: ExamConfig): ExamIssue[] {
       case 'order':
         if (q.lines.filter((l) => l.trim()).length < 2) add('error', 'necesita al menos dos líneas.');
         if (new Set(q.lines.map((l) => l.trim())).size !== q.lines.length) add('warning', 'hay líneas repetidas: cualquiera de ellas se aceptará en esa posición.');
+        break;
+      case 'essay':
+        if (!(q.maxChars > 0)) add('error', 'el límite de caracteres debe ser mayor que 0.');
         break;
     }
   });
@@ -276,6 +290,9 @@ function normalizeQuestion(raw: any): Question | null {
             .map((c: any) => ({ id: str(c.id) || randomId('r'), text: str(c.text).trim(), points: Math.max(0, num(c.points, 1)) })),
         }
       : {}),
+    ...(typeof raw.explanation === 'string' && raw.explanation.trim() ? { explanation: raw.explanation } : {}),
+    ...(typeof raw.image === 'string' && /^data:image\/(png|jpe?g|gif|webp);base64,/.test(raw.image) && raw.image.length <= MAX_IMAGE_CHARS ? { image: raw.image } : {}),
+    ...(raw.voided === true ? { voided: true } : {}),
   };
   const options = (): ChoiceOption[] =>
     (Array.isArray(raw.options) ? raw.options : []).map((o: any) => ({ id: str(o?.id) || randomId('o'), text: str(o?.text), correct: bool(o?.correct, false) }));
@@ -313,9 +330,12 @@ function normalizeQuestion(raw: any): Question | null {
           pattern: str(r?.pattern),
           message: str(r?.message),
         })),
+        ...(raw.allOrNothing === true ? { allOrNothing: true } : {}),
       };
     case 'order':
       return { ...base, type, lines: strList(raw.lines), partialCredit: bool(raw.partialCredit, true) };
+    case 'essay':
+      return { ...base, type, maxChars: Math.max(1, Math.round(num(raw.maxChars, 3000))), guide: str(raw.guide) };
   }
   return null;
 }
@@ -363,6 +383,10 @@ export function parseExam(text: string): ExamConfig {
     showDiagnostics: bool(raw.showDiagnostics, d.showDiagnostics),
     blockPaste: bool(raw.blockPaste, d.blockPaste),
     trackFocus: bool(raw.trackFocus, d.trackFocus),
+    holdResults: bool(raw.holdResults, d.holdResults),
+    wrongPenalty: Math.min(1, Math.max(0, num(raw.wrongPenalty, 0))),
+    sequential: bool(raw.sequential, d.sequential),
+    roster: strList(raw.roster).map((x) => x.trim()).filter(Boolean).slice(0, 500),
     questions,
     createdAt: num(raw.createdAt, d.createdAt),
     updatedAt: num(raw.updatedAt, d.updatedAt),

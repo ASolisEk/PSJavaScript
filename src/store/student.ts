@@ -78,6 +78,12 @@ export interface StudentSession {
   fontSize?: number;
   /** Práctica individual (sin maestro): qué práctica es, para repetirla. */
   practiceKey?: string;
+  /** Nombres de la lista del grupo (si el maestro rechazó un nombre que no está en ella). */
+  roster?: string[];
+  /** Preguntas al maestro y sus respuestas. */
+  asks?: { at: number; text: string; question: number; answer?: string }[];
+  /** Hoja de borrador (no se envía ni se califica). */
+  scratch?: string;
 }
 
 interface StudentState {
@@ -111,6 +117,9 @@ interface StudentState {
   retry(): void;
   dismissBanner(): void;
   setFontSize(size: number): void;
+  /** Envía una pregunta al maestro. */
+  ask(text: string): void;
+  setScratch(text: string): void;
   /** Sale del modo examen y borra la sesión. */
   leave(): void;
 }
@@ -208,8 +217,17 @@ export const useStudent = create<StudentState>((set, get) => {
       case 'pending':
         patch({ pendingApproval: m.reason });
         break;
+      case 'reply': {
+        const asks = (s.asks ?? []).slice();
+        const i = asks.findIndex((a) => !a.answer && a.text === m.question);
+        if (i >= 0) asks[i] = { ...asks[i], answer: m.text };
+        else asks.push({ at: m.at, text: m.question, question: -1, answer: m.text });
+        patch({ asks: asks.slice(-30) });
+        set({ banner: `respondió a «${m.question.slice(0, 60)}»: ${m.text}` });
+        break;
+      }
       case 'rejected':
-        patch({ phase: 'rejected', rejectedReason: m.reason, pendingApproval: null });
+        patch({ phase: 'rejected', rejectedReason: m.reason, pendingApproval: null, roster: m.roster?.slice(0, 500) });
         client?.dispose();
         client = null;
         break;
@@ -356,6 +374,8 @@ export const useStudent = create<StudentState>((set, get) => {
       lastTouch = Date.now();
       const current = Math.max(0, Math.min(s.paper.questions.length - 1, index));
       if (current === s.current) return;
+      // una pregunta a la vez: no se regresa
+      if (s.paper.settings.sequential && current < s.current) return;
       patch({ current });
       lastActivity = 'reading';
       sendProgress(true);
@@ -397,6 +417,18 @@ export const useStudent = create<StudentState>((set, get) => {
 
     dismissBanner() {
       set({ banner: null });
+    },
+
+    ask(text) {
+      const s = get().session;
+      const clean = text.trim().slice(0, 500);
+      if (!s || s.phase !== 'exam' || !clean) return;
+      patch({ asks: [...(s.asks ?? []), { at: Date.now(), text: clean, question: s.current }].slice(-30) });
+      client?.send({ t: 'ask', text: clean, question: s.current });
+    },
+
+    setScratch(scratch) {
+      patch({ scratch: scratch.slice(0, 20_000) });
     },
 
     setFontSize(fontSize) {
@@ -453,7 +485,10 @@ export function serverNow(): number {
 /** ¿Hay un examen en curso que debe retomarse al abrir la aplicación? */
 export function hasActiveExam(s: StudentSession | null): boolean {
   if (!s || s.phase === 'rejected') return false;
-  if (s.phase === 'submitted' && s.result) return false;
+  // con calificaciones retenidas sigue conectado para recibirlas cuando el maestro las publique
+  if (s.phase === 'submitted' && s.result && !s.result.held) return false;
   // la sala se cerró antes de que comenzara: ya no hay nada que retomar
   return !(s.roomClosed && !s.startedAt);
 }
+
+if (typeof __DEV__ !== 'undefined' && __DEV__ && typeof window !== 'undefined') (window as any).__psjsStudent = useStudent;

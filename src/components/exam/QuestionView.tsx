@@ -1,7 +1,7 @@
 /** Muestra una pregunta del examen y el control para responderla. */
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
 import { questionTypeInfo } from '../../core/exam/config';
 import type { AnswerValue, PaperQuestion, PaperSettings } from '../../core/exam/types';
@@ -41,6 +41,9 @@ export default function QuestionView({ q, index, total, value, onChange, setting
         <Pill text={`${q.points} ${q.points === 1 ? 'punto' : 'puntos'}`} color={t.accent} icon="star-outline" />
         <Pill text={info.label} color={t.primary} icon={info.icon as IconName} />
         {q.topic ? <Pill text={q.topic} icon="pricetag-outline" /> : null}
+        {settings.wrongPenalty && (q.type === 'single' || q.type === 'truefalse' || q.type === 'multiple') ? (
+          <Pill text={`Error resta ${Math.round(settings.wrongPenalty * 100)} %`} color={t.danger} icon="remove-circle-outline" />
+        ) : null}
         <View style={{ flex: 1 }} />
         {onToggleFlag ? (
           <Pressable onPress={onToggleFlag} style={[styles.flag, { borderColor: flagged ? t.warning : t.border, backgroundColor: flagged ? t.warning + '20' : 'transparent' }]} accessibilityLabel="Marcar para revisar">
@@ -53,6 +56,8 @@ export default function QuestionView({ q, index, total, value, onChange, setting
       <View style={{ marginBottom: 8 }}>
         <RichText text={q.prompt} style={{ color: t.text, fontSize: Math.round(17 * k), lineHeight: Math.round(25 * k), fontWeight: '600' }} />
       </View>
+
+      {q.image ? <QuestionImage uri={q.image} /> : null}
 
       {q.code && q.type !== 'code' ? <CodeBlock code={q.code} /> : null}
 
@@ -143,8 +148,36 @@ function AnswerInput({ q, value, onChange, settings, onRun, onTest, onBusy, font
       return <CodeAnswer key={q.id} q={q} value={typeof value === 'string' ? value : q.starter ?? ''} onChange={onChange} settings={settings} onRun={onRun} onTest={onTest} onBusy={onBusy} fontSize={fontSize} />;
     case 'order':
       return <OrderAnswer q={q} value={value} onChange={onChange} fontSize={fontSize} />;
+    case 'essay': {
+      const text = typeof value === 'string' ? value : '';
+      const max = q.maxChars ?? 3000;
+      const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+      return (
+        <View>
+          <Text style={{ color: t.textMuted, fontSize: 13, marginBottom: 6 }}>Respuesta abierta: tu maestro la revisará y calificará.</Text>
+          <TextField value={text} onChangeText={(v) => onChange(v.slice(0, max))} multiline minHeight={180} maxLength={max} placeholder="Escribe tu respuesta…" style={{ fontSize }} />
+          <Text style={{ color: text.length >= max ? t.danger : t.textMuted, fontSize: 12, marginTop: 4, textAlign: 'right' }}>
+            {words} palabra{words === 1 ? '' : 's'} · {text.length}/{max} caracteres
+          </Text>
+        </View>
+      );
+    }
   }
   return null;
+}
+
+/** Imagen de apoyo de una pregunta (mantiene su proporción). */
+export function QuestionImage({ uri }: { uri: string }) {
+  const t = useTheme();
+  const [ratio, setRatio] = React.useState(16 / 9);
+  React.useEffect(() => {
+    Image.getSize(uri, (w, h) => h > 0 && setRatio(w / h), () => {});
+  }, [uri]);
+  return (
+    <View style={{ marginBottom: 10, borderRadius: RADIUS.md, borderWidth: BORDER, borderColor: t.border, overflow: 'hidden', backgroundColor: t.surfaceAlt, alignItems: 'center' }}>
+      <Image source={{ uri }} style={{ width: '100%', maxWidth: 720, aspectRatio: ratio, maxHeight: 420 }} resizeMode="contain" accessibilityLabel="Imagen de la pregunta" />
+    </View>
+  );
 }
 
 function OrderAnswer({ q, value, onChange, fontSize }: { q: PaperQuestion; value: AnswerValue | undefined; onChange(v: AnswerValue): void; fontSize: number }) {

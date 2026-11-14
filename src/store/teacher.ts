@@ -12,12 +12,12 @@ import { Platform } from 'react-native';
 import { create } from 'zustand';
 import { cloneExam, createExam, parseExam, sampleExam } from '../core/exam/config';
 import { getCertification } from '../core/exam/certs';
-import { adjustResult, gradePaper } from '../core/exam/grading';
+import { adjustResult, gradePaper, regradeAll } from '../core/exam/grading';
 import { ExamHost } from '../core/exam/host';
 import { roomCode } from '../core/exam/random';
 import { compactRoom, createRoom, normalizeName, RoomState, studentPhase } from '../core/exam/room';
 import { createHostTransport, TransportError, TransportSpec } from '../core/exam/transport';
-import type { ExamConfig } from '../core/exam/types';
+import type { ExamConfig, Question } from '../core/exam/types';
 import { createVault, decryptText, defaultRandom, encryptText, isEncrypted, openVault, RandomBytes, VaultMeta } from '../core/vault';
 
 export type TeacherTab = 'library' | 'editor' | 'room' | 'results';
@@ -129,6 +129,15 @@ interface TeacherState {
   setComment(key: string, studentId: string, questionId: string, text: string): void;
   /** Criterios de la rúbrica cumplidos; la pregunta vale la suma de sus puntos. */
   setRubric(key: string, studentId: string, questionId: string, ids: string[]): void;
+  /** Publica las calificaciones retenidas de una sala. */
+  publishResults(key: string): void;
+  /** Corrige (o anula) una pregunta de la sala y vuelve a calificarla a quienes ya entregaron. */
+  updateRoomQuestion(key: string, q: Question): void;
+  /** Responde la pregunta de un alumno (a él o a todos). */
+  replyAsk(key: string, studentId: string, askId: string, text: string, toAll?: boolean): void;
+  dismissAsk(key: string, studentId: string, askId: string): void;
+  /** Inicio y cierre automáticos de una sala abierta. */
+  setSchedule(key: string, startAt: number | null, closeAt: number | null): void;
   /** Quita la sala de la lista (si está cerrada, pasa al historial; si no, se descarta). */
   leaveRoom(key: string): void;
   viewHistory(key: string | null): void;
@@ -380,7 +389,7 @@ export const useTeacher = create<TeacherState>((set, get) => {
   };
 
   /** Cambia un alumno de una sala sin anfitrión (cerrada antes de recargar) o del historial. */
-  const editOffline = (key: string, studentId: string, change: (room: RoomState) => RoomState | null) => {
+  const editOffline = (key: string, _studentId: string, change: (room: RoomState) => RoomState | null) => {
     const current = get().rooms.find((r) => roomKey(r) === key);
     if (current) {
       const updated = change(current);
@@ -790,6 +799,37 @@ export const useTeacher = create<TeacherState>((set, get) => {
         return { ...room, students: { ...room.students, [studentId]: { ...st, comments } } };
       });
     },
+    publishResults(key) {
+      const h = hosts.get(key);
+      if (h) {
+        h.publishResults();
+        sync(key);
+        return;
+      }
+      editOffline(key, '', (room) => (room.published ? null : { ...room, published: true }));
+    },
+    updateRoomQuestion(key, q) {
+      const h = hosts.get(key);
+      if (h) {
+        h.updateQuestion(q);
+        sync(key);
+        return;
+      }
+      editOffline(key, '', (room) => {
+        if (!room.exam.questions.some((x) => x.id === q.id)) return null;
+        const exam = { ...room.exam, questions: room.exam.questions.map((x) => (x.id === q.id ? q : x)) };
+        return { ...room, exam, students: regradeAll(exam, room.students, q.id) };
+      });
+    },
+    replyAsk(key, studentId, askId, text, toAll) {
+      withHost(key, (h) => h.reply(studentId, askId, text, toAll));
+    },
+    dismissAsk(key, studentId, askId) {
+      withHost(key, (h) => h.dismissAsk(studentId, askId));
+    },
+    setSchedule(key, startAt, closeAt) {
+      withHost(key, (h) => h.setSchedule(startAt, closeAt));
+    },
     setRubric(key, studentId, questionId, ids) {
       const h = hosts.get(key);
       if (h) {
@@ -895,3 +935,5 @@ export function useResultsRoom(): RoomState | null {
 export function useLiveRoomCount(): number {
   return useTeacher((s) => s.rooms.filter((r) => isOpenRoom(r) && s.liveKeys.includes(roomKey(r))).length);
 }
+
+if (typeof __DEV__ !== 'undefined' && __DEV__ && typeof window !== 'undefined') (window as any).__psjsTeacher = useTeacher;

@@ -9,7 +9,7 @@ import { answeredCount, RoomState, StudentRecord } from './room';
 import { summarizeRoom } from './summary';
 import type { AnswerValue, PaperKey, Question, QuestionResult, QuestionStatus, TestResult } from './types';
 
-export const STATUS_LABEL: Record<QuestionStatus, string> = { correct: 'Correcta', partial: 'Parcial', wrong: 'Incorrecta', blank: 'Sin responder' };
+export const STATUS_LABEL: Record<QuestionStatus, string> = { correct: 'Correcta', partial: 'Parcial', wrong: 'Incorrecta', blank: 'Sin responder', pending: 'Por calificar' };
 
 const empty = (a: AnswerValue | undefined) => a === undefined || a === null || (typeof a === 'string' && !a.trim()) || (Array.isArray(a) && !a.length);
 
@@ -57,6 +57,8 @@ export function correctText(q: Question, r?: QuestionResult): string {
       return q.solution;
     case 'order':
       return q.lines.join('\n');
+    case 'essay':
+      return q.guide ? `(Guía del maestro) ${q.guide}` : '(Se califica a mano)';
   }
 }
 
@@ -309,10 +311,10 @@ export function gradesCsv(room: RoomState): string {
 
 // ───────────────────────────── reporte HTML ─────────────────────────────
 
-const esc =(s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+export const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Enunciado con formato (`código`, **negritas**, bloques ```) en HTML. */
-function richHtml(src: string): string {
+export function richHtml(src: string): string {
   return parseRichText(src)
     .map((b) =>
       b.kind === 'code'

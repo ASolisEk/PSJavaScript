@@ -3,7 +3,9 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
-import { codeRule, codeTest, ExamIssue, MATCH_MODES, option, questionTypeInfo } from '../../core/exam/config';
+import { codeRule, codeTest, ExamIssue, MATCH_MODES, MAX_IMAGE_CHARS, option, questionTypeInfo } from '../../core/exam/config';
+import { pickImageDataUrl } from '../../ui/platform';
+import { QuestionImage } from '../exam/QuestionView';
 import { expectedFromSolution, gradeQuestion, runProgram } from '../../core/exam/grading';
 import type { ChoiceOption, CodeQuestion, Question, RubricCriterion } from '../../core/exam/types';
 import { randomId } from '../../core/exam/random';
@@ -23,12 +25,14 @@ interface Props {
   onMove(delta: number): void;
   onDuplicate(): void;
   onDelete(): void;
+  /** Sin botones para mover, duplicar ni eliminar (corregir una pregunta ya aplicada). */
+  fixed?: boolean;
 }
 
 const lines = (v: string[]) => v.join('\n');
 const split = (s: string) => (s === '' ? [] : s.split('\n'));
 
-export default function QuestionEditor({ q, index, count, profileId, issues, onChange, onMove, onDuplicate, onDelete }: Props) {
+export default function QuestionEditor({ q, index, count, profileId, issues, onChange, onMove, onDuplicate, onDelete, fixed }: Props) {
   const t = useTheme();
   const info = questionTypeInfo(q.type);
   const up = (p: Partial<Question>) => onChange({ ...q, ...p } as Question);
@@ -46,10 +50,14 @@ export default function QuestionEditor({ q, index, count, profileId, issues, onC
           </Text>
           <Text style={{ color: t.textMuted, fontSize: 12 }}>{info.description}</Text>
         </View>
-        <IconButton icon="arrow-up" label="Subir" tooltip="Mover arriba" onPress={() => onMove(-1)} disabled={index === 0} />
-        <IconButton icon="arrow-down" label="Bajar" tooltip="Mover abajo" onPress={() => onMove(1)} disabled={index === count - 1} />
-        <IconButton icon="copy-outline" label="Duplicar" tooltip="Duplicar pregunta" onPress={onDuplicate} />
-        <IconButton icon="trash-outline" label="Eliminar" tooltip="Eliminar pregunta" color={t.danger} onPress={onDelete} />
+        {fixed ? null : (
+          <>
+            <IconButton icon="arrow-up" label="Subir" tooltip="Mover arriba" onPress={() => onMove(-1)} disabled={index === 0} />
+            <IconButton icon="arrow-down" label="Bajar" tooltip="Mover abajo" onPress={() => onMove(1)} disabled={index === count - 1} />
+            <IconButton icon="copy-outline" label="Duplicar" tooltip="Duplicar pregunta" onPress={onDuplicate} />
+            <IconButton icon="trash-outline" label="Eliminar" tooltip="Eliminar pregunta" color={t.danger} onPress={onDelete} />
+          </>
+        )}
       </View>
 
       {issues.map((i, k) => (
@@ -89,6 +97,7 @@ export default function QuestionEditor({ q, index, count, profileId, issues, onC
             <TextField value={q.topic ?? ''} onChangeText={(topic) => up({ topic: topic.trim() ? topic : undefined })} placeholder="Ej. Arreglos" />
           </Field>
         </View>
+        <ImageField q={q} up={up} />
         {q.type !== 'code' && q.type !== 'output' && q.type !== 'order' ? (
           <Field label="Código de apoyo (opcional)" hint="Se muestra debajo del enunciado, con colores.">
             <TextField value={q.code ?? ''} onChangeText={(code) => up({ code: code || undefined })} mono multiline minHeight={70} placeholder="// por ejemplo: let x = 5;" />
@@ -98,7 +107,35 @@ export default function QuestionEditor({ q, index, count, profileId, issues, onC
 
       <TypeEditor q={q} up={up} profileId={profileId} />
       <RubricEditor q={q} up={up} />
+      <Card>
+        <Field label="Explicación de la respuesta (opcional)" hint="El alumno la ve junto a su resultado si el examen muestra el detalle o el repaso. Ideal para retroalimentar.">
+          <TextField value={q.explanation ?? ''} onChangeText={(explanation) => up({ explanation: explanation.trim() ? explanation : undefined })} multiline minHeight={60} placeholder="Ej. El ciclo se repite 3 veces porque i empieza en 0 y termina antes de 3." />
+        </Field>
+      </Card>
     </View>
+  );
+}
+
+/** Imagen de apoyo de la pregunta (diagramas, capturas…). */
+function ImageField({ q, up }: { q: Question; up(p: Partial<Question>): void }) {
+  const t = useTheme();
+  const [error, setError] = useState<string | null>(null);
+  const pick = async () => {
+    setError(null);
+    const r = await pickImageDataUrl(MAX_IMAGE_CHARS).catch((e) => ({ error: String(e?.message ?? e) }));
+    if (!r) return;
+    if ('error' in r) setError(r.error);
+    else up({ image: r.uri });
+  };
+  return (
+    <Field label="Imagen (opcional)" hint="Un diagrama de flujo, una captura o una tabla. Se reduce automáticamente.">
+      {q.image ? <QuestionImage uri={q.image} /> : null}
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        <Button label={q.image ? 'Cambiar imagen' : 'Agregar imagen'} icon="image-outline" size="sm" onPress={pick} />
+        {q.image ? <Button label="Quitar imagen" icon="trash-outline" size="sm" onPress={() => up({ image: undefined })} /> : null}
+      </View>
+      {error ? <Text style={{ color: t.danger, fontSize: 12, marginTop: 6 }}>{error}</Text> : null}
+    </Field>
   );
 }
 
@@ -204,6 +241,18 @@ function TypeEditor({ q, up, profileId }: { q: Question; up(p: Partial<Question>
           </Field>
           <Toggle label="Puntos parciales" description="Otorga puntos según cuántas líneas quedaron en la secuencia correcta." value={q.partialCredit} onChange={(partialCredit) => up({ partialCredit } as any)} />
           <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 8 }}>{q.lines.filter((l) => l.trim()).length} líneas</Text>
+        </Card>
+      );
+    case 'essay':
+      return (
+        <Card>
+          <Field label="Largo máximo de la respuesta">
+            <NumberStepper value={q.maxChars} onChange={(maxChars) => up({ maxChars } as any)} min={100} max={20000} step={500} width={90} suffix="caracteres" />
+          </Field>
+          <Field label="Respuesta modelo o puntos a revisar (solo para ti)" hint="No se envía al alumno. La verás al calificar. Agrega una rúbrica abajo para calificar con un clic.">
+            <TextField value={q.guide} onChangeText={(guide) => up({ guide } as any)} multiline minHeight={80} placeholder="Ej. Debe mencionar que const no se puede reasignar…" />
+          </Field>
+          <Text style={{ color: t.textMuted, fontSize: 12 }}>Las respuestas abiertas quedan «por calificar» hasta que les asignes puntos en «Revisar y calificar».</Text>
         </Card>
       );
   }
@@ -387,6 +436,12 @@ function CodeEditorForm({ q, up, profileId }: { q: CodeQuestion; up(p: Partial<Q
         <Text style={{ color: t.textMuted, fontSize: 12, marginTop: 8, lineHeight: 17 }}>
           Los casos visibles sirven de ejemplo y el alumno puede probarlos. Los ocultos solo se usan al calificar (evitan que el programa «adivine» las respuestas).
         </Text>
+        <Toggle
+          label="Todo o nada"
+          description={q.allOrNothing ? 'Solo da puntos si pasa todos los casos y requisitos.' : 'Puntos proporcionales: cada caso y requisito cumplido suma una parte.'}
+          value={!!q.allOrNothing}
+          onChange={(v) => up({ allOrNothing: v || undefined } as any)}
+        />
       </Card>
 
       <Card>
