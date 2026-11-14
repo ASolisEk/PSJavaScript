@@ -29,12 +29,16 @@ import RichText from '../exam/RichText';
 import { BackToEditorButton, Banner, Button, CodeBlock, IconButton, IconName, Pill, ProgressBar, ScreenHeader, Segmented, Tab, tint, Tooltip } from '../ui';
 import { EntitySprite, ItemIcon } from './art';
 import WorldView from './WorldView';
-import { SpeedPicker, Stars, TrophiesModal, UnlockIcon } from './parts';
+import { AlmanacModal, SpeedPicker, Stars, TrophiesModal, UnlockIcon } from './parts';
 import { actionSound, playSound } from './sound';
 import { ACHIEVEMENTS, unlockedAchievements } from '../../core/game/achievements';
 import { blankCustomLevel, CUSTOM_PREFIX, CustomLevelData, serializeCustomLevel, toGameLevel } from '../../core/game/custom';
 import { randomId } from '../../core/exam/random';
 import LevelEditor from './LevelEditor';
+import DuelScreen from './DuelScreen';
+
+/** Instrucciones sin ninguna acción del dron antes de detener el programa (ciclo que no avanza). */
+const IDLE_LIMIT = 400_000;
 
 type MissionTab = 'mission' | 'hints' | 'intruder' | 'docs';
 type Pane = 'world' | 'code' | 'mission';
@@ -102,6 +106,8 @@ function GameInner() {
   const [done, setDone] = useState<Done | null>(null);
   /** Misión de hackeo fallida (mensaje). */
   const [failed, setFailed] = useState<string | null>(null);
+  /** El programa se detuvo porque su ciclo no hacía ninguna acción. */
+  const [stuck, setStuck] = useState(false);
   /** El alumno cerró la tarjeta de resultado para ver el tablero. */
   const [resultHidden, setResultHidden] = useState(false);
   const [hints, setHints] = useState(0);
@@ -111,6 +117,9 @@ function GameInner() {
   const [bottomTab, setBottomTab] = useState<BottomTab>('console');
   const [showDocs, setShowDocs] = useState(false);
   const [showTrophies, setShowTrophies] = useState(false);
+  const [showAlmanac, setShowAlmanac] = useState(false);
+  /** Duelo de dos jugadores (pantalla aparte). */
+  const [duel, setDuel] = useState(false);
   /** Nivel que se edita en el editor (nuevo o existente). */
   const [editing, setEditing] = useState<CustomLevelData | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -175,6 +184,7 @@ function GameInner() {
     setRun(null);
     setDone(null);
     setFailed(null);
+    setStuck(false);
     setResultHidden(false);
     setWorld(makeWorld(lv));
   };
@@ -192,12 +202,15 @@ function GameInner() {
     setWorld(w);
     setDone(null);
     setFailed(null);
+    setStuck(false);
     setResultHidden(false);
     setBottomTab('console');
     let r: Runner;
     // misiones de hackeo: el intruso ejecuta su propio programa al mismo tiempo (por turnos)
     const intruder = level.intruderCode ? new IntruderProgram(w, themed(level.intruderCode, theme), theme) : null;
     let turns = 0;
+    /** Instrucciones seguidas sin que el dron haga nada (ciclo que no avanza). */
+    let idle = 0;
     const checkGoal = (finished: boolean) => {
       if (level.sandbox || w.frozen) return;
       const c = level.check(w, label, { finished });
@@ -229,6 +242,7 @@ function GameInner() {
       delay: () => SPEED_MS[speedRef.current],
       log: (text) => r.log('warn', `⚠ ${text}`),
       onAction: (name, ok) => {
+        idle = 0;
         if (soundRef.current && SPEED_MS[speedRef.current] > 0) actionSound(name, ok);
         if (intruder && ++turns % (level.intruderEvery ?? 1) === 0) {
           intruder.act();
@@ -242,7 +256,16 @@ function GameInner() {
       code,
       profile,
       globals,
-      onStep: () => w.addOps(1),
+      onStep: () => {
+        w.addOps(1);
+        // un ciclo que nunca mueve al dron ni hace nada: se detiene con una explicación
+        // (esperar a que algo madure toma, como mucho, unas decenas de miles de instrucciones)
+        if (++idle > IDLE_LIMIT && !w.frozen) {
+          idle = 0;
+          setStuck(true);
+          r.halt('⏸ El programa se detuvo: tu ciclo lleva mucho tiempo sin que el dron haga nada.');
+        }
+      },
       realTime: true,
       trackDesktop: false,
       speed: 0,
@@ -303,6 +326,7 @@ function GameInner() {
       color={tone}
       right={
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <IconButton icon="book-outline" label="Almanaque" tooltip={theme === 'mine' ? 'Almanaque: minerales y recursos' : 'Almanaque: plantas y recursos'} onPress={() => setShowAlmanac(true)} />
           <IconButton icon="trophy-outline" label="Logros" tooltip={`Logros: ${unlockedAchievements(progress).length} de ${ACHIEVEMENTS.length}`} onPress={() => setShowTrophies(true)} />
           <IconButton
             icon={sounds ? 'volume-high-outline' : 'volume-mute-outline'}
@@ -342,9 +366,15 @@ function GameInner() {
           { id: 'build', label: 'Construir', icon: 'hammer-outline' },
           { id: 'hack', label: 'Hackeo', icon: 'bug-outline' },
           { id: 'custom', label: wide ? 'Mis niveles' : 'Míos', icon: 'brush-outline' },
+          { id: 'duel', label: wide ? 'Duelo 2 jugadores' : 'Duelo', icon: 'people-outline' },
         ]}
         value={customMode ? 'custom' : hackMode ? 'hack' : 'build'}
         onChange={(m) => {
+          if (m === 'duel') {
+            runner.current?.stop();
+            setDuel(true);
+            return;
+          }
           if (m === 'custom') {
             // sin niveles propios todavía: se abre el editor
             if (customLevels.length) selectLevel(customLevels[0].id);
@@ -807,7 +837,11 @@ function GameInner() {
       contentContainerStyle={{ padding: 10 }}
       onContentSizeChange={() => consoleRef.current?.scrollToEnd({ animated: false })}
     >
-      {unfinished ? (
+      {stuck ? (
+        <Text style={{ color: t.terminal.warn, fontSize: 12, marginBottom: 6, lineHeight: 18 }}>
+          ⓘ Tu ciclo se repite sin que el dron haga nada. Dentro del ciclo falta una acción (move(), harvest(), plant()…) o la condición nunca cambia. Usa «Paso» para ver qué líneas se repiten.
+        </Text>
+      ) : unfinished ? (
         <Text style={{ color: t.terminal.warn, fontSize: 12, marginBottom: 6, lineHeight: 18 }}>
           ⓘ El programa terminó, pero todavía no se cumple el objetivo. Revisa tu lógica (o usa un ciclo para que el dron siga trabajando).
         </Text>
@@ -919,6 +953,8 @@ function GameInner() {
 
   // ───────────────────────────── distribución ─────────────────────────────
 
+  if (duel) return <DuelScreen theme={theme} onExit={() => setDuel(false)} />;
+
   if (wide) {
     return (
       <View style={{ flex: 1, backgroundColor: t.bg, paddingTop: insets.top, paddingBottom: insets.bottom }}>
@@ -940,6 +976,7 @@ function GameInner() {
           </View>
         </View>
       {showTrophies ? <TrophiesModal progress={progress} onClose={() => setShowTrophies(false)} /> : null}
+      {showAlmanac ? <AlmanacModal theme={theme} onClose={() => setShowAlmanac(false)} /> : null}
       {levelEditor}
       </View>
     );
@@ -1016,6 +1053,7 @@ function GameInner() {
       )}
       <View style={[styles.bottomBar, { borderTopColor: t.border, backgroundColor: t.surface, paddingBottom: insets.bottom + 8 }]}>{toolbar}</View>
       {showTrophies ? <TrophiesModal progress={progress} onClose={() => setShowTrophies(false)} /> : null}
+      {showAlmanac ? <AlmanacModal theme={theme} onClose={() => setShowAlmanac(false)} /> : null}
       {levelEditor}
     </View>
   );

@@ -3,14 +3,14 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../../ui/text';
-import type { GameTheme } from '../../core/game/api';
+import { GameTheme, THEMES } from '../../core/game/api';
 import { ACHIEVEMENTS, unlockedAchievements } from '../../core/game/achievements';
-import type { EntityId, ItemId, UnlockId } from '../../core/game/world';
+import { EntityId, ItemId, SPECIES, UnlockId } from '../../core/game/world';
 import type { GameSpeed } from '../../store/game';
 import { BORDER, RADIUS, useTheme } from '../../ui/theme';
 import ModalShell from '../modals/ModalShell';
 import { IconName, tint, Tooltip } from '../ui';
-import { EntitySprite, ItemIcon } from './art';
+import { EntitySprite, ItemIcon, Stage } from './art';
 
 export const SPEEDS: { id: GameSpeed; label: string; icon: IconName }[] = [
   { id: 'slow', label: 'Lento', icon: 'walk-outline' },
@@ -106,10 +106,177 @@ export function TrophiesModal({ progress, onClose }: { progress: Record<string, 
   );
 }
 
+// ───────────────────────────── almanaque ─────────────────────────────
+
+const ALMANAC_ENTITIES: EntityId[] = ['grass', 'bush', 'tree', 'carrot', 'pumpkin', 'dead_pumpkin', 'sunflower', 'cactus', 'treasure'];
+const ALMANAC_ITEMS: ItemId[] = ['hay', 'wood', 'carrot', 'pumpkin', 'power', 'cactus', 'gold', 'water', 'fertilizer', 'weird_substance'];
+const STAGES: { id: Stage; label: string }[] = [
+  { id: 'sprout', label: 'Brote' },
+  { id: 'grow', label: 'Creciendo' },
+  { id: 'ripe', label: 'Madura' },
+];
+
+/** Dato curioso o regla especial de cada planta o mineral. */
+const ENTITY_NOTE: Record<GameTheme, Partial<Record<EntityId, string>>> = {
+  farm: {
+    grass: 'Vuelve a salir solo en la pradera después de cosechar.',
+    tree: 'Da cinco veces más madera que un arbusto. Crece más lento por cada árbol vecino: plántalos alternados, como tablero de ajedrez.',
+    pumpkin: 'Una de cada cinco se pudre al madurar. Las maduras que forman un cuadrado se unen en una gigante que da mucho más.',
+    dead_pumpkin: 'No da nada: planta encima para reemplazarla.',
+    sunflower: 'Cada uno tiene de 7 a 15 pétalos; cuéntalos con measure(). Con 10 o más maduros, cosechar el de más pétalos da 8 veces más.',
+    cactus: 'Cada uno mide de 0 a 9; mídelo con measure(). Ordénalos con swap(): al cosechar una región ordenada de n cactus obtienes n × n.',
+    treasure: 'Está dentro de los laberintos: llega hasta él y coséchalo.',
+  },
+  mine: {
+    grass: 'Vuelve a salir sola en la roca después de extraerla.',
+    tree: 'Da 5 de carbón en lugar de 1. Se forma más lento por cada veta de hierro vecina: colócalas alternadas, como tablero de ajedrez.',
+    pumpkin: 'Una de cada cinco se rompe al formarse. Las completas que forman un cuadrado se unen en una gigante que da mucho más.',
+    dead_pumpkin: 'No da nada: coloca otra encima para reemplazarla.',
+    sunflower: 'Cada uno tiene de 7 a 15 rayos; cuéntalos con measure(). Con 10 o más formados, extraer el de más rayos da 8 veces más.',
+    cactus: 'Cada una mide de 0 a 9; mídela con measure(). Ordénalas con swap(): al extraer una región ordenada de n gemas obtienes n × n.',
+    treasure: 'Está dentro de los túneles: llega hasta él y recógelo.',
+  },
+};
+
+/** Para qué sirve cada recurso. */
+const ITEM_NOTE: Record<GameTheme, Record<ItemId, string>> = {
+  farm: {
+    hay: 'El recurso básico: paga las primeras mejoras.',
+    wood: 'Sale de arbustos y árboles; se usa para plantar zanahorias y en varias mejoras.',
+    carrot: 'Paga calabazas, girasoles y las mejoras avanzadas.',
+    pumpkin: 'Se consigue mucho más con las calabazas gigantes.',
+    power: 'Sale de los girasoles; paga las mejoras más caras.',
+    cactus: 'Se obtiene al cosechar regiones de cactus ordenados.',
+    gold: 'El premio de los laberintos.',
+    water: 'Con useItem() la casilla queda regada y la planta crece más rápido.',
+    fertilizer: 'Con useItem() la planta avanza 2 s de golpe; al cosecharla da además sustancia extraña.',
+    weird_substance: 'Sale al cosechar plantas fertilizadas. Úsala sobre un arbusto maduro para crear un laberinto.',
+  },
+  mine: {
+    hay: 'El recurso básico: paga las primeras mejoras.',
+    wood: 'Sale de las vetas de carbón y de hierro; se usa para extraer cobre y en varias mejoras.',
+    carrot: 'Paga geodas, cristales y las mejoras avanzadas.',
+    pumpkin: 'Se consigue mucho más con las geodas gigantes.',
+    power: 'Sale de los cristales; paga las mejoras más caras.',
+    cactus: 'Se obtienen al extraer regiones de gemas ordenadas.',
+    gold: 'El premio de los túneles.',
+    water: 'Con useItem() la casilla queda refrigerada y el mineral se forma más rápido.',
+    fertilizer: 'Con useItem() el mineral avanza 2 s de golpe; al extraerlo da además sustancia extraña.',
+    weird_substance: 'Sale al extraer minerales con catalizador. Úsala sobre carbón formado para crear un túnel.',
+  },
+};
+
+function Chip({ children }: { children: React.ReactNode }) {
+  const t = useTheme();
+  return <View style={[styles.chip, { backgroundColor: t.surface, borderColor: t.border }]}>{children}</View>;
+}
+
+/** Galería de todas las plantas, minerales y recursos del juego, con sus datos. */
+export function AlmanacModal({ theme, onClose }: { theme: GameTheme; onClose(): void }) {
+  const t = useTheme();
+  const names = THEMES[theme];
+  const mine = theme === 'mine';
+  const small = { color: t.textMuted, fontSize: 12 } as const;
+  const code = { color: t.textMuted, fontSize: 11, fontFamily: 'monospace' } as const;
+  return (
+    <ModalShell title={mine ? 'Almanaque de la mina' : 'Almanaque de la granja'} onClose={onClose} wide>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+        <Text style={{ color: t.text, fontWeight: '800', fontSize: 15 }}>{mine ? 'Minerales' : 'Plantas'}</Text>
+        <View style={styles.grid}>
+          {ALMANAC_ENTITIES.map((e) => {
+            const s = SPECIES[e];
+            const grows = s.grow > 0;
+            const cost = Object.entries(s.cost ?? {}) as [ItemId, number][];
+            return (
+              <View key={e} style={[styles.card, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                  <View style={[styles.plate, { backgroundColor: mine ? '#5b6470' : '#a8dc7a' }]}>
+                    <EntitySprite type={e} theme={theme} size={84} n={e === 'sunflower' ? 12 : e === 'cactus' ? 6 : undefined} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ color: t.text, fontWeight: '800', fontSize: 15 }}>{names.entityLabel[e]}</Text>
+                    <Text style={code}>Entities.{names.entityKey[e]}</Text>
+                    {grows ? <Text style={small}>{mine ? 'Se forma' : 'Madura'} en unos {s.grow} s</Text> : null}
+                    {grows ? <Text style={small}>Suelo: {s.grounds.map((g) => names.groundLabel[g]).join(' o ')}</Text> : null}
+                    {s.unlock ? <Text style={small}>Mejora: {names.unlockLabel[s.unlock]}</Text> : null}
+                  </View>
+                </View>
+                {grows ? (
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {STAGES.map((st) => (
+                      <View key={st.id} style={{ alignItems: 'center', flex: 1 }}>
+                        <View style={{ opacity: st.id === 'grow' ? 0.85 : 1, transform: [{ scale: st.id === 'grow' ? 0.8 : 1 }] }}>
+                          <EntitySprite type={e} theme={theme} size={40} stage={st.id} n={e === 'sunflower' ? 12 : e === 'cactus' ? 6 : undefined} />
+                        </View>
+                        <Text style={{ color: t.textMuted, fontSize: 10 }}>{st.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {e === 'sunflower' || e === 'cactus' ? (
+                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'flex-end' }}>
+                    {(e === 'sunflower' ? [7, 11, 15] : [0, 4, 9]).map((n) => (
+                      <View key={n} style={{ alignItems: 'center', flex: 1 }}>
+                        <EntitySprite type={e} theme={theme} size={40} n={n} />
+                        <Text style={{ color: t.textMuted, fontSize: 10 }}>measure() = {n}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {cost.length ? (
+                    <Chip>
+                      <Text style={small}>Cuesta</Text>
+                      {cost.map(([i, n]) => (
+                        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                          <ItemIcon item={i} theme={theme} size={16} />
+                          <Text style={{ color: t.text, fontSize: 12, fontWeight: '700' }}>{n}</Text>
+                        </View>
+                      ))}
+                    </Chip>
+                  ) : null}
+                  {s.item ? (
+                    <Chip>
+                      <Text style={small}>Da</Text>
+                      <ItemIcon item={s.item} theme={theme} size={16} />
+                      <Text style={{ color: t.text, fontSize: 12, fontWeight: '700' }}>
+                        {s.amount} de {names.itemLabel[s.item].toLowerCase()}
+                      </Text>
+                    </Chip>
+                  ) : null}
+                </View>
+                {ENTITY_NOTE[theme][e] ? <Text style={small}>{ENTITY_NOTE[theme][e]}</Text> : null}
+              </View>
+            );
+          })}
+        </View>
+        <Text style={{ color: t.text, fontWeight: '800', fontSize: 15, marginTop: 6 }}>Recursos</Text>
+        <View style={styles.grid}>
+          {ALMANAC_ITEMS.map((i) => (
+            <View key={i} style={[styles.card, styles.itemCard, { borderColor: t.border, backgroundColor: t.surfaceAlt }]}>
+              <ItemIcon item={i} theme={theme} size={56} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ color: t.text, fontWeight: '800', fontSize: 14 }}>{names.itemLabel[i]}</Text>
+                <Text style={code}>Items.{names.itemKey[i]}</Text>
+                <Text style={small}>{ITEM_NOTE[theme][i]}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </ModalShell>
+  );
+}
+
 const styles = StyleSheet.create({
   speed: { flexDirection: 'row', borderRadius: RADIUS.md, borderWidth: BORDER, padding: 3 },
   speedOpt: { flexDirection: 'row', alignItems: 'center', height: 30, paddingHorizontal: 8, borderRadius: 9, borderWidth: BORDER },
   speedCycle: { flexDirection: 'row', alignItems: 'center', height: 42, paddingHorizontal: 12, borderRadius: RADIUS.md, borderWidth: BORDER },
   trophy: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 10 },
   trophyIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  card: { flexGrow: 1, flexBasis: 280, maxWidth: '100%', gap: 10, borderWidth: BORDER, borderRadius: RADIUS.md, padding: 12 },
+  itemCard: { flexDirection: 'row', alignItems: 'center', flexBasis: 240 },
+  plate: { width: 96, height: 96, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center' },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: BORDER, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
 });

@@ -279,10 +279,10 @@ function IntruderSprite({ world, cell, n, version, theme }: { world: World; cell
   const t = useTheme();
   const it = world.intruder!;
   const pos = useSlide(it.x, it.y, cell, n, version);
-  const state = it.hacked ? 'hacked' : it.shutdown ? 'off' : 'active';
+  const state = it.hacked ? 'hacked' : it.shutdown || it.stun ? 'off' : 'active';
   return (
     <Animated.View pointerEvents="none" style={[styles.drone, { width: cell, height: cell, transform: pos.getTranslateTransform() }]}>
-      {state === 'active' ? <View style={[styles.alert, { borderColor: t.danger, width: cell - 4, height: cell - 4, borderRadius: cell * 0.2 }]} /> : null}
+      {state === 'active' ? <View style={[styles.alert, { borderColor: it.shield ? t.accent : t.danger, borderStyle: it.shield ? 'solid' : 'dashed', width: cell - 4, height: cell - 4, borderRadius: cell * 0.2 }]} /> : null}
       <Drone size={cell} kind="intruder" state={state} theme={theme} facing={it.facing} accent={t.accent} danger={t.danger} success={t.success} />
     </Animated.View>
   );

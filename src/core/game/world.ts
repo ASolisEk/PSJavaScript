@@ -130,7 +130,33 @@ export interface Intruder {
   /** Su programa terminó. */
   done: boolean;
   serial: string;
+  /** Duelo: turnos que le faltan para reiniciarse después de un hackeo (no puede actuar). */
+  stun?: number;
+  /** Duelo: turnos de protección tras reiniciarse (no se le puede hackear). */
+  shield?: number;
 }
+
+/** Marcador de un duelo de dos jugadores (defensa contra ataque). */
+export interface DuelScore {
+  defense: number;
+  attack: number;
+  /** Puntos de la defensa por cosechar. */
+  harvested: number;
+  /** Veces que la defensa hackeó al intruso. */
+  hacks: number;
+  /** Puntos del ataque por robar cosechas maduras. */
+  stolen: number;
+  /** Brotes arrancados por el ataque. */
+  sprouts: number;
+}
+
+/** Puntos de cada recurso en un duelo. */
+export const DUEL_ITEM_VALUE: Record<ItemId, number> = { hay: 1, wood: 2, carrot: 4, pumpkin: 4, power: 5, cactus: 4, gold: 10, water: 0, fertilizer: 0, weird_substance: 0 };
+/** Puntos para la defensa por cada hackeo. */
+export const DUEL_HACK_POINTS = 8;
+/** Turnos que el intruso queda fuera de combate tras un hackeo, y de protección al volver. */
+export const DUEL_STUN_TURNS = 4;
+export const DUEL_SHIELD_TURNS = 3;
 
 export interface WorldOptions {
   size: number;
@@ -149,6 +175,11 @@ export interface WorldOptions {
    * Si es false (solo se ejecuta el programa del intruso), sus acciones avanzan el tiempo.
    */
   intruderParallel?: boolean;
+  /**
+   * Duelo de dos jugadores: tu dron defiende (cosecha) y el intruso ataca (roba). El tiempo
+   * avanza por turnos (`tick`), se lleva un marcador y el hackeo solo reinicia al intruso.
+   */
+  duel?: boolean;
 }
 
 export interface GroupInfo {
@@ -171,6 +202,14 @@ export class World {
   intruder: Intruder | null = null;
   hideMain = false;
   intruderParallel = true;
+  /** Marcador del duelo (null si no es un duelo). */
+  duel: DuelScore | null = null;
+  /** Duelo: lo último que pasó, para la bitácora del combate. */
+  duelEvents: { who: 'defense' | 'attack'; text: string; points: number }[] = [];
+  /** Dónde aparece el intruso (vuelve aquí cuando lo hackean en un duelo). */
+  private intruderBase: { x: number; y: number } | null = null;
+  /** Posición de tu dron mientras actúa el intruso (para getRivalPos). */
+  private mainPos: { x: number; y: number } | null = null;
   /** Quién está actuando ahora (las acciones del intruso se cuentan aparte). */
   private actor: 'main' | 'intruder' = 'main';
   /** Calabazas gigantes formadas (id → posición y tamaño). */
@@ -216,7 +255,9 @@ export class World {
       const d = () => Math.floor(this.rand() * 10);
       const serial = `DR-${d()}${d()}${d()}${d()}-${'XKZQ'[Math.floor(this.rand() * 4)]}${d()}`;
       this.intruder = { x: opts.intruder.x, y: opts.intruder.y, facing: 'West', hacked: false, shutdown: false, done: false, serial };
+      this.intruderBase = { x: opts.intruder.x, y: opts.intruder.y };
     }
+    if (opts.duel) this.duel = { defense: 0, attack: 0, harvested: 0, hacks: 0, stolen: 0, sprouts: 0 };
     this.hideMain = !!opts.hideMain;
     this.intruderParallel = opts.intruderParallel ?? true;
     this.pumpkinsDirty = true;
@@ -232,8 +273,28 @@ export class World {
 
   /** Cuenta operaciones (cada instrucción es 1; se aplican al crecimiento cuando hace falta). */
   addOps(n: number) {
-    this.pendingOps += n;
     this.ops += n;
+    // en un duelo el tiempo no depende de cuánto «piense» cada programa: avanza por turnos
+    if (this.duel) return;
+    this.pendingOps += n;
+  }
+
+  /** Duelo: pasa el tiempo de un turno (las plantas crecen) y avanza el reinicio del intruso. */
+  tick(seconds: number) {
+    this.pendingOps += Math.round(seconds / OP_SECONDS) * this.speedFactor();
+    this.sync();
+    const it = this.intruder;
+    if (!it) return;
+    if (it.stun) {
+      it.stun--;
+      if (!it.stun) {
+        it.shield = DUEL_SHIELD_TURNS;
+        this.version++;
+      }
+    } else if (it.shield) {
+      it.shield--;
+      if (!it.shield) this.version++;
+    }
   }
 
   /** Aplica el tiempo pendiente: las plantas crecen y el agua se evapora. */
@@ -263,6 +324,7 @@ export class World {
     const it = this.intruder;
     if (!it) throw new Error('No hay un dron intruso en esta misión.');
     const mine = { x: this.x, y: this.y, facing: this.facing };
+    this.mainPos = mine;
     this.x = it.x;
     this.y = it.y;
     this.facing = it.facing;
@@ -270,6 +332,7 @@ export class World {
     try {
       return fn();
     } finally {
+      this.mainPos = null;
       it.x = this.x;
       it.y = this.y;
       it.facing = this.facing;
@@ -382,9 +445,16 @@ export class World {
 
   // ───────────────────────────── acciones del dron ─────────────────────────────
 
-  /** Las acciones no hacen nada si el nivel terminó o si el intruso ya fue detenido. */
+  /** Las acciones no hacen nada si el nivel terminó o si el intruso ya fue detenido (o se está reiniciando). */
   private blocked(): boolean {
-    return this.frozen || (this.actor === 'intruder' && this.intruderStopped());
+    return this.frozen || (this.actor === 'intruder' && (this.intruderStopped() || !!this.intruder?.stun));
+  }
+
+  /** Duelo: el atacante solo se mueve, roba y estropea el suelo (no planta, riega ni compra). */
+  private attackerCannot(what: string): boolean {
+    if (!this.duel || this.actor !== 'intruder') return false;
+    this.warn(`El dron atacante no puede ${what}.`);
+    return true;
   }
 
   move(dir: Dir): boolean {
@@ -428,6 +498,12 @@ export class World {
     if (e.progress < 1 || e.type === 'dead_pumpkin') {
       // cosechar antes de tiempo destruye la planta
       if (e.type !== 'dead_pumpkin') this.stats.wasted++;
+      if (this.duel && this.actor === 'intruder' && e.type !== 'dead_pumpkin' && e.type !== 'grass') {
+        // sabotaje: arrancar un brote que la defensa plantó
+        this.duel.attack += 1;
+        this.duel.sprouts++;
+        this.duelEvents.push({ who: 'attack', text: 'arrancó un brote', points: 1 });
+      }
       this.clearCell(x, y);
       this.version++;
       return true;
@@ -490,6 +566,18 @@ export class World {
   }
 
   private give(item: ItemId, amount: number, weird?: boolean) {
+    if (this.duel) {
+      const points = amount * DUEL_ITEM_VALUE[item];
+      if (this.actor === 'intruder') {
+        // el atacante se roba la cosecha: los puntos son suyos
+        this.duel.attack += points;
+        this.duel.stolen += points;
+        if (points >= 2) this.duelEvents.push({ who: 'attack', text: 'robó una cosecha', points });
+        return;
+      }
+      this.duel.defense += points;
+      this.duel.harvested += points;
+    }
     // lo que arranca el dron intruso se pierde: no llega a tu inventario
     if (this.actor === 'intruder') return;
     this.items[item] += amount;
@@ -497,7 +585,7 @@ export class World {
   }
 
   plant(type: EntityId): boolean {
-    if (this.blocked()) return false;
+    if (this.blocked() || this.attackerCannot('plantar')) return false;
     const s = SPECIES[type];
     if (!PLANTABLE.includes(type)) {
       this.warn(`No se puede plantar «${type}».`);
@@ -572,7 +660,7 @@ export class World {
   }
 
   useItem(item: ItemId, times = 1): boolean {
-    if (this.blocked()) return false;
+    if (this.blocked() || this.attackerCannot('usar objetos')) return false;
     if (!Number.isInteger(times) || times < 1) throw new Error('useItem() necesita una cantidad entera mayor que 0.');
     if (item === 'water' && !this.unlocks.watering) throw new Error('Aún no se desbloquea el riego (watering).');
     if (item === 'fertilizer' && !this.unlocks.fertilizer) throw new Error('Aún no se desbloquea el fertilizante.');
@@ -657,17 +745,42 @@ export class World {
     return this.intruder ? [this.intruder.x, this.intruder.y] : null;
   }
 
+  /** Posición del otro dron: para tu dron, el intruso; para el intruso, tu dron. */
+  getRivalPos(): [number, number] | null {
+    this.addOps(1);
+    if (this.actor === 'intruder') return this.mainPos ? [this.mainPos.x, this.mainPos.y] : null;
+    return this.intruder ? [this.intruder.x, this.intruder.y] : null;
+  }
+
   /** Hackea al intruso si tu dron está en su casilla o en una vecina. */
   hack(): boolean {
-    if (this.frozen) return false;
+    // solo tu dron hackea (el intruso no puede hackearse a sí mismo)
+    if (this.frozen || this.actor === 'intruder') return false;
     this.action();
     const it = this.intruder;
     if (!it || it.hacked || it.shutdown) return false;
     const dx = Math.min(Math.abs(it.x - this.x), this.size - Math.abs(it.x - this.x));
     const dy = Math.min(Math.abs(it.y - this.y), this.size - Math.abs(it.y - this.y));
-    if (dx + dy > 1) {
-      this.warn(`El intruso está muy lejos para hackearlo: está en (${it.x}, ${it.y}).`);
+    if (this.duel && (it.stun || it.shield)) {
+      // se está reiniciando o acaba de volver: todavía no se le puede hackear
       return false;
+    }
+    if (dx + dy > 1) {
+      if (!this.duel) this.warn(`El intruso está muy lejos para hackearlo: está en (${it.x}, ${it.y}).`);
+      return false;
+    }
+    if (this.duel) {
+      // en un duelo el hackeo no termina la partida: reinicia al intruso en su base
+      it.stun = DUEL_STUN_TURNS;
+      if (this.intruderBase) {
+        it.x = this.intruderBase.x;
+        it.y = this.intruderBase.y;
+      }
+      this.duel.defense += DUEL_HACK_POINTS;
+      this.duel.hacks++;
+      this.duelEvents.push({ who: 'defense', text: 'hackeó al dron atacante', points: DUEL_HACK_POINTS });
+      this.version++;
+      return true;
     }
     it.hacked = true;
     this.version++;
@@ -705,7 +818,11 @@ export class World {
 
   /** Deja la granja como al inicio: todo pradera con pasto y el dron en (0, 0). */
   clear() {
-    if (this.blocked()) return;
+    if (this.blocked() || this.attackerCannot('reiniciar la granja')) return;
+    if (this.duel) {
+      this.warn('En un duelo no se puede reiniciar la granja con clear().');
+      return;
+    }
     this.action();
     for (const [x, y] of this.allCells()) {
       const c = this.cells[x][y];
@@ -827,6 +944,10 @@ export class World {
   }
 
   unlock(id: UnlockId): boolean {
+    if (this.duel) {
+      this.warn('En un duelo no se compran mejoras.');
+      return false;
+    }
     const cost = this.unlockCost(id);
     if (!cost) {
       this.warn(`«${id}» ya está al máximo.`);
